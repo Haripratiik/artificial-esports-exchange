@@ -180,7 +180,16 @@ class MarketConfig:
     surface: bool = True
     mechanism: str = "book"
     # Whether live matches run alongside the statistical contracts.
-    matches: bool = False
+    #
+    # On, because a match is the only thing here that resolves while somebody
+    # is watching: the statistical contracts settle at the end of a four week
+    # observation window and nothing about them changes inside a session.
+    #
+    # One at a time per format rather than more. Measured over 180 simulated
+    # seconds on seed 7, matches take the listing from 47 symbols to 971 and
+    # the market from 1.85x real time to 0.75x, so the board is kept small
+    # enough that a session anybody watches keeps up.
+    matches: bool = True
     concurrent_matches: int = 1
 
     def to_dict(self) -> dict[str, Any]:

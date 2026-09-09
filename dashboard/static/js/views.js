@@ -71,7 +71,42 @@ export function subjectsOf(node) {
   return [];
 }
 
+/**
+ * The match a contract belongs to, or null if it is not on a match.
+ *
+ * A match ref carries its mode and its match number, so grouping is read off
+ * the contract rather than parsed out of the symbol. Grouping these by subject
+ * instead would scatter one match across the whole roster: a ten-competitor
+ * solo match lists 270 contracts and every one of them names a different
+ * competitor, so the board would show the roster rather than the match.
+ */
+function refsOf(node) {
+  if (!node) return [];
+  if (node.kind === 'single') return node.ref ? [node.ref] : [];
+  if (node.kind === 'difference') return [...refsOf(node.left), ...refsOf(node.right)];
+  if (node.kind === 'basket') return (node.legs || []).flatMap((l) => refsOf(l.leg));
+  return [];
+}
+
+export function matchOf(book) {
+  // Walked rather than read off the top, because a head to head contract is a
+  // difference of two competitors and its match tag sits on the legs. Reading
+  // only the root left ninety of a solo match's contracts ungrouped, and they
+  // came back as their own rows named after the pair, which is the crowded
+  // board this grouping exists to avoid.
+  const refs = refsOf(book?.contract?.underlying);
+  for (const ref of refs) {
+    const tag = (ref?.maps || []).find((m) => String(m).startsWith('match-'));
+    if (!tag) continue;
+    const mode = (ref.modes || []).find((m) => m && m !== 'ALL') || 'match';
+    return mode.toUpperCase() + ' #' + String(tag).slice('match-'.length);
+  }
+  return null;
+}
+
 export function subjectOf(book) {
+  const match = matchOf(book);
+  if (match) return match;
   const found = [...new Set(subjectsOf(book?.contract?.underlying))];
   if (!found.length) return 'Other';
   return found.length === 1 ? found[0] : found.join(' + ');

@@ -179,6 +179,9 @@ class MarketConfig:
     opening_auction: bool = True
     surface: bool = True
     mechanism: str = "book"
+    # Whether live matches run alongside the statistical contracts.
+    matches: bool = False
+    concurrent_matches: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -649,6 +652,8 @@ class MarketRunner:
             opening_auction=config.opening_auction,
             surface=config.surface,
             mechanism=config.mechanism,
+            matches=config.matches,
+            concurrent_matches=config.concurrent_matches,
         )
         return market
 
@@ -697,7 +702,21 @@ class MarketRunner:
         venue = self.market.venue
         now = int(self.market.kernel.now)
         interest = _open_interest(venue)
-        for symbol, series in self.history.items():
+        # Take up whatever listed since the last tick.
+        #
+        # History was built once from the symbols present at construction,
+        # which was right while the listing was fixed for a session. Matches
+        # open and close continuously, so a chart keyed on the original listing
+        # simply never draws them: no crash, no warning, and a market that
+        # looks empty in the one place anybody is watching it.
+        for symbol in venue.registry.symbols:
+            if symbol not in self.history:
+                self.history[symbol] = Series()
+                self._tape_seen[symbol] = 0
+
+        for symbol, series in list(self.history.items()):
+            if venue.registry.get(symbol) is None:
+                continue
             instrument = venue.registry.require(symbol)
             engine = venue.engine(symbol)
             # Two levels, not one. Market-on-open interest rests at a sentinel

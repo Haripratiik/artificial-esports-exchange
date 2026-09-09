@@ -489,9 +489,10 @@ def test_a_metric_is_a_function_of_the_record_and_nothing_else():
 
     The strongest available statement of the separation: these matches do not
     come from any seed, so any metric that consulted a generator would have
-    nothing to consult. The record says the subject entered three matches and
-    won two, so the win rate is 2/3 and the eliminations per match 1.0, and no
-    strength anywhere could move either.
+    nothing to consult. The record says the subject entered three matches, won
+    two and was credited one elimination, so the win rate is 2/3, the
+    eliminations per match 1/3 and the volume 3, and no strength anywhere could
+    move any of them.
     """
     made_up = tuple(
         MatchResult(

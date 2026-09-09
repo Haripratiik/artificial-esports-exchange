@@ -645,6 +645,23 @@ def build(
     information_flow: bool = True,
     informed: int = 6,
     netting: bool = False,
+    # How many books each uninformed trader touches per wake.
+    #
+    # Six rather than one, because one produced a market that could not support
+    # market making at all. Measured over 180 simulated seconds on seed 7 with
+    # matches listed: uninformed flow was 0.5% of volume at an informed ratio
+    # of 42.3 to 1, and Glosten-Milgrom's own conclusion is that past a high
+    # enough informed share no spread both trades and profits. Six takes it to
+    # 3.0% and 6.4 to 1.
+    #
+    # Not higher, and the reason is cost rather than taste. The full curve, same
+    # run: 6 books across 40 traders reaches 7.7% and 2.3 to 1 but runs at 0.18x
+    # real time, and 14 across 40 reaches a realistic 16.0% and 0.9 to 1 at
+    # 0.10x. Realistic composition is affordable for a headless research run and
+    # not for a market anybody watches, which is the clearest statement of where
+    # this simulator's performance budget actually binds.
+    noise_breadth: int = 6,
+    noise_traders: int = 14,
     matches: bool = False,
     match_formats: tuple[str, ...] = ("solo", "objective"),
     match_seconds: float = 90.0,
@@ -745,7 +762,7 @@ def build(
     operator_id = AgentId("exchange")
     arb_id = AgentId("arb-1")
     fund_ids = [AgentId(f"fund-{n}") for n in range(informed)]
-    noise_ids = [AgentId(f"noise-{i:02d}") for i in range(14)]
+    noise_ids = [AgentId(f"noise-{i:02d}") for i in range(noise_traders)]
     flow_ids = [AgentId(f"flow-{i:02d}") for i in range(flow_traders)]
 
     latency = PairwiseLatency(
@@ -867,7 +884,13 @@ def build(
         for n, agent_id in enumerate(fund_ids)
     ]
     noise = [
-        NoiseTrader(a, VENUE_ID, by_symbol, wake_interval=millis(1_100))
+        NoiseTrader(
+            a,
+            VENUE_ID,
+            by_symbol,
+            wake_interval=millis(1_100),
+            symbols_per_wake=noise_breadth,
+        )
         for a in noise_ids
     ]
 

@@ -39,6 +39,8 @@ from arena.market.calendar import Calendar
 from arena.market.instrument import Instrument, InstrumentClass
 from arena.market.live import HUMAN_ID, VENUE_ID, HumanAgent, LiveMarket
 from arena.market.fees import FREE, MAKER_TAKER, FeeSchedule
+from arena.agents.match_maker import MatchMaker
+from arena.market.match_operator import MatchOperator
 from arena.market.operator import SessionOperator
 from arena.market.lmsr_venue import LmsrVenue
 from arena.market.venue import Venue
@@ -561,6 +563,34 @@ def true_values(listed: list[Instrument]) -> dict[str, float]:
     return values
 
 
+def match_maker_capital(
+    formats: tuple[str, ...], seed: int, concurrent: int, lots: int = 40
+) -> int:
+    """What it costs to be the market in every contract on every live match.
+
+    Derived from a real book rather than named, for the reason `maker_capital`
+    gives: a figure is right only for the list it was written against, and a
+    match lists 270 contracts where the statistical listing lists 47. Measured
+    at build time off match zero of each format, which is representative
+    because every match of a format lists the same families over the same
+    field size.
+
+    Cheaper per contract than the statistical listing by a wide margin, and
+    that is the bounded payoff doing its work: a winner contract settles in
+    [0, 1] where a win-rate future settles in [0, 10000], so 270 match
+    contracts cost less to make a market in than a handful of futures.
+    """
+    from arena.market.match_book import list_match
+
+    total = 0.0
+    for name in formats:
+        book = list_match(seed, 0, name)
+        for contract in book.contracts:
+            low, high = contract.instrument.spec.value_bounds
+            total += float(high - low) * lots
+    return int(total * concurrent) + 1
+
+
 def maker_capital(
     listed: list[Instrument], position_limit: int, quote_size: int
 ) -> int:
@@ -615,6 +645,10 @@ def build(
     information_flow: bool = True,
     informed: int = 6,
     netting: bool = False,
+    matches: bool = False,
+    match_formats: tuple[str, ...] = ("solo", "objective"),
+    match_seconds: float = 90.0,
+    concurrent_matches: int = 1,
 ) -> LiveMarket:
     # The scoring rule prices a binary and nothing else, so choosing it
     # narrows the exchange to its event contracts. That is not a limitation
@@ -866,6 +900,38 @@ def build(
                 recycle_capital=recycle_capital,
             )
         )
+    match_operator = None
+    if matches:
+        # A market maker of its own, because a match family is priced off one
+        # distribution over outcomes and the statistical makers are not. Given
+        # no instruments at construction: every contract it quotes arrives with
+        # a match, through the same note-and-join path as every other agent.
+        match_maker = MatchMaker(
+            AgentId("mm-match"),
+            VENUE_ID,
+            {},
+            wake_interval=millis(360),
+        )
+        agents.append(match_maker)
+        venue.open_account(
+            match_maker.agent_id, match_maker_capital(match_formats, seed, concurrent_matches)
+        )
+
+        # Told about every listing, so the arbitrageur takes on each match's
+        # identities and every trader can see the book. The operator is not in
+        # its own participant list: it lists contracts, it does not trade them.
+        match_operator = MatchOperator(
+            AgentId("matches"),
+            venue,
+            seed=seed,
+            formats=match_formats,
+            match_seconds=match_seconds,
+            concurrent=concurrent_matches,
+            venue_agent=venue_agent,
+            participants=list(agents),
+        )
+        agents.append(match_operator)
+
     kernel.add(venue_agent)
     kernel.add(human)
     kernel.add_all(agents)
@@ -881,6 +947,13 @@ def build(
         # Bound to the same oracle every other settlement in this module uses,
         # so a contract that settles live gets exactly the value
         # `prior_levels` and `true_values` would have computed for it.
+        # Two settlement sources, dispatched on who owns the contract. A match
+        # settles against the match that was played and the statistical
+        # contracts against the oracle, and neither can answer for the other:
+        # asking the oracle about a match contract fails rather than returning
+        # something wrong, which is the right failure but not a useful one.
+        # The operator settles its own as it goes, so anything reaching here
+        # from a match is a contract it has already closed.
         settlement_source=lambda spec: settle(spec, _world()[2]),
         # So a person who signs in gets an account they can read a profit
         # against, at the same distance from the exchange as anyone else at a

@@ -148,7 +148,19 @@ class TradingAgent:
     ) -> None:
         self.agent_id = agent_id
         self.venue_id = venue_id
-        self.instruments = instruments
+        # Copied, not shared. `build_market` hands the same mapping to every
+        # agent, and each of them keeps its own books, positions and
+        # subscriptions, so a shared listing was one agent's view of the market
+        # standing in for everybody's.
+        #
+        # Harmless for as long as the listing never changed after construction,
+        # which stopped being true when matches began opening and closing. The
+        # first agent to join a new contract put it in every other agent's
+        # instruments too, and each of them then iterated a symbol it had no
+        # book, no position and no subscription for. Measured: a fundamental
+        # trader raised KeyError on `OBJECTIVE0_ELIM_BASTION_GT0`, a contract it
+        # had never been told about, on the first wake after a match listed.
+        self.instruments = dict(instruments)
         self.wake_interval = wake_interval
         self.books: dict[str, LocalBook] = {
             symbol: LocalBook(symbol) for symbol in instruments

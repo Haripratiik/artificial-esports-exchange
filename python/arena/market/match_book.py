@@ -30,7 +30,7 @@ anything. Any identity that holds on every outcome therefore holds in the
 prices as arithmetic: the winner set sums to one because each drawn match has
 exactly one winner, not because anything was normalised afterwards. Prices come
 back as ``Fraction`` with denominator equal to the draw count, so the identities
-are exact rather than exact to within a rounding. Both are measured over 60
+are exact rather than exact to within a rounding. Both are measured over 50
 random beliefs on each format: every one of the 395 relations sits at excess
 exactly 0 in rational arithmetic, and after converting the prices to float the
 worst excess anywhere is 3.9e-15, on the conservation set that adds 90
@@ -58,6 +58,19 @@ option either: the placement marginals need a walk over the 2^n prefixes of the
 finishing order, and the elimination counts a further n states per competitor
 on top of that, which is 100k states at ten entrants and 16M at sixteen.
 
+One consequence of a finite ensemble is worth naming rather than leaving to be
+discovered. Its support is smaller than the world's, so an outcome it never
+drew prices at exactly zero. Measured at 4,000 draws over 20 beliefs, as many
+as 34 of the 270 solo contracts priced at exactly 0 or 1 on a single belief, and
+of the 612 such prices across all twenty, 611 were rungs of an eliminations
+ladder, which is where the tail is. Those prices are coherent, they are simply
+at the boundary, and a maker that published a zero as its offer would be selling
+a lottery ticket for nothing. That is the other thing ``two_sided_quote`` is
+for: a zero fair value with a one tick half spread quotes 0 bid against a 0.01
+offer, because the offer is a ceiling and never a floor. Wanting a finer
+answer on a rare rung is a reason to raise the draw count, not to reach for a
+second measure.
+
 **The model of the world is the format's own rules.** The sampler mirrors
 ``match.play``: a weighted sample without replacement for an elimination
 format, a race to the target with each point credited inside the scoring side
@@ -70,7 +83,7 @@ quietly price a match that cannot happen. And the mirror is tested as an
 identity rather than as a resemblance: handed ``exp(strength)`` as its belief
 and ``match.play``'s own random stream, ``draw_outcome`` returns the match the
 world actually played, placement for placement and credit for credit, on 400
-real matches across both formats.
+real matches in each of the two formats and 0 mismatches.
 
 Nothing here carries a list of formats or a list of contracts. The families,
 the ladder rungs, the sides, the exclusive sets and every relation are read off
@@ -109,9 +122,11 @@ __all__ = [
     "ELIMINATIONS",
     "HEAD_TO_HEAD",
     "FAMILIES",
+    "SIDE_SEPARATOR",
     "MatchContract",
     "ExclusiveSet",
     "MatchBook",
+    "match_window",
     "list_match",
     "metric_levels",
     "settlement",
@@ -381,7 +396,16 @@ def _side_subject(members: Sequence[str]) -> str:
 def match_window(
     match_id: int, epoch: datetime = EPOCH, duration: timedelta = DURATION
 ) -> ObservationWindow:
-    """The minutes this match occupies. Matches run back to back from the epoch."""
+    """The minutes this match occupies. Matches run back to back from the epoch.
+
+    This is the forward half of a mapping whose backward half lives in the
+    circuit oracle's calendar, which turns a window into the match ids inside
+    it. Two clocks that never meet is a failure this repository has already had,
+    so the pair share ``EPOCH`` and ``DURATION`` rather than each carrying a
+    cadence, and ``test_circuit_world`` asserts they still agree. Moving either
+    one alone would leave a contract listed on match 400 settling against
+    whatever match 400 meant to the other side.
+    """
     start = epoch + duration * match_id
     return ObservationWindow(start, start + duration)
 
@@ -463,10 +487,10 @@ def list_match(
     level.
 
     A ten entrant solo match lists 10 + 80 + 90 + 90 = 270 contracts; the 3v3
-    lists 2 + 0 + 18 + 18 = 38, and the empty family is not an oversight: with
-    only two places, "top 1" is the winner contract and "top 2" is a certainty,
-    so a placement ladder on a 3v3 would be two contracts nobody can lose money
-    on.
+    lists 2 + 0 + 18 + 18 = 38, and the empty family is not an oversight. With
+    only two places, a top 1 rung is the winner contract listed a second time
+    under a different name and a top 2 rung is a certainty, so the ladder would
+    be six duplicates and six contracts nobody can lose money on.
     """
     if format_name not in FORMATS:
         raise KeyError(
@@ -489,8 +513,13 @@ def list_match(
         for i in range(0, fmt.entrants, fmt.team_size)
     )
     window = match_window(match_id, epoch, duration)
+    # The symbol names the match, not the world, the way a ticker does. Two
+    # worlds run from different seeds would therefore hand a venue the same
+    # symbol for two different fields, which is why ``prefix`` exists and why
+    # the world seed is part of the reference id below: the label can repeat
+    # across worlds, the content address must not.
     tag = prefix or f"{format_name.upper()}{match_id}"
-    reference_id = f"circuit-{fmt.name}-{fmt.entrants}x{fmt.team_size}"
+    reference_id = f"circuit-{fmt.name}-{fmt.entrants}x{fmt.team_size}-seed{seed}"
 
     def build(
         contract_id: str,
@@ -696,14 +725,21 @@ def metric_levels(book: MatchBook, result: MatchResult) -> dict[MetricRef, float
     and everything downstream, settlement and pricing alike, goes through the
     contract's own underlying algebra and payoff from here.
 
-    Three guards run first, in this order, and none of them is defensive
+    Four guards run first, in this order, and none of them is defensive
     decoration. The result must be *this* match, because a MetricRef is
     resolved by metric and subject and a competitor appears in many matches, so
     a mismatched result would settle silently and plausibly. The format must
     accept the result, because the identities these contracts are priced under
     are the format's conservation laws and a result that breaks them breaks
-    them. And every level must land inside the bounds its own ref declared,
-    because those bounds are what collateral was computed from.
+    them. Every side must have finished together, for a reason found by trying
+    it: ``TeamObjective.check`` counts three competitors at each place and is
+    handed placements and eliminations without the field, so it cannot see the
+    sides and it accepts a winning trio made of one competitor from one side and
+    two from the other. Settled, that result pays both winner contracts zero and
+    the set that must sum to one sums to nothing. The book knows the grouping and
+    therefore checks the thing the format is not in a position to. And every
+    level must land inside the bounds its own ref declared, because those bounds
+    are what collateral was computed from.
     """
     if result.format_name != book.format_name or result.match_id != book.match_id:
         raise ValueError(
@@ -717,6 +753,20 @@ def metric_levels(book: MatchBook, result: MatchResult) -> dict[MetricRef, float
         )
     fmt = FORMATS[book.format_name]
     fmt.check(result.placements, result.eliminations)
+    # Only a team format can fail this, and the first version skipped it for a
+    # mechanic with one competitor to a side on the grounds that settlement runs
+    # once per drawn outcome and the loop is vacuous there. Measured back to
+    # back on the same machine, the vacuous version of the loop moved an 0.8s
+    # pricing pass by -0.04s and +0.08s on two trials, which is noise. The
+    # slowdown that prompted the special case was another process on the box. So
+    # there is no special case: the guard runs for every mechanic.
+    for side in book.sides:
+        if len({result.placements[member] for member in side}) != 1:
+            raise ValueError(
+                f"match {book.match_id}: side {list(side)} did not finish "
+                "together, so no side won it and the winner contracts would "
+                "settle to nothing at all"
+            )
 
     placements = result.placements
     eliminations = result.eliminations
@@ -774,6 +824,12 @@ def derive_match_relations(book: MatchBook) -> list[Relation]:
     the leg that is too dear when the excess is positive. So an Arbitrageur
     already built on these instruments enforces them by extending its list,
     with no new execution path.
+
+    It has to be extended, though, and that is worth stating rather than
+    assuming. Measured: ``derive_relations`` handed a whole match book returns
+    0 relations, because it looks for linear futures, options, spreads and
+    indices and a match book lists none of those. An agent built on these
+    instruments and left alone is inert on them.
 
     Every relation here is a statement about a single match outcome, not a
     statistical regularity, which is what makes trading them riskless rather
@@ -903,7 +959,7 @@ def excess_exact(relation: Relation, prices: Mapping[str, Fraction]) -> Fraction
     module makes is stronger than that, so it is checked in arithmetic that can
     carry it: every coefficient a relation here carries is +1 or -1 and every
     constant is a whole number, so all of this is exact and the only thing that
-    can make an excess nonzero is a genuine violation. Measured over 60 random
+    can make an excess nonzero is a genuine violation. Measured over 50 random
     belief vectors on each format, every relation came back at exactly 0.
     """
     theoretical = Fraction(relation.constant)
@@ -1142,6 +1198,11 @@ def coherent_prices(
     integer over the draw count as a Fraction. The winner set therefore sums to
     exactly 1 because every drawn match has exactly one winner. Nothing is
     normalised, and there is no residual hidden in the last contract.
+
+    Passing an ``ensemble`` prices against that bag and never looks at the
+    belief, which is not an oversight: the bag is the distribution, the belief
+    is only the recipe for drawing one, and a caller who has already drawn is
+    entitled to reuse it across several books rather than pay for it twice.
     """
     outcomes = (
         outcome_ensemble(book, belief, draws, seed) if ensemble is None else ensemble
@@ -1208,4 +1269,10 @@ def two_sided_quote(
 
     bid = to_grid(Fraction(price) - half, ROUND_FLOOR)
     ask = to_grid(Fraction(price) + half, ROUND_CEILING)
-    return (max(Decimal(0), bid), min(Decimal(str(payout)), ask))
+    # Quantized after the clamp so both sides carry the tick's own exponent. A
+    # price crosses the wire as a string here, and an offer that reads "1.0"
+    # where its bid reads "1.00" is the same number wearing two spellings.
+    return (
+        max(Decimal(0), bid).quantize(step),
+        min(Decimal(str(payout)), ask).quantize(step),
+    )

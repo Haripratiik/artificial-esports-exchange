@@ -752,7 +752,7 @@ def metric_levels(book: MatchBook, result: MatchResult) -> dict[MetricRef, float
             f"result is on {sorted(result.field)}"
         )
     fmt = FORMATS[book.format_name]
-    fmt.check(result.placements, result.eliminations)
+    fmt.check(result.placements, result.eliminations, book.sides)
     # Only a team format can fail this, and the first version skipped it for a
     # mechanic with one competitor to a side on the grounds that settlement runs
     # once per drawn outcome and the loop is vacuous there. Measured back to
@@ -1144,7 +1144,7 @@ def _draw(
         outcome = _draw_elimination(book, weights, rng)
     else:
         outcome = _draw_race(book, weights, rng, mechanic.target)
-    fmt.check(outcome.placements, outcome.eliminations)
+    fmt.check(outcome.placements, outcome.eliminations, book.sides)
     return outcome
 
 

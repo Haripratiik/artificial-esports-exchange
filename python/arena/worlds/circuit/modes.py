@@ -57,8 +57,19 @@ class MatchFormat(Protocol):
         """How many sides contest one match."""
         ...
 
-    def check(self, placements: dict[str, int], eliminations: dict[str, int]) -> None:
-        """Refuse a result that cannot have happened. Raises on a bad one."""
+    def check(
+        self,
+        placements: dict[str, int],
+        eliminations: dict[str, int],
+        sides: tuple[tuple[str, ...], ...] | None = None,
+    ) -> None:
+        """Refuse a result that cannot have happened. Raises on a bad one.
+
+        ``sides`` is the grouping the match was played in, where the format has
+        one. Optional only so a caller holding a bare result can still check
+        the format-independent facts; a team format given no sides says so
+        rather than passing something it could not actually verify.
+        """
         ...
 
 
@@ -81,7 +92,12 @@ class SoloElimination:
     def teams(self) -> int:
         return self.entrants
 
-    def check(self, placements: dict[str, int], eliminations: dict[str, int]) -> None:
+    def check(
+        self,
+        placements: dict[str, int],
+        eliminations: dict[str, int],
+        sides: tuple[tuple[str, ...], ...] | None = None,
+    ) -> None:
         if len(placements) != self.entrants:
             raise ValueError(
                 f"{self.name}: {len(placements)} placements for {self.entrants} entrants"
@@ -124,7 +140,12 @@ class TeamObjective:
     def teams(self) -> int:
         return self.entrants // self.team_size
 
-    def check(self, placements: dict[str, int], eliminations: dict[str, int]) -> None:
+    def check(
+        self,
+        placements: dict[str, int],
+        eliminations: dict[str, int],
+        sides: tuple[tuple[str, ...], ...] | None = None,
+    ) -> None:
         if len(placements) != self.entrants:
             raise ValueError(
                 f"{self.name}: {len(placements)} placements for {self.entrants} entrants"
@@ -144,6 +165,22 @@ class TeamObjective:
                 )
         if any(count < 0 for count in eliminations.values()):
             raise ValueError(f"{self.name}: an entrant was credited a negative count")
+
+        # And the winners have to be a side, not merely the right number of
+        # people. Counting alone accepted a winning trio drawn from both teams,
+        # which is not a match anybody played. The damage is specific and
+        # silent: both "this side wins" contracts settle to zero, so the set
+        # that must sum to one sums to zero, and the exclusivity the whole
+        # match listing is built on is gone with nothing raising.
+        if sides is None:
+            raise ValueError(
+                f"{self.name}: a team result cannot be checked without its sides"
+            )
+        winners = frozenset(k for k, place in placements.items() if place == 1)
+        if winners not in {frozenset(side) for side in sides}:
+            raise ValueError(
+                f"{self.name}: the winners are not one of the sides that played"
+            )
 
 
 # The registry a listing dispatches on. A format outside this mapping is

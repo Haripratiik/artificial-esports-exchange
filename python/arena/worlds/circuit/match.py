@@ -161,8 +161,23 @@ def play(seed: int, match_id: int, format_name: str = "solo") -> MatchResult:
 
     # The format decides what a result has to satisfy, and it is asked every
     # time rather than in a test. A malformed match must not reach settlement.
-    fmt.check(result.placements, result.eliminations)
+    fmt.check(result.placements, result.eliminations, _sides_of(result, fmt))
     return result
+
+
+def _sides_of(result: MatchResult, fmt: MatchFormat):
+    """How the field was grouped, so a team result can be checked against it.
+
+    Reconstructed from the field in the same consecutive runs `play` used to
+    build it, rather than carried separately, so the grouping the check sees
+    cannot drift from the grouping the match was played in.
+    """
+    if fmt.team_size == 1:
+        return tuple((key,) for key in result.field)
+    return tuple(
+        tuple(result.field[i : i + fmt.team_size])
+        for i in range(0, len(result.field), fmt.team_size)
+    )
 
 
 def season(seed: int, matches: int, format_name: str = "solo") -> list[MatchResult]:

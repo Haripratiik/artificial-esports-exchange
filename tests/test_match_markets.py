@@ -4,8 +4,9 @@ The claim under test is not that these prices are good. It is that they are
 coherent: that no package of contracts on one match can be assembled into a
 riskless profit, because every price in the book is an expectation of the same
 settlement rule under one distribution. That is a property, so it is tested as
-one, over thousands of played matches and thousands of random beliefs rather
-than on an example.
+one, over thousands of played matches, a hundred random beliefs and a
+thousand outcomes drawn from the settleable space directly, rather than on an
+example.
 
 Two tests carry the weight. ``test_one_distribution_violates_no_relation``
 prices a whole book off the single ensemble and finds every one of the 395
@@ -29,10 +30,12 @@ from fractions import Fraction
 
 import pytest
 
+from arena.market.instrument import InstrumentClass
 from arena.market.match_book import (
     ELIMINATIONS,
     HEAD_TO_HEAD,
     PLACEMENT,
+    SIDE_SEPARATOR,
     WINNER,
     coherent_prices,
     derive_match_relations,
@@ -44,8 +47,7 @@ from arena.market.match_book import (
     settlement,
     two_sided_quote,
 )
-from arena.market.instrument import InstrumentClass
-from arena.worlds.circuit.match import play
+from arena.worlds.circuit.match import MatchResult, play
 from arena.worlds.circuit.modes import FORMATS, TeamObjective, register_format
 from arena.worlds.circuit.roster import draw_strengths
 
@@ -55,8 +57,8 @@ FORMAT_NAMES = ("solo", "objective")
 # Enough matches that a settlement identity holding is evidence rather than
 # coincidence, and enough beliefs that a relation holding is the same. Both
 # loops are deterministic, so these are a fixed cost rather than a flake risk:
-# the settlement sweep runs 4,000 matches in 5.4s and the pricing sweep 100
-# beliefs in 11.2s.
+# settling 2,000 matches of each format takes 5.5s and pricing the hundred
+# beliefs takes 9.9s, which is most of the file's 35s.
 MATCHES = 2_000
 BELIEFS = 50
 # Below the module's default of 4,000. The identities are exact at any draw
@@ -69,8 +71,8 @@ DRAWS = 800
 def priced():
     """Every format's book, its relations, and prices under BELIEFS beliefs.
 
-    Priced once and shared, because the ensemble is the expensive part and four
-    tests want to ask different questions of the same prices.
+    Priced once and shared, because the ensemble is the expensive part and
+    eight tests want to ask different questions of the same prices.
     """
     out = {}
     for name in FORMAT_NAMES:
@@ -141,6 +143,16 @@ def test_the_listing_is_something_the_venue_can_actually_carry():
     assert len({c.instrument.spec.spec_digest for c in book.contracts}) == len(
         book.contracts
     )
+    # A symbol names the match the way a ticker does, so a competitor drawn into
+    # match 0 of two different worlds carries the same one twice. The digest may
+    # not repeat: those are two different fields behind one label, and a
+    # settlement record that could not tell them apart would be a record of
+    # nothing. The world seed is in the reference id for exactly this.
+    other_world = list_match(SEED + 1, 0, "solo")
+    assert set(other_world.symbols) & set(book.symbols)
+    assert {c.instrument.spec.spec_digest for c in other_world.contracts}.isdisjoint(
+        {c.instrument.spec.spec_digest for c in book.contracts}
+    )
     for contract in book.contracts:
         instrument = contract.instrument
         assert instrument.instrument_class == InstrumentClass.EVENT
@@ -166,10 +178,15 @@ def test_head_to_head_is_listed_only_where_the_pair_can_be_separated():
 
 
 @dataclass(frozen=True)
-class Duel:
-    """A format nobody has seen before, registered by a test rather than a file."""
+class FourWay:
+    """A format nobody has seen before, registered by a test rather than a file.
 
-    name: str = "duel"
+    Its name is its own rather than something obvious like "duel", because
+    ``test_match_engine`` registers a throwaway of that name too and two tests
+    that leak the same key would fail each other rather than themselves.
+    """
+
+    name: str = "fourway"
     entrants: int = 4
     team_size: int = 1
 
@@ -177,7 +194,7 @@ class Duel:
     def teams(self) -> int:
         return self.entrants
 
-    def check(self, placements, eliminations) -> None:
+    def check(self, placements, eliminations, sides=None) -> None:
         if sorted(placements.values()) != list(range(1, self.entrants + 1)):
             raise ValueError(f"{self.name}: placements are not a permutation")
         if sum(eliminations.values()) != self.entrants - 1:
@@ -192,10 +209,17 @@ def throwaway_formats():
     so a test that leaked one would fail the next run of the same session rather
     than the one that leaked it.
     """
-    added = (Duel(), replace(TeamObjective(), name="duo", entrants=4, team_size=2, target=2))
-    for fmt in added:
-        register_format(fmt)
+    added = (
+        FourWay(),
+        replace(TeamObjective(), name="pairs", entrants=4, team_size=2, target=2),
+    )
     try:
+        # Registration is inside the try. Outside it, a second format that
+        # failed to register would leave the first one in the registry for the
+        # rest of the session, and the test that tripped over it would not be
+        # this one.
+        for fmt in added:
+            register_format(fmt)
         yield added
     finally:
         for fmt in added:
@@ -215,15 +239,15 @@ def test_a_newly_registered_format_lists_and_prices_with_no_edit_here(
     violations, which matters more than the counts: a contract set derived for a
     format the pricer cannot draw would be a listing nobody can quote.
     """
-    duel, duo = throwaway_formats
+    fourway, pairs = throwaway_formats
 
-    book = list_match(SEED, 1, duel.name)
+    book = list_match(SEED, 1, fourway.name)
     assert len(book.contracts) == 36
     families = (WINNER, PLACEMENT, ELIMINATIONS, HEAD_TO_HEAD)
     assert [len(book.of_family(f)) for f in families] == [4, 8, 12, 12]
     assert book.places == 4 and book.elimination_cap == 3 and book.elimination_total == 3
 
-    team = list_match(SEED, 1, duo.name)
+    team = list_match(SEED, 1, pairs.name)
     assert len(team.contracts) == 18
     assert [len(team.of_family(f)) for f in families] == [2, 0, 8, 8]
     assert team.places == 2 and team.elimination_cap == 2
@@ -260,7 +284,7 @@ def test_a_format_whose_mechanic_is_not_modelled_refuses_to_list():
         def teams(self) -> int:
             return self.entrants // self.team_size
 
-        def check(self, placements, eliminations) -> None:
+        def check(self, placements, eliminations, sides=None) -> None:
             return None
 
     register_format(Untargeted())
@@ -301,6 +325,10 @@ def test_every_exclusive_set_settles_to_its_declared_total():
     eliminations add to the number the format conserves. Both are the same
     object as the winner set with a different total, and both have to hold on a
     real result or the relations derived from them are trading on a fiction.
+    Five hundred matches per format rather than the two thousand the winner set
+    gets, which is the honest tradeoff: this sweep settles ten exclusive sets
+    per match instead of one and buys the same evidence at a quarter of the
+    matches, and the wall clock is the reason.
     """
     for name in FORMAT_NAMES:
         for match_id in range(500):
@@ -316,8 +344,8 @@ def test_settlement_agrees_with_the_match_result_contract_by_contract():
     The expected value here is worked out from ``placements`` and
     ``eliminations`` directly rather than by asking the module a second time, so
     this is a check on the settlement rule and not a check that a function
-    equals itself. It covers all four families, which is 270 contracts per
-    match, so the sweep is 540,000 settled claims per format.
+    equals itself. It covers all four families on every match, which is 540,000
+    settled claims on the solo book and 76,000 on the 3v3.
     """
     for name in FORMAT_NAMES:
         for match_id in range(MATCHES):
@@ -343,6 +371,106 @@ def test_settlement_agrees_with_the_match_result_contract_by_contract():
                         else 0.0
                     )
                 assert values[contract.symbol] == expected
+
+
+def _arbitrary_settleable_result(book, rng):
+    """A result the settlement path would accept, drawn with no regard for the world.
+
+    Deliberately not from ``match.play``. The question a relation has to answer
+    is whether it can be violated by any outcome the exchange would settle, not
+    by any outcome the simulator tends to produce, and those are different sets:
+    this generator happily returns a match where the winner took no eliminations
+    and the competitor knocked out first took five.
+    """
+    fmt = FORMATS[book.format_name]
+    field = list(book.field)
+    if fmt.team_size == 1:
+        order = field[:]
+        rng.shuffle(order)
+        placements = {key: place for place, key in enumerate(order, start=1)}
+        credits = book.elimination_total
+    else:
+        sides = list(book.sides)
+        winner = rng.randrange(len(sides))
+        placements = {
+            key: (1 if index == winner else 2)
+            for index, side in enumerate(sides)
+            for key in side
+        }
+        credits = rng.randint(book.elimination_cap, 2 * book.elimination_cap - 1)
+
+    eliminations = {key: 0 for key in field}
+    for _ in range(credits):
+        room = [k for k in field if eliminations[k] < book.elimination_cap]
+        eliminations[rng.choice(room)] += 1
+    return MatchResult(
+        book.match_id, book.format_name, book.field, placements, eliminations
+    )
+
+
+def test_no_settleable_outcome_can_violate_a_relation():
+    """The claim behind every relation, tested against the outcome space itself.
+
+    A relation is only riskless if it holds on every result the venue would
+    settle, and the venue settles whatever passes the checks in
+    ``metric_levels``. So this samples that space directly, 500 arbitrary
+    results per format that owe nothing to the simulator, settles the book
+    against each and evaluates every relation on the settlement values. All of
+    them hold, which is the property, and it is not an accident: each relation
+    is a consequence of the permutation and the sum that the format's own check
+    enforces, plus the side cohesion the book checks because the format cannot.
+
+    This is also why the module derives no relation from the fact that a
+    competitor can only be credited with eliminating people who finish behind
+    them. That is true of ``match.play`` and it is not enforced anywhere at
+    settlement, so a contract pair resting on it would be a bet on the world's
+    implementation rather than an identity.
+    """
+    for name in FORMAT_NAMES:
+        book = list_match(SEED, 9, name)
+        relations = derive_match_relations(book)
+        rng = random.Random(2024)
+        for _ in range(500):
+            values = settlement(book, _arbitrary_settleable_result(book, rng))
+            exact = {symbol: Fraction(value) for symbol, value in values.items()}
+            for relation in relations:
+                assert excess_exact(relation, exact) == 0, relation.name
+
+
+def test_a_side_that_did_not_finish_together_is_refused():
+    """Found by trying it: the format's own check cannot catch this one.
+
+    ``TeamObjective.check`` counted three competitors at each place and
+    accepted a winning trio drawn from both sides. Settled, that pays both
+    winner contracts zero and the set that must sum to one sums to zero, which
+    is a certificate the exchange sold for nothing.
+
+    The format now refuses it too, once it is handed the grouping it was
+    previously never given. Both layers are asserted here rather than one:
+    the book knows the sides and checks them, and the format checks them when
+    a caller passes them, and neither is load-bearing alone.
+    """
+    book = list_match(SEED, 0, "objective")
+    first, second = book.sides
+    mixed = {first[0], first[1], second[0]}
+    placements = {key: (1 if key in mixed else 2) for key in book.field}
+    with pytest.raises(ValueError, match="not one of the sides"):
+        FORMATS["objective"].check(
+            placements, {key: 0 for key in book.field}, book.sides
+        )
+    spliced = MatchResult(
+        0, "objective", book.field, placements, {key: 0 for key in book.field}
+    )
+    # Settlement refuses it too. The format now speaks first, since it is asked
+    # before the book's own grouping check, so the message is the format's and
+    # the book's check is the one that would still catch this if a caller
+    # arrived without sides. Matched on either rather than on the current
+    # ordering, because which layer speaks is an implementation detail and the
+    # refusal is not.
+    with pytest.raises(
+        ValueError, match="did not finish together|not one of the sides"
+    ):
+        settlement(book, spliced)
 
 
 def test_a_book_refuses_to_settle_against_another_match():
@@ -408,7 +536,12 @@ def test_float_prices_survive_the_conversion(priced):
                 # comparison of two prices, so nothing rounds and the float
                 # answer is the exact one. The rest sum or subtract and are
                 # allowed their ulp.
-                if relation.legs == ((relation.legs[0][0], 1.0),) and not relation.constant:
+                pass_through = (
+                    len(relation.legs) == 1
+                    and relation.legs[0][1] == 1.0
+                    and relation.constant == 0.0
+                )
+                if pass_through:
                     assert excess == 0.0, relation.name
     assert worst < 1e-13
 
@@ -433,23 +566,26 @@ def test_pricing_each_contract_on_its_own_law_is_where_the_arbitrage_comes_from(
     any disagreement whatever, and disagreement is the default when two prices
     come from two laws.
     """
-    book, relations, rows = priced["solo"]
-    belief, _prices = rows[0]
-    laws = [
-        coherent_prices(book, belief, draws=DRAWS, seed=f"crowd-{n}") for n in range(8)
-    ]
-    scattered = {
-        contract.symbol: laws[index % len(laws)][contract.symbol]
-        for index, contract in enumerate(book.contracts)
-    }
-    breaches = [
-        abs(excess_exact(relation, scattered))
-        for relation in relations
-        if excess_exact(relation, scattered) != 0
-    ]
-    assert breaches, "eight unrelated laws broke nothing, so the relations say nothing"
-    assert max(breaches) > 0.05
-    assert len(breaches) / len(relations) > 0.10
+    worst = 0.0
+    for name in FORMAT_NAMES:
+        book, relations, rows = priced[name]
+        belief, _prices = rows[0]
+        laws = [
+            coherent_prices(book, belief, draws=DRAWS, seed=f"crowd-{n}")
+            for n in range(8)
+        ]
+        scattered = {
+            contract.symbol: laws[index % len(laws)][contract.symbol]
+            for index, contract in enumerate(book.contracts)
+        }
+        excesses = [
+            abs(excess_exact(relation, scattered)) for relation in relations
+        ]
+        breached = [excess for excess in excesses if excess != 0]
+        assert breached, f"{name}: eight unrelated laws broke nothing here"
+        assert len(breached) / len(relations) > 0.10
+        worst = max(worst, float(max(excesses)))
+    assert worst > 0.05
 
 
 def test_the_eliminations_ladder_is_monotone_in_the_threshold(priced):
@@ -521,7 +657,7 @@ def test_head_to_head_is_sandwiched_by_the_winner_set(priced):
         book, _relations, rows = priced[name]
         winner = {}
         for contract in book.of_family(WINNER):
-            for member in contract.subject.split("-"):
+            for member in contract.subject.split(SIDE_SEPARATOR):
                 winner[member] = contract.symbol
         for _belief, prices in rows:
             for contract in book.of_family(HEAD_TO_HEAD):
@@ -533,6 +669,12 @@ def test_head_to_head_is_sandwiched_by_the_winner_set(priced):
 
 
 def test_complementary_head_to_heads_sum_to_exactly_one(priced):
+    """Exactly one of two competitors who cannot tie finishes above the other.
+
+    Exact rather than nearly, on both formats and every belief, because the
+    ensemble counts each drawn match into one of the pair and never into both
+    or neither.
+    """
     for name in FORMAT_NAMES:
         book, _relations, rows = priced[name]
         listed = {(c.subject, c.versus): c.symbol for c in book.of_family(HEAD_TO_HEAD)}
@@ -669,6 +811,14 @@ def test_nearest_tick_rounding_breaks_the_set_and_flooring_the_bid_does_not(pric
     """
     book, _relations, rows = priced["solo"]
     winners = [c.symbol for c in book.of_family(WINNER)]
+    # A finite ensemble prices an outcome it never drew at exactly zero, and a
+    # maker that published that as an offer would be selling a lottery ticket
+    # for nothing. The ceiling on the ask is what stops it, so it is asserted
+    # here rather than left to the prose.
+    assert two_sided_quote(Fraction(0), Fraction(1, 100)) == (
+        Decimal("0"),
+        Decimal("0.01"),
+    )
     off_by_rounding = 0
     for _belief, prices in rows:
         nearest = sum(

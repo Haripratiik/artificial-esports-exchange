@@ -36,10 +36,15 @@ def test_every_match_is_a_legal_match(format_name):
     settled against one pays out on arithmetic that does not close, and nothing
     downstream can detect that afterwards.
     """
+    fmt = FORMATS[format_name]
     runs = season(seed=7, matches=4000, format_name=format_name)
     assert len(runs) == 4000
     for result in runs:
-        FORMATS[format_name].check(result.placements, result.eliminations)
+        sides = tuple(
+            tuple(result.field[i : i + fmt.team_size])
+            for i in range(0, len(result.field), fmt.team_size)
+        )
+        fmt.check(result.placements, result.eliminations, sides)
 
 
 def test_a_solo_match_credits_exactly_one_elimination_per_loser():
@@ -218,3 +223,37 @@ def test_a_team_result_is_two_placements_and_not_a_ranking():
     invent a distinction the format does not have."""
     with pytest.raises(ValueError):
         TeamObjective().check({f"P{i}": i + 1 for i in range(6)}, {"P0": 3})
+
+
+def test_a_winning_trio_drawn_from_both_sides_is_refused():
+    """Counting the winners is not the same as checking who they are.
+
+    The check counted three competitors at each place and passed a "winning
+    trio" made of one from one side and two from the other, which is not a
+    match anybody played. The damage is silent and total: both "this side
+    wins" contracts settle to zero, so the set that must sum to one sums to
+    zero, and the exclusivity every match market is built on is gone with
+    nothing raising.
+    """
+    sides = (("A", "B", "C"), ("D", "E", "F"))
+    mixed = {"A": 1, "B": 2, "C": 2, "D": 1, "E": 1, "F": 2}
+    with pytest.raises(ValueError, match="not one of the sides"):
+        TeamObjective().check(mixed, dict.fromkeys(mixed, 0), sides)
+
+    legal = {"A": 1, "B": 1, "C": 1, "D": 2, "E": 2, "F": 2}
+    TeamObjective().check(legal, dict.fromkeys(legal, 0), sides)
+
+
+def test_a_team_result_cannot_be_checked_without_its_sides():
+    """Rather than passing a check it could not actually perform."""
+    legal = {"A": 1, "B": 1, "C": 1, "D": 2, "E": 2, "F": 2}
+    with pytest.raises(ValueError, match="without its sides"):
+        TeamObjective().check(legal, dict.fromkeys(legal, 0))
+
+
+def test_every_played_team_match_has_a_side_as_its_winner():
+    """The property the check now enforces, asserted on real matches too."""
+    for result in season(7, 800, "objective"):
+        field = result.field
+        sides = {frozenset(field[i : i + 3]) for i in range(0, len(field), 3)}
+        assert frozenset(result.winners) in sides

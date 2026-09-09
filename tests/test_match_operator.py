@@ -216,3 +216,111 @@ def test_an_unregistered_format_is_refused_at_construction():
     market = build(seed=7)
     with pytest.raises(ValueError, match="format"):
         MatchOperator("matches", market.venue, seed=7, formats=("teleport",))
+
+
+# --------------------------------------------------------------------------
+# Joining a market that changes shape underneath you
+# --------------------------------------------------------------------------
+
+
+class _Watcher:
+    """The two notes an operator leaves, recorded rather than acted on."""
+
+    def __init__(self):
+        self.joined, self.left, self.relations = [], [], []
+
+    def note_listing(self, instrument):
+        self.joined.append(instrument.symbol)
+
+    def note_delisting(self, symbol):
+        self.left.append(symbol)
+
+    def add_relations(self, relations):
+        self.relations.extend(relations)
+        return len(relations)
+
+    def drop_relations_for(self, symbols):
+        before = len(self.relations)
+        self.relations = [
+            r
+            for r in self.relations
+            if not ({r.target, *(s for s, _ in r.legs)} & symbols)
+        ]
+        return before - len(self.relations)
+
+
+def test_a_match_tells_the_market_it_exists():
+    """A contract nobody was told about is a book nobody quotes.
+
+    Everything an agent knows about a symbol is built once, at start, so a
+    contract listed later is invisible to every agent already trading: no local
+    book, no subscription, no quote. That was fine while the listing was fixed
+    for a session and is not once matches open and close continuously.
+    """
+    market = build(seed=7)
+    watcher = _Watcher()
+    operator = MatchOperator(
+        "matches", market.venue, seed=7, formats=("solo",), concurrent=1,
+        participants=[watcher],
+    )
+    ctx = _Ctx()
+    operator.on_start(ctx)
+
+    match = next(iter(operator.live.values()))
+    assert len(watcher.joined) == len(match.book.contracts)
+    assert watcher.relations, "a match listed without handing over its identities"
+
+
+def test_the_identities_arrive_with_the_match_and_leave_with_it():
+    """395 of them for a solo match, in the arbitrageur's own vocabulary.
+
+    So enforcing them needs no new execution path: an agent already built on
+    these relations simply has a longer list. And they go when the match does,
+    because a relation whose legs have settled can never be traded again and
+    would price against a mark that no longer moves.
+    """
+    market = build(seed=7)
+    watcher = _Watcher()
+    operator = MatchOperator(
+        "matches", market.venue, seed=7, formats=("solo",), concurrent=1,
+        participants=[watcher],
+    )
+    ctx = _Ctx()
+    operator.on_start(ctx)
+    during = len(watcher.relations)
+    assert during == 395
+
+    ctx.now = int(seconds(200))
+    operator.on_wakeup(ctx)
+    settled_symbols = set(watcher.left)
+    assert settled_symbols, "nothing was delisted"
+    assert not any(
+        {r.target, *(s for s, _ in r.legs)} & settled_symbols
+        for r in watcher.relations
+    ), "a relation outlived the contracts it reads"
+
+
+def test_an_arbitrageur_takes_them_on_and_deduplicates():
+    """Told twice about one match, it must not size every package twice."""
+    from arena.agents.arbitrageur import Arbitrageur
+    from arena.market.match_book import derive_match_relations, list_match
+
+    listed = {i.symbol: i for i in _instruments()}
+    arb = Arbitrageur("arb", "venue", listed)
+    base = len(arb.relations)
+
+    book = list_match(7, 0, "solo")
+    relations = derive_match_relations(book)
+    assert arb.add_relations(relations) == len(relations)
+    assert arb.add_relations(relations) == 0
+    assert len(arb.relations) == base + len(relations)
+
+    dropped = arb.drop_relations_for({c.instrument.symbol for c in book.contracts})
+    assert dropped == len(relations)
+    assert len(arb.relations) == base
+
+
+def _instruments():
+    from dashboard.build_market import instruments
+
+    return instruments()

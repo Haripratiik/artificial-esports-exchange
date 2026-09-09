@@ -32,7 +32,12 @@ from decimal import Decimal
 from typing import Any
 
 from arena.exchange.types import AgentId
-from arena.market.match_book import MatchBook, list_match, settlement
+from arena.market.match_book import (
+    MatchBook,
+    derive_match_relations,
+    list_match,
+    settlement,
+)
 from arena.settlement.result import SettlementResult, SettlementStatus
 from arena.sim.time import Duration, Timestamp, seconds
 from arena.worlds.circuit.match import play
@@ -81,6 +86,7 @@ class MatchOperator:
         concurrent: int = 2,
         poll: Duration = seconds(2),
         venue_agent: Any = None,
+        participants: list[Any] | None = None,
     ) -> None:
         for name in formats:
             if name not in FORMATS:
@@ -97,6 +103,14 @@ class MatchOperator:
         self.concurrent = concurrent
         self.poll = poll
         self.venue_agent = venue_agent
+        # Who to tell when a match opens or settles.
+        #
+        # A note rather than a subscription made on their behalf: the venue
+        # records a subscription against whoever sent it, so an operator that
+        # subscribed for an agent would receive that agent's market data and
+        # the agent would never see a price. Each of them joins on its own
+        # next wake, with its own context.
+        self.participants: list[Any] = list(participants or ())
         self.live: dict[str, LiveMatch] = {}
         self._next_id: dict[str, int] = {name: 0 for name in formats}
         self.opened = 0
@@ -154,6 +168,16 @@ class MatchOperator:
 
         for contract in book.contracts:
             self.venue.list_instrument(contract.instrument)
+        for participant in self.participants:
+            note = getattr(participant, "note_listing", None)
+            if note is None:
+                continue
+            for contract in book.contracts:
+                note(contract.instrument)
+        for participant in self.participants:
+            extend = getattr(participant, "add_relations", None)
+            if extend is not None:
+                extend(derive_match_relations(book))
 
         self.live[book_key(format_name, match_id)] = LiveMatch(
             book=book,
@@ -212,6 +236,18 @@ class MatchOperator:
             if symbol in match.settled:
                 continue
             self._settle(match, contract, Decimal(str(values[symbol])))
+        # Nobody trades a settled contract again, so nobody should be paying
+        # to hear about it. Measured on this market, six extra active agents
+        # cost about a third of throughput; a season's worth of dead symbols on
+        # every agent's feed would cost far more and buy nothing.
+        for participant in self.participants:
+            note = getattr(participant, "note_delisting", None)
+            drop = getattr(participant, "drop_relations_for", None)
+            if note is not None:
+                for contract in match.book.contracts:
+                    note(contract.instrument.symbol)
+            if drop is not None:
+                drop({c.instrument.symbol for c in match.book.contracts})
         self.live.pop(book_key(match.format_name, match.match_id), None)
         self.settled += 1
 

@@ -333,6 +333,7 @@ class Arbitrageur(TradingAgent):
     ) -> None:
         super().__init__(agent_id, venue_id, instruments, wake_interval)
         self.relations = derive_relations(instruments)
+
         self.base_size = base_size
         # The mispricing must exceed the round-trip cost by this multiple
         # before acting. Below it lies the no-arbitrage band, where violations
@@ -368,6 +369,39 @@ class Arbitrageur(TradingAgent):
         self._entry_gap: dict[str, float] = {}
 
     # -- pricing helpers ---------------------------------------------------
+
+    def add_relations(self, relations: list[Relation]) -> int:
+        """Take on identities that listed after this agent was built.
+
+        `derive_relations` runs once, over the contracts that existed at
+        construction, which was right while the listing was fixed for a
+        session. Matches open and close continuously and bring their own
+        identities with them, in this agent's own vocabulary, so enforcing
+        them needs no new execution path: the list simply gets longer.
+
+        Deduplicated on the relation itself rather than trusting the caller,
+        because an operator that told this agent twice about one match would
+        otherwise have it size every package on that match twice.
+        """
+        known = set(self.relations)
+        added = [r for r in relations if r not in known]
+        self.relations = [*self.relations, *added]
+        return len(added)
+
+    def drop_relations_for(self, symbols: set[str]) -> int:
+        """Forget identities whose legs have settled.
+
+        A relation over a settled contract can never be traded again, and one
+        whose legs are gone would price against a mark that no longer moves.
+        Dropped when any leg goes, not only when all of them do: a package
+        missing a leg is a directional bet, which is the failure this agent
+        already flattens for elsewhere.
+        """
+        before = len(self.relations)
+        self.relations = [
+            r for r in self.relations if not (set(_legs_of(r)) & symbols)
+        ]
+        return before - len(self.relations)
 
     def _mid_price(self, symbol: str) -> float | None:
         """The agent's local mid, converted to price units."""
@@ -494,3 +528,8 @@ class Arbitrageur(TradingAgent):
         self._packages[relation.name] = self._packages.get(relation.name, 0) + units * lots
         for symbol, side, quantity in orders:
             self.take(ctx, symbol, side, quantity)
+
+
+def _legs_of(relation: Relation) -> tuple[str, ...]:
+    """Every symbol a relation reads, the target and each of its legs."""
+    return (relation.target, *(symbol for symbol, _weight in relation.legs))

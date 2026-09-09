@@ -40,7 +40,14 @@ from arena.exchange.types import (
 from arena.market.instrument import Instrument
 from arena.market.venue import SymbolCommand
 from arena.sim.kernel import SimulationContext
-from arena.sim.messages import Feed, PrivateEvent, Subscribe, TopOfBook, TradePrint
+from arena.sim.messages import (
+    Feed,
+    PrivateEvent,
+    Subscribe,
+    TopOfBook,
+    TradePrint,
+    Unsubscribe,
+)
 from arena.sim.time import Duration, Timestamp
 
 __all__ = ["TradingAgent", "LocalBook"]
@@ -191,6 +198,16 @@ class TradingAgent:
         # which is the outcome the venue's own rate limiter goes out of its way
         # to avoid, arriving by the other door.
         self._amending: dict[tuple[str, OrderId], int] = {}
+        # Contracts that listed or settled while this agent was asleep.
+        #
+        # Written by whoever runs the listing and drained by the agent on its
+        # own wakeup, because a subscription is recorded against whoever sent
+        # it: if the operator subscribed on an agent's behalf, the feed would
+        # be delivered to the operator and the agent would never see a price.
+        # So the operator can only leave a note, and the agent acts on it with
+        # its own context.
+        self._joining: list[Instrument] = []
+        self._leaving: list[str] = []
         self.position: dict[str, int] = dict.fromkeys(instruments, 0)
         self.fills = 0
         self.rejects = 0
@@ -224,6 +241,60 @@ class TradingAgent:
             ctx.send(self.venue_id, Subscribe(Feed.TRADES, symbol))
         self.schedule_next(ctx)
 
+    def note_listing(self, instrument: Instrument) -> None:
+        """Tell this agent a contract exists. It joins on its own next wake."""
+        if instrument.symbol not in self.instruments:
+            self._joining.append(instrument)
+
+    def note_delisting(self, symbol: str) -> None:
+        """Tell this agent a contract has settled and will not trade again."""
+        if symbol in self.instruments:
+            self._leaving.append(symbol)
+
+    def begin_trading(self, ctx: SimulationContext, instrument: Instrument) -> bool:
+        """Start following a contract that listed after this agent started.
+
+        Everything an agent knows about a symbol is built in `on_start`, which
+        runs once, so a contract listed later is invisible to every agent
+        already in the market: no local book, no subscription, and therefore no
+        quote. That was fine while the listing was fixed for the life of a
+        session. Matches open and close continuously, so it is not.
+
+        Subscribed on the same terms as everything else, quotes conflated to
+        half this agent's decision cadence and trades not conflated, because a
+        symbol that arrived late is not a different kind of symbol.
+
+        Returns whether this was new, so a caller can tell joining from
+        re-joining without comparing dictionaries.
+        """
+        symbol = instrument.symbol
+        if symbol in self.instruments:
+            return False
+        self.instruments[symbol] = instrument
+        self.books[symbol] = LocalBook(symbol)
+        self.position.setdefault(symbol, 0)
+        throttle = int(self.wake_interval) // 2
+        ctx.send(self.venue_id, Subscribe(Feed.TOP_OF_BOOK, symbol, throttle))
+        ctx.send(self.venue_id, Subscribe(Feed.TRADES, symbol))
+        return True
+
+    def stop_trading(self, ctx: SimulationContext, symbol: str) -> bool:
+        """Let a settled contract go, and stop paying for its feed.
+
+        A match settles and never trades again, so an agent that kept its
+        subscription would carry the whole history of the season in its books
+        and pay the fan-out cost of every symbol that ever listed. Measured on
+        this market, six extra active agents cost about a third of throughput;
+        a thousand dead symbols would cost far more and buy nothing.
+        """
+        if symbol not in self.instruments:
+            return False
+        ctx.send(self.venue_id, Unsubscribe(Feed.TOP_OF_BOOK, symbol))
+        ctx.send(self.venue_id, Unsubscribe(Feed.TRADES, symbol))
+        self.instruments.pop(symbol, None)
+        self.books.pop(symbol, None)
+        return True
+
     def on_finish(self, ctx: SimulationContext) -> None:
         pass
 
@@ -239,8 +310,22 @@ class TradingAgent:
         ctx.request_wakeup(Duration(max(1, int(int(self.wake_interval) * jitter))))
 
     def on_wakeup(self, ctx: SimulationContext) -> None:
+        self._drain_listings(ctx)
         self.act(ctx)
         self.schedule_next(ctx)
+
+    def _drain_listings(self, ctx: SimulationContext) -> None:
+        """Join and leave whatever changed while this agent was asleep.
+
+        Before acting rather than after, so a contract that listed this tick is
+        one this agent can already quote, rather than one it learns about a
+        wake later. Leaving comes first: a symbol that listed and settled
+        inside a single sleep should end where it started, not resting.
+        """
+        while self._leaving:
+            self.stop_trading(ctx, self._leaving.pop())
+        while self._joining:
+            self.begin_trading(ctx, self._joining.pop())
 
     def act(self, ctx: SimulationContext) -> None:
         """What the agent does when it wakes. Subclasses implement this."""

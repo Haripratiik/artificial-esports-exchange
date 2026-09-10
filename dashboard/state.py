@@ -876,9 +876,38 @@ class MarketRunner:
         report = analyse(symbol, mids, trades, signs)
         return report.to_dict()
 
+    @staticmethod
+    def _true_values(listed: list[Any]) -> dict[str, Any]:
+        """What each contract will be worth, for the contracts this can answer.
+
+        `true_values` settles every instrument against the statistical world's
+        oracle, and a match contract belongs to a different world: it is pinned
+        to its own reference and the oracle refuses it, correctly, because
+        answering would mean measuring one world against another's evidence.
+
+        One refusal took the whole route down. `/api/instruments` raised
+        ReferenceMismatch on the first match contract it reached, so enabling
+        matches by default turned the entire front end into a 500 while every
+        underlying book was trading normally. The settlement path already knew
+        better: `settle_due` records a failure and carries on, because a
+        contract nobody can answer for is a real outcome rather than a fault in
+        the venue.
+
+        Asked one at a time so a contract this cannot value costs only its own
+        line, and left out of the mapping rather than filled with a zero, since
+        zero is a price and "no answer" is not.
+        """
+        out: dict[str, Any] = {}
+        for instrument in listed:
+            try:
+                out.update(true_values([instrument]))
+            except Exception:  # noqa: BLE001 - an unanswerable contract is not a fault
+                continue
+        return out
+
     def instruments(self) -> list[dict[str, Any]]:
         venue = self.market.venue
-        settle = true_values(
+        settle = self._true_values(
             [venue.registry.require(s) for s in venue.registry.symbols]
         )
         out = []

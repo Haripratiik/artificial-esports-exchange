@@ -670,11 +670,21 @@ METRIC_BOUNDS: dict[str, tuple[float, float]] = {
     # took was 8 in the solo mode and 3 in the objective mode, and a window
     # average of 9 would need every one of those to go to one competitor.
     "eliminations_per_match": (0.0, float(MAX_ELIMINATION_CREDIT)),
-    # A subject cannot enter more matches than the window holds, and the oracle
-    # refuses a window holding more than MAX_WINDOW_MATCHES. Enforced rather
-    # than observed: over a 2,016 match week a solo competitor appears 1,657 to
-    # 1,710 times and an objective competitor 978 to 1,042, so the realistic
-    # range is well inside this, but the bound has to hold for the window
+    # A subject cannot enter more matches than the window holds **per format**,
+    # and the oracle refuses a window holding more than MAX_WINDOW_MATCHES of
+    # them. The qualifier is the whole of it: every format runs its own
+    # schedule, so a contract that pools them counts a window once per format
+    # and the ceiling is that many times higher.
+    #
+    # Measured with both formats registered, over a four week window: a pooled
+    # count reaches 10,635 to 10,847 against a per-format ceiling of 8,640. A
+    # contract declaring the per-format bound and then pooling does not void,
+    # it *raises*, because settlement refuses a value outside the range the
+    # contract claimed. So the bound is per format and the listing names one.
+    #
+    # Enforced rather than observed. Over a 2,016 match week a solo competitor
+    # appears 1,657 to 1,710 times and an objective competitor 978 to 1,042, so
+    # the realistic range is well inside this, but a bound exists for the window
     # nobody has written yet.
     "match_volume": (0.0, float(MAX_WINDOW_MATCHES)),
     # Normalized placements live in [0, 1], so their standard deviation cannot

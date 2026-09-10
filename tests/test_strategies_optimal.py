@@ -796,6 +796,29 @@ def run_challenger(strategy, seed: int = 7, until: float = 45.0, step: float = 0
     # instant is still in flight to the agent that owns it, so stopping the
     # clock on the sample and then comparing the agent's own book against the
     # venue's compares two moments and calls the difference a defect.
+    #
+    # Draining is not a passive act, though, which is why a fixed window is not
+    # enough. Advancing the clock lets the operator run its scheduled auctions,
+    # so the drain can print the very fill it exists to deliver. Measured on
+    # the Avellaneda-Stoikov run: an uncross at t=46.000s, exactly the old
+    # one-second deadline, filled a sell of twelve lots that could not reach a
+    # 320ms agent before the test read its position, and the seat came out at
+    # +6 against the venue's -6. One dropped fill, and the sign of the whole
+    # position with it.
+    #
+    # Waiting for the market to go quiet does not work either, because it never
+    # does: the seat keeps quoting, so there is always another fill on the wire
+    # and every snapshot is racing one. The seat has to be taken out of the
+    # market first, and the venue already has the tool for it. `kill` pulls the
+    # participant's working orders and refuses it any more, so once the cancels
+    # land its position cannot change again and the drain has a fixed point to
+    # reach.
+    #
+    # It is the assertion that stays honest here: nothing is being waited for
+    # until it agrees. The seat is stopped, the wire is drained for three times
+    # its own latency, and the agent is then asked what it holds. A fill this
+    # agent genuinely failed to book would still be missing.
+    market.venue.kill(CHALLENGER, reason="end of session")
     now += seconds(1)
     market.kernel.advance(until=now)
     attribution.sample(now)

@@ -1,7 +1,7 @@
 """The programmatic surface, exercised the way a trading client would drive it.
 
-Everything here runs against a real market -- a real kernel, real agents, real
-latency -- because the claims worth testing about this API are claims about a
+Everything here runs against a real market (a real kernel, real agents, real
+latency) because the claims worth testing about this API are claims about a
 market. A mocked venue would pass every one of them and prove nothing: that an
 order reaches the book, that it appears in the account that sent it and in no
 other, that value is still conserved afterwards, and that a credential issued
@@ -13,7 +13,7 @@ through one particular application would not be testing that.
 
 Time is driven by the test, not by a wall clock. ``LiveMarket.step`` advances
 simulated time in proportion to elapsed real time, which makes a test's runtime
-decide how much market it gets -- so these drive ``Kernel.advance`` directly and
+decide how much market it gets, so these drive ``Kernel.advance`` directly and
 ask for an exact number of simulated milliseconds. Slower machines then run the
 same market rather than a shorter one.
 """
@@ -46,7 +46,7 @@ from dashboard.state import MarketConfig, MarketRunner
 
 # The nine classes the venue lists. Read off ``InstrumentClass`` rather than
 # typed out, so a tenth added later fails this file instead of quietly escaping
-# it -- which is the whole point of a test that says "every asset class".
+# it. That is the whole point of a test that says "every asset class".
 ALL_CLASSES = sorted(
     value
     for name, value in vars(InstrumentClass).items()
@@ -56,7 +56,7 @@ ALL_CLASSES = sorted(
 # Distinct browser sessions per test. A seat token is supposed to be stable and
 # unique per person, and the router remembers names against tokens for the
 # lifetime of the process, so reusing one string across tests would have two
-# tests sharing a seat -- which is the exact confusion these tests exist to
+# tests sharing a seat, which is the exact confusion these tests exist to
 # rule out.
 _TOKENS = itertools.count()
 
@@ -89,7 +89,7 @@ class Exchange:
             """Who is at the browser, as this test app decides it.
 
             The dashboard reads a signed cookie. Nothing about the router
-            depends on that, so the test app uses a header instead -- the point
+            depends on that, so the test app uses a header instead: the point
             of the hook is that the application, not this module, says how a
             browser session is recognised.
             """
@@ -115,8 +115,8 @@ class Exchange:
         The router's configuration is module state, because the application
         that mounts it has exactly one market. A test file has several, so
         every request re-asserts which one it belongs to rather than relying on
-        whichever test ran last -- otherwise the order the tests happen to run
-        in decides which exchange a request reaches, which is a test suite that
+        whichever test ran last; otherwise the order the tests happen to run in
+        decides which exchange a request reaches, which is a test suite that
         passes for the wrong reason.
         """
         rest.configure(keys=self.keys, runner=self.runner, **self._hooks)
@@ -174,6 +174,26 @@ class Exchange:
                 return symbol
         raise AssertionError(f"nothing listed in class {instrument_class}")
 
+    def restable(self) -> str:
+        """A symbol whose book behaves predictably enough to test order handling on.
+
+        Everything here trades, but not everything trades the same way. A
+        contract bounded by [0, 1] travels its whole range within a session, so
+        its touch and its depth move by amounts that are large next to the
+        contract itself. A test that wants an order to sit still, or a market
+        order to fill against resting size, is then measuring the weather. A
+        win-rate future bounded by [0, 10,000] and quoted around 2,000 is not
+        subject to that.
+
+        The first symbol this venue lists is now an event binary, which is why
+        tests that had been asking for `symbols()[0]` for years began failing
+        on ordinary price moves and reading like API defects.
+
+        So a test whose subject is order handling asks for this. One that only
+        needs *a* symbol keeps asking for `symbols()[0]`.
+        """
+        return self.symbol_of("future")
+
     def close(self) -> None:
         self._client.close()
 
@@ -182,8 +202,8 @@ class Client:
     """A signing client, in the shape a client library would take.
 
     Written out here rather than imported so the test proves the documented
-    scheme -- timestamp, method, path with query, raw body -- and not whatever
-    some helper happens to do.
+    scheme (timestamp, method, path with query, raw body) and not whatever some
+    helper happens to do.
     """
 
     def __init__(self, exchange: Exchange, key: dict, token: str = "") -> None:
@@ -334,40 +354,35 @@ def floats_in(node, path: str = "") -> list[str]:
 def resting_price(exchange: Exchange, symbol: str, side: str = "buy") -> Decimal:
     """A price that will rest rather than trade, on the instrument's own grid.
 
-    Halfway between the touch and the far end of what the contract can settle
-    at. Nothing quotes there, so an order left at it is still resting when the
-    test comes back to look -- which a price one increment behind the touch is
-    not: measured, a bid one tick under the best bid was taken by a market
-    maker inside 150ms of simulated time, and four tests then failed on
-    "nothing resting to cancel" while the API they were testing was working
-    perfectly.
+    One increment inside the far end of what the contract can settle at. A bid
+    there can only be filled by somebody selling a claim for the least it could
+    possibly be worth, and the venue's own price band refuses to match that far
+    from the reference in any case.
+
+    It used to be halfway between the touch and that bound, which is a
+    different rule that happens to agree on wide contracts and fails badly on
+    narrow ones. Halfway is out of reach on a win-rate future bounded by
+    [0, 10,000] and quoted at 2,003. It is nothing of the kind on a contract
+    whose range *is* the distance its price travels: measured, a bid at 0.47 on
+    an event binary bounded by [0, 1], parked against a touch of 0.95, was
+    filled inside a single pump, and a call option's bid went the same way.
+    Both are ordinary price moves rather than anything wrong with the venue,
+    which is what made the failures read as API defects.
 
     Derived per instrument rather than chosen, because a constant would be a
     price on one contract and off the grid of another. These are listed on
     three different increments over five different settlement ranges, one of
     them negative at the bottom, and one carries a tick *table* whose increment
-    changes with the level -- so the price is snapped by the same repeated walk
-    ``TradingAgent`` uses, since a single pass can round into a coarser band and
-    land off its grid.
+    changes with the level, so the price is snapped by the same repeated walk
+    ``TradingAgent`` uses, since a single pass can round into a coarser band
+    and land off its grid.
     """
     instrument = exchange.venue.registry.require(symbol)
-    snapshot = exchange.venue.engine(symbol).book.snapshot(4)
     low, high = instrument.value_bounds
-    mark = exchange.venue.mark_price(symbol)
     if side == "buy":
-        touch = (
-            instrument.from_ticks(snapshot.priced_bids[0][0])
-            if snapshot.priced_bids
-            else mark
-        )
-        target = low + (touch - low) / 2
+        target = low + instrument.increment_at(low)
     else:
-        touch = (
-            instrument.from_ticks(snapshot.priced_asks[0][0])
-            if snapshot.priced_asks
-            else mark
-        )
-        target = touch + (high - touch) / 2
+        target = high - instrument.increment_at(high)
 
     # Rounded away from the market on both sides, so snapping never makes the
     # order more aggressive than the test intended.
@@ -420,7 +435,13 @@ def test_every_asset_class_is_quotable_through_the_instruments_endpoint(exchange
         assert low <= high
         assert row["expiry"].endswith("Z")
         assert row["session"]
-        assert Decimal(row["mark"]) >= 0
+        # Inside the contract's own range, which is the invariant that was
+        # meant all along. This read `mark >= 0`, and that held only because no
+        # listed contract had ever been worth less than nothing. A spread is
+        # one leg minus another and is bounded below by a negative number, so
+        # the moment the roster made one price under zero, a correct mark of
+        # -1,693 failed a test that was really asserting the old listing.
+        assert low <= Decimal(row["mark"]) <= high, (row["symbol"], row["mark"])
         assert row["subjects"]
 
 
@@ -449,7 +470,7 @@ def test_the_subject_filter_reaches_every_leg_of_a_multi_leg_contract(exchange):
 
     Filtering by subject has to find a contract by any leg, or the filter means
     something different for a future than for the two classes that are not
-    written on one thing -- which is exactly the special-casing this venue is
+    written on one thing, which is exactly the special-casing this venue is
     arranged to avoid.
     """
     rows = exchange.client.get("/v1/instruments?limit=1000").json()["instruments"]
@@ -496,8 +517,18 @@ def test_an_indicative_price_is_published_during_a_call_and_not_otherwise(fresh)
     """``Venue.indicative`` answers whenever it is asked, which is right for the
     venue and wrong to publish: a continuously trading symbol has no auction,
     and an "indicative price" beside a live book reads as a second opinion on
-    where the market is rather than as the answer to a question nobody asked."""
-    calling = fresh(MarketConfig(opening_auction=True))
+    where the market is rather than as the answer to a question nobody asked.
+
+    Built without matches, because a live match book does not open with the
+    exchange. It opens when its match starts and closes when the match ends,
+    which is the whole point of it, so it is trading continuously while the
+    statistical listing is still in its opening call. With matches on, 308 of
+    the 358 books this market lists are match books and every one of them
+    fails an assertion that the exchange is uniformly in a call. That is the
+    design working, not the venue misbehaving, so the market this test builds
+    is the one whose opening the test is about.
+    """
+    calling = fresh(MarketConfig(opening_auction=True, matches=False))
     calling.pump(900, slices=18)
     quoted = [
         calling.client.get(f"/v1/instruments/{symbol}").json()
@@ -511,14 +542,14 @@ def test_an_indicative_price_is_published_during_a_call_and_not_otherwise(fresh)
             assert row["indicative"]["quantity"] > 0
 
     # And the exchange summary says the same thing about the same books. A halt
-    # does not produce a phase called "halted" -- it produces an auction, which
-    # is also where the opening call lives -- so what a client is told is which
+    # does not produce a phase called "halted": it produces an auction, which
+    # is also where the opening call lives, so what a client is told is which
     # books will not trade its order right now.
     assert set(calling.client.get("/v1/exchange").json()["session"]["not_trading"]) == set(
         calling.symbols()
     )
 
-    trading = fresh(MarketConfig(opening_auction=False))
+    trading = fresh(MarketConfig(opening_auction=False, matches=False))
     trading.pump(400, slices=16)
     for symbol in trading.symbols():
         row = trading.client.get(f"/v1/instruments/{symbol}").json()
@@ -530,7 +561,7 @@ def test_an_indicative_price_is_published_during_a_call_and_not_otherwise(fresh)
 def test_fees_collected_is_a_price_and_not_the_ledgers_own_unit(exchange):
     """The dashboard publishes the raw minor units and divides by a million in
     JavaScript. That is fine for one page and is the arrangement that put
-    "113125513.21M" on the participants table -- a raw internal unit under a
+    "113125513.21M" on the participants table: a raw internal unit under a
     label that promises money, with the conversion living somewhere else."""
     published = exchange.client.get("/v1/exchange").json()["session"]["fees_collected"]
     assert Decimal(published) * 1_000_000 == int(exchange.venue.fees_collected)
@@ -630,7 +661,19 @@ def test_every_asset_class_candles_through_one_code_path(candled, instrument_cla
         assert isinstance(candle["end"], int)
         assert isinstance(candle["volume"], int) and candle["volume"] >= 0
         assert isinstance(candle["open_interest"], int)
-        assert Decimal(candle["notional"]) >= 0
+        # Notional is signed, and has to be: it is the sum of price times
+        # quantity, so a VWAP derived from it would come out wrong for any
+        # contract that trades below zero, and a spread does. Measured, a
+        # candle on one came back at -20,300.00, which is the right number and
+        # used to fail here. What is asserted instead is the property that
+        # means something: no volume means no notional, and where there is
+        # volume the implied VWAP sits inside the candle's own price range.
+        if candle["volume"]:
+            vwap = Decimal(candle["notional"]) / candle["volume"]
+            assert Decimal(candle["price"]["low"]) <= vwap, (symbol, vwap)
+            assert vwap <= Decimal(candle["price"]["high"]), (symbol, vwap)
+        else:
+            assert Decimal(candle["notional"]) == 0, symbol
         for block in ("price", "bid", "ask"):
             for edge in ("open", "high", "low", "close"):
                 value = candle[block][edge]
@@ -644,10 +687,10 @@ def test_a_candle_carries_three_separate_ohlc_blocks(candled):
     ``price`` / ``yes_bid`` / ``yes_ask`` shape. On a book this thin the last
     print is a fact about whenever somebody last crossed the spread; the quotes
     are facts about the period. A backtester asking "what could I have
-    transacted at during that second" is answered by the bid and ask candles and
-    is not answered by the trade candle at all -- which is why a bid block that
-    merely echoed the trade block would be worthless, and why this asserts they
-    come apart.
+    transacted at during that second" is answered by the bid and ask candles
+    and is not answered by the trade candle at all. That is why a bid block
+    that merely echoed the trade block would be worthless, and why this asserts
+    they come apart.
     """
     symbol = busiest(candled)
     payload = candles(candled, symbol)
@@ -688,8 +731,8 @@ def test_the_mean_is_the_volume_weighted_price_and_its_numerator_travels_with_it
 ):
     """``mean`` is a quotient, so the exact numerator is published beside it.
 
-    A volume-weighted average of integers is not always a decimal -- 100 lots at
-    3 and 200 at 4 average to 11/3 -- so this is the one figure on a candle that
+    A volume-weighted average of integers is not always a decimal (100 lots at
+    3 and 200 at 4 average to 11/3), so this is the one figure on a candle that
     is rounded. It is published to the same precision the server computed it at
     and ``notional`` carries the exact sum it came from, so a client that needs
     the exactness divides for itself.
@@ -777,8 +820,8 @@ def test_a_range_wider_than_the_venue_keeps_is_refused_not_truncated(candled):
     A backtester that asks for a day, receives an hour, and is told nothing
     about which hour it lost will compute a statistic over a window it does not
     have. The refusal names the count that was asked for and the count that is
-    kept, the way Kalshi's does -- ``requested time range with candlesticks:
-    129600, max candlesticks: 5000`` -- so the client can narrow the range or
+    kept, the way Kalshi's does (``requested time range with candlesticks:
+    129600, max candlesticks: 5000``), so the client can narrow the range or
     ask for a longer period without guessing.
     """
     symbol = candled.symbols()[0]
@@ -829,8 +872,8 @@ def test_the_series_is_gap_free_and_a_quiet_period_carries_the_previous_close(ca
 
     A gap-free series lines up with a clock by arithmetic. A sparse one has to
     be reindexed by every client that reads it, and each of those clients then
-    writes its own interpolation policy in a hurry -- which is how two
-    backtests of the same strategy over the same data disagree.
+    writes its own interpolation policy in a hurry, which is how two backtests
+    of the same strategy over the same data disagree.
 
     A quiet period is the case that proves the quote candles are worth having:
     zero volume, the previous close repeated across all five price fields, and a
@@ -1082,7 +1125,7 @@ def test_an_order_reaches_the_book_and_appears_in_positions(fresh):
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Buyer")
-    symbol = venue.symbols()[0]
+    symbol = venue.restable()
 
     placed = trader.post(
         "/v1/orders",
@@ -1105,7 +1148,7 @@ def test_an_order_reaches_the_book_and_appears_in_positions(fresh):
     assert isinstance(fills["fills"][0]["price"], str)
     # Named by the id the client chose, and named here without any prior call
     # to /v1/orders. A market order is acknowledged and filled in the same
-    # instant, so it never appears in a working-order list at all -- and it is
+    # instant, so it never appears in a working-order list at all. And it is
     # the one a client most needs named, because a fill is the event it has to
     # book.
     assert fills["fills"][0]["client_order_id"] == "cid-1"
@@ -1116,8 +1159,8 @@ def test_an_order_reaches_the_book_and_appears_in_positions(fresh):
 
 def test_a_resting_order_is_reconcilable_by_its_client_order_id(fresh):
     """The client chooses one identifier and the exchange chooses another.
-    Nothing carries the first into the engine, so the join is made in the API
-    -- and if it were not, a client could not tell which of its orders is which."""
+    Nothing carries the first into the engine, so the join is made in the API.
+    If it were not, a client could not tell which of its orders is which."""
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Resting")
@@ -1139,8 +1182,8 @@ def test_a_resting_order_is_reconcilable_by_its_client_order_id(fresh):
     assert placed.status_code == 202, placed.text
 
     # Before the acknowledgement has crossed back, the order is in neither the
-    # book nor the working list -- and the client is told so rather than left
-    # to guess, because "not placed" and "not there yet" differ by a duplicate.
+    # book nor the working list, and the client is told so rather than left to
+    # guess, because "not placed" and "not there yet" differ by a duplicate.
     in_flight = trader.get("/v1/orders").json()
     assert "cid-rest" in {row["client_order_id"] for row in in_flight["pending"]}
 
@@ -1164,7 +1207,7 @@ def test_a_resting_order_is_reconcilable_by_its_client_order_id(fresh):
 def test_a_reused_client_order_id_is_a_conflict_carrying_the_existing_order(fresh):
     """Replaying it would mean answering "accepted" for an order this call did
     not place, and a client retrying a timed-out POST cannot tell that answer
-    from the truth. So it is refused -- but as a 409 rather than a 400, and with
+    from the truth. So it is refused, but as a 409 rather than a 400, and with
     the first order attached.
 
     The status code is doing work. 400 says "your request is malformed, fix it
@@ -1295,7 +1338,7 @@ def test_the_fills_cursor_returns_strictly_after_and_never_repeats(fresh):
     Without a monotonic id the only safe readings of a blotter after a
     disconnect are "re-book everything" and "book nothing", and both are wrong.
     ``?after=`` is Binance's ``myTrades?fromId=``, and the id is derived from
-    the agent's own fill counter rather than from a position in the log -- so it
+    the agent's own fill counter rather than from a position in the log. So it
     is stable across evictions, and it orders fills in different symbols, which
     the matching engine's per-book sequence number cannot.
     """
@@ -1375,8 +1418,8 @@ def test_the_fills_cursor_returns_strictly_after_and_never_repeats(fresh):
     # The generation travels with the cursor. A rebuild seats this key behind a
     # fresh agent whose counters start at one, so a client holding fill 40
     # across one would discard the new market's first forty fills as already
-    # seen -- and the only thing that lets it notice is being told which market
-    # the numbers belong to.
+    # seen; the only thing that lets it notice is being told which market the
+    # numbers belong to.
     assert everything["generation"] == 0
 
 
@@ -1411,7 +1454,7 @@ def test_cancelling_is_idempotent(fresh):
     assert second.json()["already_done"] is True
 
     # An id that never existed, and one belonging to nobody, answer the same
-    # way -- which is what makes this endpoint disclose nothing.
+    # way. That is what makes this endpoint disclose nothing.
     never = trader.delete(f"/v1/orders/{symbol}/999999")
     assert never.status_code == 200
     assert never.json()["already_done"] is True
@@ -1528,7 +1571,7 @@ def test_every_list_endpoint_publishes_the_cap_it_applied(exchange):
 def test_every_time_in_force_reaches_the_venue(fresh, tif):
     """The vocabulary comes from ``TimeInForce`` rather than a list in the API,
     so a fifth one added to the exchange is reachable here without anybody
-    editing this file -- and is refused by this test if it is not."""
+    editing this file, and is refused by this test if it is not."""
     venue = fresh()
     venue.pump(300, slices=12)
     trader = venue.trader(f"Tif{tif}")
@@ -1548,7 +1591,7 @@ def test_every_time_in_force_reaches_the_venue(fresh, tif):
 
 def test_a_stop_and_an_iceberg_reach_the_book_through_the_api(fresh):
     """Both are order types a person can reach from the browser ticket, so a
-    program has to be able to reach them too -- an API that could only send the
+    program has to be able to reach them too: an API that could only send the
     two default order types would make the page the more capable client."""
     venue = fresh()
     venue.pump(400, slices=16)
@@ -1615,7 +1658,7 @@ def _rest_a_peg(venue: Exchange, trader: "Client", symbol: str, **fields) -> dic
 
 def test_a_pegged_order_reaches_the_book_through_the_api(fresh):
     """The engine has had pegs for as long as it has had stops, and until now
-    this API refused them by name -- ``LiveMarket.submit`` carried no peg
+    this API refused them by name; ``LiveMarket.submit`` carried no peg
     reference, so ``type: "pegged"`` came back ``invalid_order_type``. That was
     a gap in the surface rather than in the exchange, and a person clicking the
     ticket could reach an order type a program could not."""
@@ -1627,7 +1670,7 @@ def test_a_pegged_order_reaches_the_book_through_the_api(fresh):
     accepted = _rest_a_peg(venue, trader, symbol, client_order_id="peg-1")
     assert accepted["peg"] == "bid"
     # A count of ticks, not a price, so it is a JSON number rather than a
-    # string -- a signed integer is exact as JSON already, and quoting it would
+    # string: a signed integer is exact as JSON already, and quoting it would
     # tell a client it is the one thing it is not.
     assert accepted["peg_offset"] == -400
     assert isinstance(accepted["peg_offset"], int)
@@ -1640,10 +1683,10 @@ def test_a_pegged_order_reaches_the_book_through_the_api(fresh):
     row = working["peg-1"]
     assert row["remaining"] == 2
 
-    # It rested at a price the client never sent -- the reference plus the
-    # offset -- and the two renderings of that price agree. That it *tracks*
-    # the reference is asserted by the test below; this one asserts only that a
-    # peg reaches a book at all, which it could not do before.
+    # It rested at a price the client never sent (the reference plus the
+    # offset), and the two renderings of that price agree. That it *tracks* the
+    # reference is asserted by the test below; this one asserts only that a peg
+    # reaches a book at all, which it could not do before.
     listing = venue.venue.registry.require(symbol)
     assert isinstance(row["ticks"], int)
     assert Decimal(row["price"]) == listing.from_ticks(row["ticks"])
@@ -1705,9 +1748,9 @@ def test_a_pegged_order_keeps_its_id_and_its_seat_across_every_reprice(fresh):
 def test_a_pegged_order_that_fills_conserves_value_exactly(fresh):
     """Not "close to" zero. Money is integer minor units at a scale of a
     million for exactly this reason, and a pegged order is the one that reaches
-    the book at a price nothing above the engine chose -- so if any path
-    reserved against a price that was not the one it traded at, this is where
-    it would show."""
+    the book at a price nothing above the engine chose, so if any path reserved
+    against a price that was not the one it traded at, this is where it would
+    show."""
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Crosser")
@@ -1735,9 +1778,9 @@ def test_a_pegged_order_that_fills_conserves_value_exactly(fresh):
 
 @pytest.mark.parametrize("reference", sorted(choice.value for choice in PegReference))
 def test_every_peg_reference_reaches_the_venue(fresh, reference):
-    """The vocabulary comes from ``PegReference`` rather than a list in the API,
-    so a fourth reference added to the exchange is reachable here without
-    anybody editing this file -- and is refused by this test if it is not. The
+    """The vocabulary comes from ``PegReference`` rather than a list in the
+    API, so a fourth reference added to the exchange is reachable here without
+    anybody editing this file, and is refused by this test if it is not. The
     same argument the time-in-force test makes about ``TimeInForce``."""
     venue = fresh()
     venue.pump(400, slices=16)
@@ -1748,10 +1791,11 @@ def test_every_peg_reference_reaches_the_venue(fresh, reference):
     assert accepted["peg"] == reference
     venue.pump(400, slices=16)
 
-    # A peg whose reference does not exist yet is *accepted and waits* -- "there
-    # is no best bid" is a fact about the market and not an error in the order --
-    # so what is asserted is that the venue did not refuse it, not that it
-    # rested. ``mid`` needs both sides and this venue is thin by construction.
+    # A peg whose reference does not exist yet is *accepted and waits* ("there
+    # is no best bid" is a fact about the market and not an error in the
+    # order), so what is asserted is that the venue did not refuse it, not that
+    # it rested. ``mid`` needs both sides and this venue is thin by
+    # construction.
     refusals = trader.get("/v1/account/fills?limit=200").json()["rejections"]
     assert not [row for row in refusals if row["reason"] == "invalid_peg"], refusals
 
@@ -1801,7 +1845,7 @@ def _one_increment_below(venue: Exchange, symbol: str, price: Decimal) -> Decima
 
     Snapped by the same repeated walk ``resting_price`` uses rather than by one
     subtraction, because one of these contracts carries a tick *table* whose
-    increment changes with the level -- so a single pass can step into a coarser
+    increment changes with the level, so a single pass can step into a coarser
     band and land off its grid.
     """
     listing = venue.venue.registry.require(symbol)
@@ -1839,8 +1883,8 @@ def test_an_amendment_keeps_the_order_id_and_the_account_can_still_manage_it(fre
 
     Measured before the fix, on a bid for ten amended to six at the same price:
     the engine held it resting for six, the venue held it and reserved
-    collateral against it, and the *account's own* working orders went empty --
-    so ``GET /v1/orders`` published nothing, ``DELETE`` answered
+    collateral against it, and the *account's own* working orders went empty.
+    So ``GET /v1/orders`` published nothing, ``DELETE`` answered
     ``already_done: true`` for an order standing in the book, and
     ``DELETE /v1/orders`` walked a list the order was no longer in and left it
     there. A successful amendment is the one event that keeps an order alive
@@ -1849,7 +1893,7 @@ def test_an_amendment_keeps_the_order_id_and_the_account_can_still_manage_it(fre
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Amender")
-    symbol = venue.symbols()[0]
+    symbol = venue.restable()
     _, order = _rest_one(venue, trader, symbol, quantity=10, client_order_id="amend-1")
     order_id = order["order_id"]
 
@@ -1898,17 +1942,17 @@ def test_queue_priority_survives_a_strict_reduction_and_nothing_else(fresh):
         10 -> 10 at the same price           kept_priority=False   they fill
         10 -> 6 at a different price         kept_priority=False   they fill
 
-    The usual summary -- "raising size loses it, lowering it keeps it" -- is
-    right about the two ends and silent about the middle, and the middle is the
-    case a client hits by accident. That is why the route is a PATCH: its
-    contract is "send only what is changing", so the priority-preserving call is
-    the natural one to write, where PUT's "send the whole representation" would
+    The usual summary ("raising size loses it, lowering it keeps it") is right
+    about the two ends and silent about the middle, and the middle is the case
+    a client hits by accident. That is why the route is a PATCH: its contract
+    is "send only what is changing", so the priority-preserving call is the
+    natural one to write, where PUT's "send the whole representation" would
     have made the priority-destroying one natural instead.
     """
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Queuer")
-    symbol = venue.symbols()[0]
+    symbol = venue.restable()
     price, order = _rest_one(venue, trader, symbol, quantity=10)
     order_id = order["order_id"]
     lower = _one_increment_below(venue, symbol, price)
@@ -1952,16 +1996,16 @@ def test_queue_priority_survives_a_strict_reduction_and_nothing_else(fresh):
 
 
 def test_an_amendment_carries_an_icebergs_display_size_across(fresh):
-    """A replace once stripped an iceberg of the only property that made it one:
-    the order came back fully displayed and published the size its owner was
-    working in slices precisely so that nobody could see it. The engine carries
-    it now, and an amendment cannot change it -- which is why ``display`` in the
-    body is refused rather than ignored, since silently accepting it would
-    rebuild the same failure from the client's side."""
+    """A replace once stripped an iceberg of the only property that made it
+    one: the order came back fully displayed and published the size its owner
+    was working in slices precisely so that nobody could see it. The engine
+    carries it now, and an amendment cannot change it, which is why ``display``
+    in the body is refused rather than ignored, since silently accepting it
+    would rebuild the same failure from the client's side."""
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Hidden")
-    symbol = venue.symbols()[0]
+    symbol = venue.restable()
     price, order = _rest_one(venue, trader, symbol, quantity=12, display=3)
     order_id = order["order_id"]
     assert order["display"] == 3 and order["shown"] == 3
@@ -2018,7 +2062,7 @@ def test_an_amendment_is_refused_in_its_own_terms(fresh, body, code):
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("BadAmend")
-    symbol = venue.symbols()[0]
+    symbol = venue.restable()
     _, order = _rest_one(venue, trader, symbol)
 
     response = trader.request(
@@ -2036,10 +2080,11 @@ def test_an_amendment_is_refused_in_its_own_terms(fresh, body, code):
 
 
 def test_an_amendment_onto_a_price_the_contract_cannot_rest_at_is_refused(fresh):
-    """The tick grid and the settlement range, which are the venue's own listing
-    rules and the two the replace path has skipped before. Both are applied by
-    the same ``_quotable`` the submit path calls -- routing both through one
-    function is what makes the miss impossible rather than merely fixed."""
+    """The tick grid and the settlement range, which are the venue's own
+    listing rules and the two the replace path has skipped before. Both are
+    applied by the same ``_quotable`` the submit path calls: routing both
+    through one function is what makes the miss impossible rather than merely
+    fixed."""
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("OffGrid")
@@ -2058,8 +2103,8 @@ def test_an_amendment_onto_a_price_the_contract_cannot_rest_at_is_refused(fresh)
 
     # And outside what the claim can still settle at. Collateral structurally
     # cannot catch this: the requirement is the worst case over the settlement
-    # range, so a bid *below* the floor scores as the safest order on the book
-    # -- the venue's central safety mechanism rates the impossible order as the
+    # range, so a bid *below* the floor scores as the safest order on the book.
+    # The venue's central safety mechanism rates the impossible order as the
     # safe one, which is why the range needs a listing rule of its own.
     _, high = venue.venue.bounds_in_minor(listing)
     beyond = from_money(high) + listing.tick_size
@@ -2084,8 +2129,8 @@ def test_an_amendment_onto_a_price_the_contract_cannot_rest_at_is_refused(fresh)
 
 def test_an_amendment_is_refusable_by_the_rate_limit_and_a_cancel_is_not(fresh):
     """A cancel is exempt because it can only ever reduce the venue's work and
-    the participant's risk. An amendment can raise both -- it is how an account
-    takes on exposure it could not otherwise fund -- so it is counted *and*
+    the participant's risk. An amendment can raise both (it is how an account
+    takes on exposure it could not otherwise fund), so it is counted *and*
     refusable, exactly as ``Venue._rate_limited`` exempts only ``Cancel``.
 
     Then the half that matters: a participant refused for the rate must still
@@ -2120,9 +2165,9 @@ def test_an_amendment_is_refusable_by_the_rate_limit_and_a_cancel_is_not(fresh):
 def test_a_halted_participant_cannot_amend_and_keeps_what_it_has(fresh):
     """Tested in the state the control is for, not in a calm one.
 
-    A stopped participant may still cancel -- refusing that too would trap it
-    in the orders it already has, which is the opposite of what stopping it is
-    for -- and ``Venue.submit`` refuses it a ``Replace`` for the same reason it
+    A stopped participant may still cancel (refusing that too would trap it in
+    the orders it already has, which is the opposite of what stopping it is
+    for), and ``Venue.submit`` refuses it a ``Replace`` for the same reason it
     refuses a ``Submit``: an amendment is a request for risk. What this asserts
     is that the refusal leaves the order resting *and* leaves it in the
     account's own blotter, which is the half that was broken: the venue's
@@ -2132,7 +2177,7 @@ def test_a_halted_participant_cannot_amend_and_keeps_what_it_has(fresh):
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Stopped")
-    symbol = venue.symbols()[0]
+    symbol = venue.restable()
     _, order = _rest_one(venue, trader, symbol)
     path = f"/v1/orders/{symbol}/{order['order_id']}"
 
@@ -2161,10 +2206,10 @@ def test_an_amendment_during_a_call_phase_is_refused_and_the_order_is_untouched(
     """A call phase is defined by the fact that nothing matches in it, and a
     replace is the one command that breaks the definition: the engine's replace
     pulls the old order and re-runs the match unconditionally, never consulting
-    the phase. Measured at the venue: a replace during a halt printed 20 lots at
-    17,000 against an order only resting there because the auction had not run
-    yet, and against market-on-open interest -- which rests at a sentinel so it
-    crosses every candidate -- it printed at -4,611,686,018,427,387,904."""
+    the phase. Measured at the venue: a replace during a halt printed 20 lots
+    at 17,000 against an order only resting there because the auction had not
+    run yet, and against market-on-open interest (which rests at a sentinel so
+    it crosses every candidate), it printed at -4,611,686,018,427,387,904."""
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Auctioned")
@@ -2195,7 +2240,7 @@ def test_an_amendment_after_the_close_is_refused_and_the_order_is_untouched(fres
 
     ``Venue.submit`` refuses a ``Submit`` and a ``Replace`` on the same line
     once a symbol stops accepting orders, because once the outcome is
-    determined nobody may take new risk -- and an amendment is new risk. What
+    determined nobody may take new risk, and an amendment is new risk. What
     stays legal is the cancel, so an account can tidy up, and this asserts that
     the pair still works together: refused amendment, order untouched, order
     still pullable.
@@ -2225,8 +2270,8 @@ def test_an_amendment_after_the_close_is_refused_and_the_order_is_untouched(fres
 
 def test_an_amendment_is_not_a_free_re_collateralisation(fresh):
     """An amendment is measured as the position it *results in*, not as
-    exposure piled on top of the order it supersedes -- and not as a fresh
-    start either.
+    exposure piled on top of the order it supersedes, and not as a fresh start
+    either.
 
     Asserted against a control rather than against a number, because a number
     would be a hardcoded fact about one contract's price. Two identical
@@ -2239,7 +2284,7 @@ def test_an_amendment_is_not_a_free_re_collateralisation(fresh):
     venue.pump(400, slices=16)
     amender = venue.trader("Grower")
     control = venue.trader("Control")
-    symbol = venue.symbols()[0]
+    symbol = venue.restable()
 
     price, order = _rest_one(venue, amender, symbol, quantity=10)
     placed = control.post(
@@ -2262,11 +2307,22 @@ def test_an_amendment_is_not_a_free_re_collateralisation(fresh):
     )
 
     # And the ceiling is real. Beyond what the account can fund the venue
-    # refuses, and -- the half that was broken -- leaves the order resting and
-    # in its owner's blotter, so the exposure the refusal protected is still
+    # refuses, and (the half that was broken) leaves the order resting and in
+    # its owner's blotter, so the exposure the refusal protected is still
     # something its owner can pull.
+    #
+    # Derived from the seat and from where the order actually rests, rather
+    # than named. What an account cannot fund depends on the price, and a
+    # constant cannot know it: this asked for 100,000 lots, which was far
+    # beyond the seat when `resting_price` parked orders mid-range and is
+    # 25,000 against a seat of 250,000 now that it parks them one increment
+    # above the bottom of the range. The assertion still passed, on a venue
+    # that had correctly refused nothing at all.
     listing = venue.venue.registry.require(symbol)
-    unaffordable = 100_000 * listing.lot_size
+    funded = Decimal(amender.get("/v1/account").json()["cash"]) / (
+        price * listing.lot_size
+    )
+    unaffordable = int(funded) * 2 * listing.lot_size
     over = amender.request(
         "PATCH", f"/v1/orders/{symbol}/{order['order_id']}", {"quantity": unaffordable}
     )
@@ -2293,7 +2349,7 @@ def test_amending_an_order_that_is_not_yours_answers_as_one_that_never_existed(f
     about a stranger's account, which is the argument ``GET`` on the same
     address already makes. 404 rather than ``DELETE``'s 200, because an
     amendment to an order that is not resting is not a correct outcome the
-    client asked for -- there is nothing to carry the new terms."""
+    client asked for: there is nothing to carry the new terms."""
     venue = fresh()
     venue.pump(400, slices=16)
     owner = venue.trader("Owner")
@@ -2394,8 +2450,8 @@ def _order(symbol: str, **fields) -> dict:
 )
 def test_a_malformed_order_is_refused_in_its_own_terms(exchange, fields, code):
     """Every one of these is a fact about the request, so the request is told.
-    What is left to the venue -- collateral, the price band, an auction phase --
-    is only knowable there."""
+    What is left to the venue (collateral, the price band, an auction phase) is
+    only knowable there."""
     trader = exchange.trader("Malformed")
     symbol = exchange.symbols()[0]
     response = trader.post("/v1/orders", _order(symbol, **fields))
@@ -2434,7 +2490,7 @@ def test_a_price_off_the_instruments_grid_is_refused(exchange):
 
 def test_an_order_type_that_disagrees_with_its_fields_is_refused(exchange):
     """A declared type is checked against the fields rather than obeyed, so a
-    client whose declaration and whose fields disagree is told which -- instead
+    client whose declaration and whose fields disagree is told which, instead
     of one of them silently winning."""
     trader = exchange.trader("Mismatch")
     symbol = exchange.symbols()[0]
@@ -2454,7 +2510,7 @@ def test_an_off_lot_quantity_is_refused_before_it_costs_a_round_trip(fresh):
     symbol = venue.symbols()[0]
     instrument = venue.venue.registry.require(symbol)
     # The listing is in lots of one here, so the rule is exercised by changing
-    # the listing rather than by finding a contract that happens to break it --
+    # the listing rather than by finding a contract that happens to break it:
     # there is no special symbol to reach for and there should not be.
     object.__setattr__(instrument, "lot_size", 10)
     try:
@@ -2490,8 +2546,8 @@ def test_a_body_that_is_not_json_is_refused_as_a_bad_request(exchange):
 
 def test_the_venues_message_rate_surfaces_as_a_429(fresh):
     """The venue throttles on the far side of a latency link, so a client that
-    overruns it gets 202 for every order and then silence -- the refusals land
-    in a blotter it has to poll for and correlate. The rate is the venue's own;
+    overruns it gets 202 for every order and then silence: the refusals land in
+    a blotter it has to poll for and correlate. The rate is the venue's own;
     nothing here invents a number."""
     venue = fresh()
     venue.pump(200, slices=8)
@@ -2559,7 +2615,7 @@ def test_a_key_still_trades_its_own_account_after_a_rebuild(fresh):
     ``reconfigure`` discards the market and every account in it, and
     ``LiveMarket.trader`` answers an id it has never heard of with the *shared*
     account. A key that had captured ``you-1`` at issue time would therefore
-    trade a communal seat after the first rebuild -- one balance, one blotter,
+    trade a communal seat after the first rebuild: one balance, one blotter,
     every stale credential able to cancel every other's orders. That is the
     same bug the browser cookie was fixed for, and this asserts the fix rather
     than the intention: the two keys must land in two different accounts, and

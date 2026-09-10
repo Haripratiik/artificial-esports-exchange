@@ -148,10 +148,11 @@ class GlostenMilgrom:
         # belief's own width or the posterior is one cell wide and the quote is
         # quantised to a step of the range. Measured on seed 7 over 180
         # seconds, the dispersion of the mid around a 0.15-gain average of
-        # itself runs from 0.0012 of the range on `SPIKE_WR_W3` to 0.52 on
-        # `ELPRIMO_P4650`, median 0.081. At 1,025 points the narrowest of those
-        # is 1.3 steps and the median is 83, which is why the grid is this fine
-        # and why the width below is floored at one step.
+        # itself runs from 0.0012 of the range on one weekly leg of a share to
+        # 0.52 on a deep out of the money put, median 0.081. At 1,025 points
+        # the narrowest of those is 1.3 steps and the median is 83, which is
+        # why the grid is this fine and why the width below is floored at one
+        # step.
         self.nodes = int(nodes)
         # Where the informed share starts before this strategy has any
         # experience of its own. A coin flip, which is the least committal
@@ -218,7 +219,14 @@ class GlostenMilgrom:
             belief = self._beliefs.get(symbol)
             return self.estimated_mu() if belief is None else belief.mu
         counted = [b.mu for b in self._beliefs.values() if b.same is not None]
-        return sum(counted) / len(counted) if counted else self.mu_prior
+        if not counted:
+            return self.mu_prior
+        # Clamped, because the mean of values that are each at or below the cap
+        # can still land above it: beliefs all pinned at 0.99 average to
+        # 0.9900000000000001 in binary floating point. An ulp of representation
+        # error is not an opinion this strategy holds, and a caller reading the
+        # bound the class advertises is entitled to have it hold.
+        return min(self.mu_cap, sum(counted) / len(counted))
 
     def conditional_prices(self, view: MarketView, symbol: str) -> tuple[float, float]:
         """``(E[V | next order is a SELL], E[V | next order is a BUY])``.
@@ -496,13 +504,13 @@ class GlostenMilgrom:
         #
         # Counted only across a stretch where this strategy was showing both
         # sides, and that condition is most of what makes the count an estimate
-        # rather than a mirror. A maker at its position limit shows one side, so
-        # every order it then sees arrives in the same direction and a run of
-        # them says nothing about who sent them. Measured without the condition
-        # on seed 7 over 180 seconds, consecutive orders agreed 96.5%, 96.7%,
-        # 96.5% and 96.7% of the time on `SPIKE_WR_W1` through `W4`, which
-        # reads as an informed share of one on the four quietest books in the
-        # market.
+        # rather than a mirror. A maker at its position limit shows one side,
+        # so every order it then sees arrives in the same direction and a run
+        # of them says nothing about who sent them. Measured without the
+        # condition on seed 7 over 180 seconds, consecutive orders agreed
+        # 96.5%, 96.7%, 96.5% and 96.7% of the time on the four weekly legs of
+        # one share, which reads as an informed share of one on the four
+        # quietest books in the market.
         if not two_sided:
             belief.buying = None
             return
@@ -549,10 +557,11 @@ class GlostenMilgrom:
         strategy's own 160ms-stale view of the book. It is added rather than
         multiplied so that it can move the estimate in either direction from
         wherever the count left it, including all the way to nothing. Measured
-        on seed 7 over 180 seconds, `CROW_GT47` had a flow count of 0.54 and a
-        correction of -0.61, so the estimate there is zero: the audit overruled
-        the count on a book where consecutive orders did lean one way but every
-        fill was still making money by the time the mid caught up.
+        on seed 7 over 180 seconds, one binary struck on a competitor's win
+        rate had a flow count of 0.54 and a correction of -0.61, so the
+        estimate there is zero: the audit overruled the count on a book where
+        consecutive orders did lean one way but every fill was still making
+        money by the time the mid caught up.
         """
         if belief.same is None:
             flow = self.mu_prior

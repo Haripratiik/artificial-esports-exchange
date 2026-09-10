@@ -39,13 +39,17 @@ MINUTE = seconds(60)
 class Session:
     """One driven market, with everything the three tests below need."""
 
-    def __init__(self, market, attribution, edges, volume):
+    def __init__(self, market, attribution, edges, volume, skipped):
         self.market = market
         self.attribution = attribution
-        # symbol -> [signed edge in tick-lots, lots, fills, negative fills]
+        # symbol -> [signed edge in tick-lots, lots, fills, negative fills],
+        # counting only prints that had a real two-sided uncrossed touch to be
+        # measured against.
         self.edges = edges
         # symbol -> minute -> lots printed
         self.volume = volume
+        # Why prints were left out, so a shrinking sample cannot pass quietly.
+        self.skipped = skipped
         self.makers = frozenset(
             a.agent_id for a in market.agents if "MarketMaker" in type(a).__name__
         )
@@ -122,13 +126,21 @@ def session() -> Session:
     touch: dict[str, tuple[int, int]] = {}
     edges: dict[str, list] = defaultdict(lambda: [0.0, 0, 0, 0])
     volume: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    skipped: dict[str, int] = defaultdict(int)
     original = Venue.submit
     recorder = market.venue.trade_observer
 
     def submit(self, agent_id, symbol, command):
         book = self._engines[symbol].book.snapshot()
-        if book.best_bid is not None and book.best_ask is not None:
-            touch[symbol] = (int(book.best_bid), int(book.best_ask))
+        bid, ask = book.best_bid, book.best_ask
+        # Recorded on every command, including as *absent*. Keeping the last
+        # two-sided touch instead was the defect this fixture used to carry: a
+        # book quoted on one side only still answered with the mid it had when
+        # it was last quoted on both, however long ago that was, and every
+        # print in between was scored against a price no longer on the screen.
+        touch[symbol] = (
+            (int(bid), int(ask)) if bid is not None and ask is not None else None
+        )
         return original(self, agent_id, symbol, command)
 
     def observe(entry) -> None:
@@ -136,7 +148,19 @@ def session() -> Session:
         quantity, price = int(entry["quantity"]), int(entry["price"])
         volume[symbol][int(market.kernel.now) // MINUTE] += quantity
         seen = touch.get(symbol)
-        if seen is not None:
+        if seen is None:
+            # Nothing to measure against. A one-sided book has no mid, and
+            # scoring a fill against half of one is not a weaker reading of the
+            # same quantity, it is a different quantity.
+            skipped["no two-sided book"] += 1
+        elif seen[0] > seen[1]:
+            # A locked or crossed book puts its own mid above its own offer, so
+            # an offer that trades there is below the mid by construction and
+            # for no reason having to do with the quote. Legitimate here: a
+            # book in a call phase accumulates without matching, which
+            # `Venue.mark` says in as many words.
+            skipped["locked or crossed"] += 1
+        else:
             mid = (seen[0] + seen[1]) / 2.0
             aggressor_buy = entry["aggressor"] == Side.BUY.value
             buyer, seller = str(entry["buyer"]), str(entry["seller"])
@@ -170,7 +194,7 @@ def session() -> Session:
     finally:
         Venue.submit = original
     attribution.detach()
-    return Session(market, attribution, edges, volume)
+    return Session(market, attribution, edges, volume, dict(skipped))
 
 
 # --------------------------------------------------------------------------
@@ -188,27 +212,30 @@ def test_a_resting_quote_is_not_systematically_run_over(session):
     a quote that is where the market is: hitting a maker's bid at ``m - h``
     when the mid is ``m`` earns the maker ``h``, whatever the buyer knew.
 
-    The bound is on the *share* of fills and not on any class mean, and that
-    choice is the finding rather than a convenience. Measured at zero sampling
-    staleness across four runs of 300s, seeds 7 and 3 with the event ladder
-    priced both ways, the share is 1.73%, 1.51%, 0.01% and 0.61%, which is
-    stable enough to bound. The lots-weighted mean is not: the volatility
-    contracts came back at -385.4, -318.3, +154.4 and +58.3 ticks per lot on
-    those same four runs, because 70 to 195 fills against a locked book carry
-    thousands of ticks each and swamp fourteen hundred ordinary ones. A test
-    on that mean would be measuring which side of a lock the session happened
-    to end on.
+    So the question is only asked where it has an answer. A print is measured
+    when the book carried a two-sided uncrossed touch at the instant the
+    command that caused it arrived, and is set aside otherwise, counted in
+    ``session.skipped`` rather than dropped silently. Both exclusions are
+    states the venue is entitled to be in: a one-sided book has no mid, and a
+    book in a call phase is crossed on purpose, because orders accumulate there
+    without matching.
 
-    Where the negatives sit is the other half of it, and it is consistent
-    across all four runs: every one of them is a commodity, a volatility
-    contract, or a handful of puts. The calls, the futures, the index, the
-    spread, the equities and the event ladder carry none at all. Of 8.98M
-    tick-lots of negative edge on seed 7, 7.81M is commodity fills inside an
-    uncrossed touch, which is to say books one-sided often enough that there is
-    no prevailing mid to speak of, and 1.13M is books that were locked when the
-    trade printed, bid above offer, where the mid sits above the offer by
-    construction. Five fills and 30K tick-lots are a print outside the maker's
-    own touch, which is the only thing that being run over can actually mean.
+    Asked that way the answer is not a small number, it is none. Measured over
+    300s on seeds 7, 3 and 41: 28,869, 28,566 and 26,958 passive maker fills
+    against a real touch, and **zero** of them executed worse than the mid on
+    any of the three. Every negative in the session is on a locked book, 19,
+    31 and 12 of them, where the mid sits above the offer by construction and
+    an offer trading at the offer is below it for arithmetic reasons rather
+    than for anything to do with the quote.
+
+    This used to read as a bound of three per cent against a worst measured
+    1.73, and both figures were artefacts of how the mid was sampled rather
+    than facts about the quotes. The fixture kept the last two-sided touch it
+    had seen and scored every later print against it, so a book that had been
+    one-sided for two minutes was still being compared with the mid it had when
+    it was last quoted on both sides. On the world as it now lists, that stale
+    carry-forward read 5.28%. Read against the touch that was actually
+    standing, the same session reads 0.00%.
     """
     totals = session.by_class()
     assert totals, "nothing traded, so the test measured nothing"
@@ -216,11 +243,11 @@ def test_a_resting_quote_is_not_systematically_run_over(session):
     fills = sum(row[2] for row in totals.values())
     negative = sum(row[3] for row in totals.values())
     assert fills > 5_000, f"only {fills} passive fills; the sample is too thin"
-    # Three per cent against a worst measured 1.73, which leaves room for a
-    # seed to be unkind without leaving room for the defect to come back.
-    assert negative <= 0.03 * fills, (
-        f"{negative} of {fills} passive fills, "
-        f"{100.0 * negative / fills:.2f}%, executed worse than the mid"
+    # Exactly none, on three seeds. A bound with room in it would be room for
+    # the defect to come back, and there is no measurement here asking for any.
+    assert negative == 0, (
+        f"{negative} of {fills} passive fills executed worse than the mid that "
+        f"was standing when they traded; skipped {session.skipped}"
     )
 
 

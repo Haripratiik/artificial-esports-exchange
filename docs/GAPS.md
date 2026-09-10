@@ -331,17 +331,46 @@ answered by listing matches rather than by finding more data.
    default, documented at the flag, and pinned by two tests in
    `test_netting.py`.
 
-5. **A working order reserves nothing, so affordability can go stale.** The
-   entry check is per symbol and considers positions only, so orders resting
-   across several books are each individually affordable until several of them
-   fill. Measured across four seeds at 300 simulated seconds: one of
-   twenty-four accounts underwater on two of the four, worst 8,358 on a 40
-   million account, which is 0.021 percent of its own capital, with
-   conservation exactly zero throughout. `test_no_account_is_over_committed`
-   asserts the invariant strictly and passes only because its fixture is short.
-   The fee the check was omitting is now counted; the remaining cause is the
-   absence of reservation, and closing it properly refuses orders that are
-   accepted today.
+   It now has a second way of being unsound, recorded here rather than
+   half-fixed. The open-order reserve closed in item 5 lives in the
+   per-contract check, and an order that check refuses falls through to this
+   fallback, which asks its question about positions only. So with netting on,
+   an account can still be admitted past orders it has resting elsewhere. The
+   fix is the same fix: charge per netting group in both the gate and the
+   ledger, at which point the reserve belongs in the group's worst case rather
+   than beside it. Patching the fallback alone would leave two collateral
+   models disagreeing about the same account, which is what this entry is
+   already about.
+
+5. ~~**A working order reserves nothing, so affordability can go stale.**~~
+   **Closed.** The entry check was per symbol and charged only the orders
+   resting in the symbol it was asked about, so the money backing an order in
+   one book was free to be spent by a fill in another. The failure is temporal
+   rather than simultaneous, which is why a per-symbol scenario could not see
+   it: the order is affordable when it is accepted and the account is poorer by
+   the time it fills. Measured on seed 17 at 90 simulated seconds, `fund-1`
+   rested a sell of fifteen lots on a call struck at 4,800, went on trading
+   forty-five other contracts while it sat there, and on filling needed
+   77,977,500,000 minor units of collateral against free cash of
+   29,020,881,304, finishing at **-31,486,674,402**.
+
+   The requirement is now carried from acknowledgement rather than discovered
+   at the fill. Each symbol's working orders are priced at the worse of their
+   two directional scenarios, which is the same choice the entry check already
+   made and for the same reason, and the per-agent total is kept running rather
+   than re-summed per order, so an agent quoting thirty books does not re-price
+   thirty scenarios every time it sends one. The symbol being checked is
+   excluded from the total because its own orders are already in the scenario.
+
+   What it cost was nothing, and what it bought was more trading, not less: on
+   the same seed the market printed 22,370 trades against 21,333 with the
+   reserve absent, up 4.9 percent, in 60.9 seconds against 60.3. Constraining
+   the one account that was over-committed left the rest of the population
+   trading against a book that was still there. Nobody's reserve exceeded their
+   free cash at 30 seconds, so the gate binds the accounts that are genuinely
+   short and nobody else. `test_no_account_is_over_committed` now passes on its
+   own terms, and the running total was checked against a fresh recomputation
+   at three points in the run with zero drift.
 
 6. **The option surface is too cheap in volatility.** Implied dispersion sits
    at 0.155 of the remaining distance to settlement, so the maker ends short

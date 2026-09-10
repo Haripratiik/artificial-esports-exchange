@@ -74,8 +74,8 @@ def test_spread_bounds_account_for_interval_subtraction():
     """A difference of two [0,1] rates ranges over [-1, 1], not [0, 0].
 
     Using (lo-lo, hi-hi) is the classic interval-arithmetic mistake and would
-    report a spread as having no range at all -- so a short would be allowed
-    with zero collateral.
+    report a spread as having no range at all, so a short would be allowed with
+    zero collateral.
     """
     spread = Difference(
         Single(MetricRef("win_rate", "EMBER")),
@@ -157,7 +157,7 @@ def test_a_flip_closes_then_opens():
     """The case that silently corrupts a naive ledger.
 
     +10 at 100, then sell 15 at 130: ten lots close and realise 300, and five
-    lots open short with a basis of 130 -- not a blend of 100 and 130, which
+    lots open short with a basis of 130, not a blend of 100 and 130, which
     would be a cost basis for a position that never existed.
     """
     p = Position("X")
@@ -221,7 +221,7 @@ def test_collateral_is_charged_against_the_basis_not_a_floored_average():
     charge against that. Floor division rounds a long's average *down*, so the
     requirement came out under the loss by whatever the basis left over.
     Measured on seven lots bought as three at 10.25 and four at 11.50: a basis
-    of 76,750,000 minor units against 76,749,995 posted -- five short. Under a
+    of 76,750,000 minor units against 76,749,995 posted, five short. Under a
     minor unit a lot, and not zero, and the claim on this module is that its
     figures are exact rather than close.
     """
@@ -247,8 +247,8 @@ def test_a_partial_close_recharges_the_remainder_exactly():
     """Collateral has to follow the basis left behind, remainder included.
 
     A proportional close leaves an integer remainder inside the position on
-    purpose -- that is what keeps the ledger conserving -- and the requirement
-    on what is left must be computed from that basis rather than reconstructed
+    purpose (that is what keeps the ledger conserving) and the requirement on
+    what is left must be computed from that basis rather than reconstructed
     from an average, or the two disagree by the remainder.
     """
     account = Account("a", M("1000000"))
@@ -286,11 +286,11 @@ def test_an_account_cannot_exceed_its_collateral():
 def test_adding_at_a_lower_price_cannot_outrun_the_cash():
     """The check has to price the position the fill creates, from its basis.
 
-    Ten lots long at 5,000 is 50,000 of exposure. Ten more at 100 was checked as
-    ``20 * 100 = 2,000``, because the resulting quantity was priced at the
+    Ten lots long at 5,000 is 50,000 of exposure. Ten more at 100 was checked
+    as ``20 * 100 = 2,000``, because the resulting quantity was priced at the
     incoming trade rather than at what the position had actually paid. An
     account holding exactly 50,000 passed that check, came out with a basis of
-    51,000, posted more collateral than it owned -- `free_cash` at -1,000 -- and
+    51,000, posted more collateral than it owned (`free_cash` at -1,000) and
     stood to owe a thousand it did not have if the contract settled at zero.
     """
     account = Account("a", M("50000"))
@@ -314,7 +314,7 @@ def test_the_projected_basis_matches_the_applied_one(seed):
     """`basis_after` duplicates `apply_fill`'s branches, so pin them together.
 
     Opening, adding, partial closes that leave an integer remainder, exact
-    closes and flips -- the projection has to agree on all five or the solvency
+    closes and flips: the projection has to agree on all five or the solvency
     check is answering about a position the ledger will not produce.
     """
     rng = random.Random(seed)
@@ -362,9 +362,9 @@ def test_a_share_pays_down_its_range_and_closes_out_to_nothing():
 
     Four payments of 467 against a claim that settles at nothing: the long
     receives, the short pays, and neither books a profit for it. What the two
-    sides hold has to sum to exactly zero at every step -- after each payment
-    and after settlement -- and both positions must end flat with no collateral
-    and no residual basis. A share's terminal payoff is Linear(0), so its
+    sides hold has to sum to exactly zero at every step (after each payment and
+    after settlement) and both positions must end flat with no collateral and
+    no residual basis. A share's terminal payoff is Linear(0), so its
     settlement bounds are [0, 0] and every guard downstream of settlement is
     vacuous on it; this is the check that it closes out anyway.
     """
@@ -509,6 +509,89 @@ def test_orders_beyond_collateral_are_rejected_before_they_reach_the_book():
     )
     assert events[0].reason is RejectReason.INSUFFICIENT_COLLATERAL
     assert venue.engine("EMBER_FUT").book.snapshot().best_bid is None
+
+
+def test_an_order_resting_in_one_book_is_paid_for_before_another_is_accepted():
+    """Collateral is committed when an order is acknowledged, not when it fills.
+
+    The affordability check charged the working orders in the symbol it was
+    asked about and nothing resting anywhere else, so an account could park an
+    order in one book and then spend the money backing it in another. Both were
+    individually affordable. Whichever filled first took the cash, and the
+    second left the account holding collateral it did not have.
+
+    That is a failure in time rather than a simultaneous one, which is why a
+    per-symbol scenario could not see it: the order is affordable when it is
+    accepted, and the account is poorer by the time it fills. Measured on the
+    live market at seed 17 and 90 simulated seconds, `fund-1` rested a sell of
+    fifteen lots on a call, went on trading forty-five other contracts while it
+    sat there, and on filling needed 77,977,500,000 minor units of collateral
+    against free cash of 29,020,881,304, finishing at -31,486,674,402.
+
+    Asserted against a control rather than against a number: the refused order
+    is accepted on its own on an account of the same size, so what refuses it
+    here is the order resting in the other book and nothing else.
+    """
+    venue = Venue(starting_cash=D("10000"))
+    first, second = future("EMBER_FUT"), future("RIFT_FUT")
+    venue.list_instrument(first)
+    venue.list_instrument(second)
+    who = AgentId("both-books")
+
+    # A long of one lot at 6,000 on a contract that can settle at zero can lose
+    # 6,000, which is most of what this account holds.
+    parked = venue.submit(
+        who, "EMBER_FUT", order(who, Side.BUY, first.to_ticks(D("6000")), 1)
+    )
+    assert getattr(parked[0], "reason", None) is None, parked
+    assert venue._reserved[who] == int(M(D("6000")))
+
+    blocked = venue.submit(
+        who, "RIFT_FUT", order(who, Side.BUY, second.to_ticks(D("5000")), 1)
+    )
+    assert blocked[0].reason is RejectReason.INSUFFICIENT_COLLATERAL
+    assert venue.engine("RIFT_FUT").book.snapshot().best_bid is None
+
+    control = Venue(starting_cash=D("10000"))
+    control.list_instrument(future("RIFT_FUT"))
+    alone = control.submit(
+        who, "RIFT_FUT", order(who, Side.BUY, second.to_ticks(D("5000")), 1)
+    )
+    assert getattr(alone[0], "reason", None) is None, alone
+
+
+def test_cancelling_a_resting_order_hands_its_capital_back():
+    """A reserve that only ever grew would be a slow leak with a hard stop.
+
+    The account would refuse its own orders on the strength of exposure it no
+    longer has, and nothing would ever say so: the collateral is not posted, so
+    the ledger looks right and only the refusals are wrong.
+    """
+    venue = Venue(starting_cash=D("10000"))
+    first, second = future("EMBER_FUT"), future("RIFT_FUT")
+    venue.list_instrument(first)
+    venue.list_instrument(second)
+    who = AgentId("both-books")
+
+    parked = venue.submit(
+        who, "EMBER_FUT", order(who, Side.BUY, first.to_ticks(D("6000")), 1)
+    )[0]
+    refused = venue.submit(
+        who, "RIFT_FUT", order(who, Side.BUY, second.to_ticks(D("5000")), 1)
+    )
+    assert refused[0].reason is RejectReason.INSUFFICIENT_COLLATERAL
+
+    from arena.exchange.events import Cancel
+
+    venue.submit(who, "EMBER_FUT", Cancel(who, parked.order_id))
+    assert who not in venue._reserved
+
+    accepted = venue.submit(
+        who, "RIFT_FUT", order(who, Side.BUY, second.to_ticks(D("5000")), 1)
+    )
+    assert getattr(accepted[0], "reason", None) is None, accepted
+    assert venue._reserved[who] == int(M(D("5000")))
+    assert venue.conservation_check() == 0
 
 
 def test_trading_stops_at_the_close_but_cancels_still_work():

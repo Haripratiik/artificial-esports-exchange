@@ -2,9 +2,8 @@
 
 This is the component that makes the project a market rather than a book. It
 holds one matching engine per symbol, an account per agent, and the instrument
-registry that says what each symbol settles into -- so a trade can finally
-become a position, a position can be marked, and an expiry can turn it into
-cash.
+registry that says what each symbol settles into, so a trade can finally become
+a position, a position can be marked, and an expiry can turn it into cash.
 
 Responsibilities, and what is deliberately *not* here:
 
@@ -13,9 +12,9 @@ Responsibilities, and what is deliberately *not* here:
     not here      latency and scheduling (the kernel's job)
     not here      what a metric means (the world's job)
 
-Keeping matching out is what preserves the C++ port's acceptance test: each
-engine remains a pure function of its own command stream, so the port can still
-be validated by replaying one symbol's commands through both implementations.
+Keeping matching out is what preserves the differential acceptance test: each
+engine remains a pure function of its own command stream, so a second
+implementation can be validated by replaying one symbol's commands through both.
 
 **Risk is checked before an order reaches the book, not after it fills.** An
 exchange that discovers insolvency after the trade has printed cannot unprint
@@ -73,8 +72,8 @@ ZERO = Decimal(0)
 class SymbolCommand:
     """A command addressed to one symbol.
 
-    The engine's commands carry no symbol -- deliberately, since each engine
-    serves exactly one book. Routing is the venue's job, so it is expressed as
+    The engine's commands carry no symbol (deliberately, since each engine
+    serves exactly one book). Routing is the venue's job, so it is expressed as
     an envelope rather than by widening the engine's own message types.
     """
 
@@ -126,13 +125,13 @@ def _underlying_of(instrument) -> str:
     """What a contract is written on, as a key positions can be grouped by.
 
     The window is deliberately *not* part of it. Two contracts on the same
-    Brawler over different weeks settle on different numbers, so strictly they
-    do not net -- but `claim_value` prices every one of them off a single level,
-    which is the same assumption an agent with one view of a Brawler makes, and
-    it is the assumption under which the strip identity holds exactly. Grouping
-    them together is therefore consistent with how everything else here values
-    them; grouping them apart would charge collateral against a package the
-    exchange itself treats as riskless.
+    competitor over different weeks settle on different numbers, so strictly
+    they do not net, but `claim_value` prices every one of them off a single
+    level, which is the same assumption an agent with one view of a competitor
+    makes, and it is the assumption under which the strip identity holds
+    exactly. Grouping them together is therefore consistent with how everything
+    else here values them; grouping them apart would charge collateral against
+    a package the exchange itself treats as riskless.
     """
     from arena.determinism import canonical_json
 
@@ -161,7 +160,7 @@ class Venue:
         self.name = name
         # Supplies wall-clock or simulated calendar time, so expiries can be
         # enforced. Left None when a caller wants to trade a contract outside
-        # its window deliberately -- which every unit test does, since a fixture
+        # its window deliberately, which every unit test does, since a fixture
         # contract's window is a fixed date in the past or future.
         self._clock = clock
         # Elapsed simulated time in nanoseconds, which is a different question
@@ -190,7 +189,7 @@ class Venue:
         # gave it capital it never received and hid the one thing it exists to
         # show: on a schedule that pays out more than it takes, the venue lost
         # **930,000,000** minor units over two hundred fills and its own
-        # account still read 39,999,070,000,000 -- comfortably solvent, and a
+        # account still read 39,999,070,000,000, comfortably solvent, and a
         # measurement of nothing. Starting at zero makes the balance equal to
         # what was collected, so a venue paying people to trade with each other
         # shows up as a negative number rather than a slow drain on capital
@@ -201,13 +200,34 @@ class Venue:
         self._phase: dict[str, SessionState] = {}
         # Symbols that have settled. Tracked here rather than only on the
         # accounts, because a symbol nobody held would otherwise settle twice
-        # without complaint -- and a settlement firing more than once is a
+        # without complaint. And a settlement firing more than once is a
         # plausible bug in any event-driven system.
         self._settled: set[str] = set()
         # Orders each agent has working, per symbol: order_id -> (side, qty,
         # price in minor units). Collateral is reserved against these, not only
         # against filled positions.
         self._working: dict[tuple[AgentId, str], dict[OrderId, tuple[Side, int, int]]] = {}
+        # What those working orders would cost the account if the worse side of
+        # each of them filled, per symbol and totalled per agent.
+        #
+        # `_affordable` has always charged an agent's working orders in the
+        # symbol being checked. It never charged the ones resting everywhere
+        # else, and the money backing an order is spent by whatever fills
+        # first. Measured on seed 17 at 90 simulated seconds: `fund-1` rested a
+        # sell of fifteen lots on a call, kept trading forty-five other
+        # contracts while it sat there, and when it finally filled the position
+        # it created needed 77,977,500,000 minor units of collateral against
+        # free cash of 29,020,881,304. The account came out at
+        # **-31,486,674,402**, which is the venue holding collateral it does
+        # not have.
+        #
+        # So the requirement is carried from the moment the order is
+        # acknowledged rather than discovered when it fills. Kept as a running
+        # total rather than summed per admission because an agent quoting
+        # thirty symbols would otherwise re-price thirty scenarios on every
+        # order it sends.
+        self._reserve: dict[tuple[AgentId, str], int] = {}
+        self._reserved: dict[AgentId, int] = {}
         # Last traded price per symbol, in ticks. The mark of last resort when
         # a book has no two-sided quote.
         self._last: dict[str, Price] = {}
@@ -221,10 +241,11 @@ class Venue:
         # obligations.
         self._distributed: dict[str, Money] = {}
         self._distributions_paid: dict[str, int] = {}
-        # Fees move value; they do not destroy it. Whatever traders pay lands in
-        # the venue's own account, which is checked for conservation like any
-        # other -- so switching fees on cannot quietly break the ledger's central
-        # invariant, and venue revenue becomes a number rather than an idea.
+        # Fees move value; they do not destroy it. Whatever traders pay lands
+        # in the venue's own account, which is checked for conservation like
+        # any other. So switching fees on cannot quietly break the ledger's
+        # central invariant, and venue revenue becomes a number rather than an
+        # idea.
         self.fees = fees
         self.fees_collected = Money(0)
         # How far price may travel from the reference before trading is
@@ -258,9 +279,9 @@ class Venue:
         # The second is not a softening of the rule, it is the rule's own
         # premise. A band is a statement about distance from a *reliable*
         # price, and one print is not one. Enforced from the first trade, the
-        # breaker measured every symbol's walk away from its opening print --
-        # which on a thinly-attended opening auction is exactly the walk it
-        # should be making -- and paused 24 of 26 symbols inside a minute.
+        # breaker measured every symbol's walk away from its opening print
+        # (which on a thinly-attended opening auction is exactly the walk it
+        # should be making) and paused 24 of 26 symbols inside a minute.
         self.reference_window_ns = reference_window_ns
         self.min_reference_prints = min_reference_prints
         # Most commands the venue will take from one participant per second, or
@@ -295,9 +316,9 @@ class Venue:
         # `_portfolio_affords` runs as a fallback when the per-contract check
         # refuses an order, and it asks the netted question: can this account
         # cover the worst case of the whole group. But `Account.apply_fill`
-        # keys collateral by *symbol* and always posts
-        # `collateral_for_basis` for that one contract, so what the ledger
-        # takes is gross whatever this flag says.
+        # keys collateral by *symbol* and always posts `collateral_for_basis`
+        # for that one contract, so what the ledger takes is gross whatever
+        # this flag says.
         #
         # Measured on seed 7 over 300 simulated seconds with it on: the
         # fallback ran 2,535 times and admitted 1,301 orders the per-contract
@@ -319,8 +340,8 @@ class Venue:
         # indistinguishable from a market that simply went quiet.
         self.halts: list[dict[str, Any]] = []
         # Who filled whom, per participant, most recent last. A trade event
-        # carries order ids rather than agents, so the pairing is resolved while
-        # both orders still resolve -- afterwards the ids are just numbers.
+        # carries order ids rather than agents, so the pairing is resolved
+        # while both orders still resolve; afterwards the ids are just numbers.
         #
         # Kept per agent rather than as one shared window, which was the first
         # attempt and was quietly useless: the bots print thousands of fills a
@@ -334,7 +355,7 @@ class Venue:
         # should not pay for a measurement nobody asked for.
         #
         # It exists because identities cannot be recovered afterwards. Prices
-        # and mids can be sampled from outside at any time -- that is what
+        # and mids can be sampled from outside at any time: that is what
         # `research.recorder` does, and being outside is what makes it unable
         # to perturb what it measures. But an order id resolves to an agent
         # only while the order is still in the book, so *who traded* has to be
@@ -394,22 +415,22 @@ class Venue:
         """The price open positions are valued at, in minor units.
 
         Mid when the book is two-sided, otherwise the last trade, otherwise the
-        midpoint of the contract's settlement bounds -- and in every case held
+        midpoint of the contract's settlement bounds, and in every case held
         inside whatever side of the touch is standing.
 
         The final fallback matters more than it looks: a contract that has never
         traded still has to be marked, and marking it at zero would report every
         short as instantly profitable.
 
-        The clamp matters for a subtler reason. A last trade is a fact about the
-        past and a resting order is an offer about the present, so when they
-        disagree the resting order wins: if someone is bidding 4682 right now,
-        the position is worth at least 4682 whatever the tape says, because that
-        is a price you can hit. Without it a one-lot print can drag the mark
-        away from a touch that a thousand lots are standing at -- which is
-        exactly what a stale or unrepresentative print is, and why real venues
-        bound settlement prices by the book rather than taking the last price
-        as given.
+        The clamp matters for a subtler reason. A last trade is a fact about
+        the past and a resting order is an offer about the present, so when
+        they disagree the resting order wins: if someone is bidding 4682 right
+        now, the position is worth at least 4682 whatever the tape says,
+        because that is a price you can hit. Without it a one-lot print can
+        drag the mark away from a touch that a thousand lots are standing at,
+        which is exactly what a stale or unrepresentative print is, and why
+        real venues bound settlement prices by the book rather than taking the
+        last price as given.
         """
         instrument = self.registry.require(symbol)
         tick = instrument.tick_in_minor
@@ -431,10 +452,10 @@ class Venue:
             low, high = self.bounds_in_minor(instrument)
             reference = (int(low) + int(high)) // 2
         # Not clamped into a crossed touch. A book in a call phase is crossed
-        # on purpose -- orders accumulate without matching -- so "inside the
-        # touch" is an empty interval, and forcing a number into it produced a
-        # mark *below* the standing bid, which is the opposite of what the
-        # clamp exists to prevent.
+        # on purpose (orders accumulate without matching) so "inside the touch"
+        # is an empty interval, and forcing a number into it produced a mark
+        # *below* the standing bid, which is the opposite of what the clamp
+        # exists to prevent.
         if not crossed:
             if book.best_bid is not None:
                 reference = max(reference, int(book.best_bid) * tick)
@@ -447,7 +468,7 @@ class Venue:
 
         The instrument declares the range it had when it was written. The venue
         is the only thing that knows how much of it has since been handed over,
-        so the adjustment lives here rather than on the contract -- which must
+        so the adjustment lives here rather than on the contract, which must
         stay immutable, because every price ever printed against it was an
         opinion about the terms as written.
         """
@@ -489,14 +510,13 @@ class Venue:
                 )
             ]
         # Priced off the grid its band requires. Checked here rather than in
-        # the engine because it is a listing rule -- a fact about this contract
-        # on this venue -- and not a property of matching.
-        # Replace as well as Submit. Guarding only new orders leaves a hole
-        # wide enough to drive through -- the same argument the collateral
-        # check twenty lines below already makes, and for the same reason: a
-        # modification is a request for a price exactly as an order is. An
-        # accepted bid could be replaced onto a price its band forbids and rest
-        # there with nothing rejected.
+        # the engine because it is a listing rule (a fact about this contract
+        # on this venue) and not a property of matching. Replace as well as
+        # Submit. Guarding only new orders leaves a hole wide enough to drive
+        # through, the same argument the collateral check twenty lines below
+        # already makes, and for the same reason: a modification is a request
+        # for a price exactly as an order is. An accepted bid could be replaced
+        # onto a price its band forbids and rest there with nothing rejected.
         priced = getattr(command, "price", None)
         if isinstance(command, Replace):
             priced = command.new_price
@@ -513,14 +533,14 @@ class Venue:
             # And inside the range the contract can settle in, which nothing
             # checked at all. Measured: a bid at -400 ticks on a contract
             # bounded by [0, 40,000] was acknowledged and rested, and a bid at
-            # 40,400 was acknowledged and *traded* -- printing at 10,100 on a
+            # 40,400 was acknowledged and *traded*, printing at 10,100 on a
             # claim that can be worth at most 10,000, and dragging the mark of
             # every position in the symbol to 10,100,000,000 with it.
             #
             # Collateral structurally cannot catch this, which is why it needs
             # a listing rule of its own. The requirement is the worst case over
             # the settlement range, so a bid *below* the floor scores as the
-            # safest order on the book -- it can only gain. The venue's central
+            # safest order on the book: it can only gain. The venue's central
             # safety mechanism rates the impossible order as the safe one.
             #
             # Checked against the range as it stands now, in the same minor
@@ -536,8 +556,8 @@ class Venue:
             # It governs entry and nothing else. An order already resting when
             # a distribution narrows the range underneath it stays exactly
             # where it is: the venue does not reprice an order whose owner
-            # named a price -- the same argument that keeps a limit order out
-            # of the circuit breaker's collar -- and pulling it would close a
+            # named a price (the same argument that keeps a limit order out of
+            # the circuit breaker's collar) and pulling it would close a
             # position its owner never asked to close. What follows the range
             # down instead is the collateral, which `distribute` re-posts
             # against the new bounds in the same instant it pays.
@@ -554,12 +574,12 @@ class Venue:
 
         # Sized on the lot the contract is listed in, which is the other half
         # of the same listing rule and was the half nobody enforced. The
-        # instrument declares "tick / lot -- the grid the exchange enforces"
-        # and only the tick was ever checked: measured on a contract listed in
-        # lots of ten, an order for **seven** was acknowledged and rested, and
-        # would have traded. A quantity that cannot exist is exactly as
-        # unquotable as a price that cannot exist, and a rule the venue does
-        # not enforce is documentation rather than a listing rule.
+        # instrument declares "tick / lot: the grid the exchange enforces" and
+        # only the tick was ever checked: measured on a contract listed in lots
+        # of ten, an order for **seven** was acknowledged and rested, and would
+        # have traded. A quantity that cannot exist is exactly as unquotable as
+        # a price that cannot exist, and a rule the venue does not enforce is
+        # documentation rather than a listing rule.
         sized = getattr(command, "quantity", None)
         if isinstance(command, Replace):
             sized = command.new_quantity
@@ -576,15 +596,15 @@ class Venue:
 
         # A cancel is counted against the allowance but is never refused for
         # it. Refusing one traps the participant in the orders it already has
-        # -- unable to place, unable to withdraw, holding exposure nobody is
-        # permitted to manage -- which is exactly the outcome the kill switch
+        # (unable to place, unable to withdraw, holding exposure nobody is
+        # permitted to manage), which is exactly the outcome the kill switch
         # thirty lines above goes out of its way to avoid, arriving by the
         # other control. Measured before this: a participant at a cap of five
         # sent five orders, then every attempt to pull one came back
-        # RATE_LIMITED, and fifty lots stayed standing in the book through
-        # five retries. A cancel also only ever *reduces* the venue's work and
-        # the participant's risk, so refusing it is the one refusal that makes
-        # both sides worse.
+        # RATE_LIMITED, and fifty lots stayed standing in the book through five
+        # retries. A cancel also only ever *reduces* the venue's work and the
+        # participant's risk, so refusing it is the one refusal that makes both
+        # sides worse.
         if self._rate_limited(agent_id, reducing=isinstance(command, Cancel)):
             return [
                 Rejected(
@@ -611,7 +631,7 @@ class Venue:
         # A call phase is defined by the fact that nothing matches in it, and a
         # replace is the one command that breaks that definition. The engine's
         # replace pulls the old order and re-runs the match on the replacement,
-        # unconditionally -- it never consults the phase -- so a halted book
+        # unconditionally (it never consults the phase) so a halted book
         # traded: measured, a replace during a halt printed 20 lots at 17,000
         # against an order that was only resting there because the auction had
         # not run yet.
@@ -619,7 +639,7 @@ class Venue:
         # Worse, market-on-open orders rest at the sentinel price so that they
         # cross every candidate the auction considers. A replace during a call
         # phase matches against those in continuous fashion, so it printed
-        # trades at **-4,611,686,018,427,387,904** -- the same catastrophe the
+        # trades at **-4,611,686,018,427,387,904**, the same catastrophe the
         # engine's unfilled-market-order sweep was written to prevent, reached
         # through a door that sweep does not cover.
         #
@@ -662,7 +682,7 @@ class Venue:
         # sent the command. A trade has two sides, and the resting one is
         # somebody else's: booking the batch under the sender alone meant the
         # passive side's fill was looked up in the wrong agent's record, found
-        # nothing, and did nothing -- so a maker's order stayed in the venue's
+        # nothing, and did nothing. So a maker's order stayed in the venue's
         # working book forever after the engine had removed it.
         #
         # Measured on a maker quoting two lots a round and getting lifted every
@@ -670,8 +690,8 @@ class Venue:
         # orders for 240 lots** while the engine's book held none, and
         # collateral was reserved against every one of them. With a million in
         # capital the maker was refused for insufficient collateral at round
-        # 47, holding 497,100 of free cash and nothing at all in the book --
-        # the account charged twice for a risk it holds once.
+        # 47, holding 497,100 of free cash and nothing at all in the book: the
+        # account charged twice for a risk it holds once.
         self._track_all_working(symbol, events, default_owner=agent_id)
         return events
 
@@ -724,8 +744,8 @@ class Venue:
             # had never been asked to cover.
             #
             # A plain stop can still fill through its trigger in a fast market
-            # -- that is the risk its owner takes in reality too -- but the
-            # collar on unpriced orders bounds how far through.
+            # (that is the risk its owner takes in reality too) but the collar
+            # on unpriced orders bounds how far through.
             side = command.side
             price = instrument.price_in_minor(command.stop_price)
             quantity = int(command.quantity)
@@ -737,8 +757,8 @@ class Venue:
             side = command.side
             # A market order can only ever trade against resting liquidity, so
             # its exposure is bounded by the book rather than by the contract's
-            # settlement range. Reserving against the far end of the range --
-            # 10,000 on a win-rate future quoted near 4,700 -- rejects orders
+            # settlement range. Reserving against the far end of the range
+            # (10,000 on a win-rate future quoted near 4,700) rejects orders
             # that could never have cost anything like that much, and does it
             # for a price the order was structurally incapable of paying.
             quantity, price = self._market_exposure(
@@ -755,8 +775,8 @@ class Venue:
             # does not trade on arrival at all: it rests until the uncross and
             # then trades against liquidity that had not arrived yet, at a
             # price the auction picks. So the honest assumption is the one the
-            # rest of this method makes about an order that named no price --
-            # the far end of the contract's range.
+            # rest of this method makes about an order that named no price: the
+            # far end of the contract's range.
             #
             # Measured before this: an account holding 10,000 sent a
             # market-on-open buy for 100,000 lots into an empty ask side. The
@@ -793,18 +813,18 @@ class Venue:
         # Each scenario is charged against the *basis* the position would end
         # up holding, not against its quantity priced at the trade that
         # finished it. The two differ whenever a fill adds to a position at a
-        # different price, and they differ in the dangerous direction: the
-        # cost of what is already held is simply missing from
-        # ``resulting * incoming_price``.
+        # different price, and they differ in the dangerous direction: the cost
+        # of what is already held is simply missing from ``resulting *
+        # incoming_price``.
         #
         # Measured through this order path, on an account holding 50,500 with
         # bounds of [0, 10,000]: ten lots long at 5,000, then ten more at 100.
         # The scenario was evaluated as ``20 * 100 = 2,000`` against a position
         # whose basis came out at 51,000, the order was accepted, and the
         # account finished with collateral of 51,000,000,000 minor units
-        # against 50,500,000,000 of cash -- **free cash of -500,000,000**,
-        # which is an account owing money it does not have on a venue whose
-        # whole claim is that it cannot.
+        # against 50,500,000,000 of cash, **free cash of -500,000,000**, which
+        # is an account owing money it does not have on a venue whose whole
+        # claim is that it cannot.
         #
         # `basis_after` is a pure projection of `Position.apply_fill`, held to
         # it by a property test over random fill sequences, so the figure
@@ -817,12 +837,16 @@ class Venue:
         # check has to hold for the worse of the two.
         buy_fee = int(self.fees.charge(abs(buys * int(worst_buy)), aggressor=True))
         sell_fee = int(self.fees.charge(abs(sells * int(worst_sell)), aggressor=True))
+        # Orders this agent has resting in other symbols are already spoken
+        # for. Their collateral is not posted yet, because nothing has filled,
+        # but it is not available to this order either.
+        elsewhere = self._reserved_elsewhere(agent_id, symbol)
         if self._survives(
             account, position, buys, worst_buy, current + buys, released, bounds,
-            buy_fee,
+            buy_fee, elsewhere,
         ) and self._survives(
             account, position, -sells, worst_sell, current - sells, released, bounds,
-            sell_fee,
+            sell_fee, elsewhere,
         ):
             return True
         if not self.netting:
@@ -834,8 +858,8 @@ class Venue:
         # simultaneously terrible for all of them, and for contracts on the
         # same underlying it cannot: they are functions of the same number. The
         # arbitrageur pays this most, because its whole business is holding
-        # packages that offset -- a conversion posts collateral on all three
-        # legs and can lose nothing at any level.
+        # packages that offset. A conversion posts collateral on all three legs
+        # and can lose nothing at any level.
         #
         # This is exact rather than a model. See `arena/portfolio/netting.py`.
         return self._portfolio_affords(agent_id, instrument, side, quantity, price)
@@ -851,22 +875,23 @@ class Venue:
         released: int,
         bounds: tuple[Money, Money],
         fee: int,
+        reserved: int = 0,
     ) -> bool:
         """Whether the account still covers itself after one scenario fills.
 
-        Three things move, and for a long time only two of them were counted. The scenario
-        posts collateral against the position it creates -- that was counted --
-        and it *realises* whatever the closing part of it made or lost, which
-        comes straight out of cash the moment the fill books. Checking the
-        requirement against the cash the account has now compares it with money
-        the trade is about to take away.
+        Three things move, and for a long time only two of them were counted.
+        The scenario posts collateral against the position it creates (that was
+        counted) and it *realises* whatever the closing part of it made or
+        lost, which comes straight out of cash the moment the fill books.
+        Checking the requirement against the cash the account has now compares
+        it with money the trade is about to take away.
 
         Measured over four hundred fills sweeping the whole settlement range:
         an account short four lots at an average of 50 bought eleven at 9,500.
         The flip realised a loss of **37,800,000,000** minor units, which the
         check never saw, so 66,500,000,000 of collateral was approved against
         104,130,530,000 of cash that became 66,309,630,000 the instant it
-        filled -- free cash of **-190,370,000**. Nine of thirty random runs
+        filled, free cash of **-190,370,000**. Nine of thirty random runs
         finished with some account underwater.
 
         The third thing is the fee, and it was missing for the same reason the
@@ -886,7 +911,7 @@ class Venue:
 
         The realised figure is derived from ``basis_after`` rather than
         computed alongside it, and the derivation is an identity that holds in
-        every branch of ``apply_fill`` -- opening, reducing and flipping alike:
+        every branch of ``apply_fill`` (opening, reducing and flipping alike):
 
             basis_after  =  basis_before  +  quantity * price  +  realised
 
@@ -894,11 +919,121 @@ class Venue:
         exactly one projection of the fill here, and it is the one the
         portfolio layer pins to ``apply_fill`` with a property test.
         """
+        return int(account.free_cash) - reserved >= cls._need(
+            account, position, quantity, price, resulting, released, bounds, fee
+        )
+
+    @classmethod
+    def _need(
+        cls,
+        account: Account,
+        position: Any,
+        quantity: int,
+        price: Money,
+        resulting: int,
+        released: int,
+        bounds: tuple[Money, Money],
+        fee: int,
+    ) -> int:
+        """Cash this scenario consumes: what it must post, net of what it frees.
+
+        The same arithmetic `_survives` has always done, named and returned
+        instead of compared, because an order resting in another symbol needs
+        the figure rather than the verdict. Positive means the scenario costs
+        the account money it has to have already; zero or less means the
+        scenario releases more than it takes, which a closing order does.
+        """
         projected = cls._basis_after(position, quantity, price)
         basis_now = int(position.cost_basis) if position is not None else 0
         realised = int(projected) - quantity * int(price) - basis_now
         required = int(account.collateral_for_basis(resulting, projected, bounds))
-        return int(account.free_cash) + released + realised - fee >= required
+        return required - released - realised + fee
+
+    def _reserve_for(self, agent_id: AgentId, symbol: str) -> int:
+        """What this agent's working orders in one symbol have to be backed by.
+
+        The worse of the two directional scenarios, which is the same choice
+        `_affordable` makes and for the same reason: only one of them can be
+        the adverse one, so charging both would charge a two-sided quote twice
+        for a risk it runs once.
+
+        Floored at zero. An order that would close a position releases
+        collateral rather than consuming it, and letting that show up as a
+        negative reserve would let a resting exit *fund* new exposure
+        elsewhere, on the strength of a fill that has not happened.
+        """
+        working = self._working.get((agent_id, symbol))
+        if not working:
+            return 0
+        instrument = self.registry.get(symbol)
+        account = self._accounts.get(agent_id)
+        if instrument is None or account is None:
+            return 0
+        bounds = self.bounds_in_minor(instrument)
+        position = account.positions.get(symbol)
+        current = position.quantity if position else 0
+        released = int(account.collateral.get(symbol, Money(0)))
+        buys = sum(q for s, q, _p in working.values() if s is Side.BUY)
+        sells = sum(q for s, q, _p in working.values() if s is Side.SELL)
+        prices = [p for _s, _q, p in working.values()]
+
+        need = 0
+        if buys:
+            worst = Money(max(prices))
+            fee = int(self.fees.charge(abs(buys * int(worst)), aggressor=True))
+            need = max(
+                need,
+                self._need(
+                    account, position, buys, worst, current + buys, released,
+                    bounds, fee,
+                ),
+            )
+        if sells:
+            worst = Money(min(prices))
+            fee = int(self.fees.charge(abs(sells * int(worst)), aggressor=True))
+            need = max(
+                need,
+                self._need(
+                    account, position, -sells, worst, current - sells, released,
+                    bounds, fee,
+                ),
+            )
+        return max(0, need)
+
+    def _restate_reserve(self, agent_id: AgentId, symbol: str) -> None:
+        """Re-price one symbol's reserve and carry the difference to the total.
+
+        Called wherever the three things it depends on move: the working orders
+        themselves, and the position and posted collateral a fill changes. Every
+        one of those arrives as an event batch that `_track_working` sees, so
+        this hangs off that rather than off three separate call sites that could
+        each be forgotten independently.
+        """
+        key = (agent_id, symbol)
+        previous = self._reserve.get(key, 0)
+        current = self._reserve_for(agent_id, symbol)
+        if current == previous:
+            return
+        if current:
+            self._reserve[key] = current
+        else:
+            self._reserve.pop(key, None)
+        total = self._reserved.get(agent_id, 0) + current - previous
+        if total:
+            self._reserved[agent_id] = total
+        else:
+            self._reserved.pop(agent_id, None)
+
+    def _reserved_elsewhere(self, agent_id: AgentId, symbol: str) -> int:
+        """The agent's open-order reserve outside the symbol being checked.
+
+        The symbol's own reserve is excluded because `_affordable` puts those
+        orders into its scenario directly; counting them here as well would
+        charge them twice and refuse a maker its second quote.
+        """
+        return self._reserved.get(agent_id, 0) - self._reserve.get(
+            (agent_id, symbol), 0
+        )
 
     @staticmethod
     def _basis_after(position: Any, quantity: int, price: Money) -> Money:
@@ -924,9 +1059,19 @@ class Venue:
         """Whether the account covers its worst case with this order added.
 
         Grouped by underlying, because only positions on the same underlying
-        are functions of the same number. Two Brawlers are two numbers, and
-        netting across them would need a correlation -- which would be an
+        are functions of the same number. Two competitors are two numbers, and
+        netting across them would need a correlation, which would be an
         estimate, and would give away the one thing this collateral model has.
+
+        This asks its question about *positions*, so it does not see the
+        open-order reserve the per-contract check applies, and an order that
+        check refuses can still be admitted here past orders the account has
+        resting elsewhere. That is one more reason `netting` is off by default
+        rather than a separate defect: the fix is to charge per netting group
+        in the gate and the ledger alike, at which point working orders belong
+        inside the group's worst case rather than beside it. Patching this
+        method on its own would leave two collateral models disagreeing about
+        the same account. docs/GAPS.md carries the measurements.
         """
         from arena.portfolio.netting import worst_case
 
@@ -1034,7 +1179,7 @@ class Venue:
                 # it from. Defaulting to BUY was a guess that is wrong half the
                 # time, and it had a real path to it: a pegged order with no
                 # reference acknowledges no price, so nothing is tracked, and
-                # its first reprice then booked a sell as a buy -- reserving
+                # its first reprice then booked a sell as a buy, reserving
                 # against the wrong end of the range entirely.
                 book[event.order_id] = (
                     self._side_of(symbol, event.order_id, book),
@@ -1047,16 +1192,16 @@ class Venue:
                 # A refusal is not a removal, and treating it as one lost the
                 # venue's only record of a live order. The engine refuses a
                 # replace it dislikes and leaves the original exactly where it
-                # was -- so `Replace(order, quantity=0)` came back
-                # INVALID_QUANTITY, the order stayed resting for 30 lots, and
-                # the venue forgot it existed. `kill` then reported no symbols
-                # and left the order standing in the book, which is the one
-                # control that is meant to always work doing nothing at all.
+                # was: `Replace(order, quantity=0)` came back INVALID_QUANTITY,
+                # the order stayed resting for 30 lots, and the venue forgot it
+                # existed. `kill` then reported no symbols and left the order
+                # standing in the book, which is the one control that is meant
+                # to always work doing nothing at all.
                 #
                 # The engine is the authority on whether anything went away, so
-                # ask it. A rejection that *did* terminate an order -- post-only
+                # ask it. A rejection that *did* terminate an order (post-only
                 # that would have crossed, fill-or-kill that could not, an
-                # immediate order refused by a call phase -- is acknowledged
+                # immediate order refused by a call phase) is acknowledged
                 # before it is refused, so the record must still be dropped for
                 # those or it becomes a phantom.
                 order_id = getattr(event, "order_id", None)
@@ -1064,17 +1209,18 @@ class Venue:
                     order = self._engines[symbol].book.get(order_id)
                     if order is not None and not order.is_resting:
                         book.pop(order_id, None)
+        self._restate_reserve(agent_id, symbol)
 
     def _working_price(self, symbol: str, event: Acknowledged) -> int | None:
         """What to reserve an acknowledged order against, in minor units.
 
         Its own price when it named one. An order that named none is either
-        parked with no price yet -- a peg with no reference, which is not in
-        any book and can create no position until it is -- or a market-on-open
-        order, which is resting right now and will trade at whatever the
-        auction clears at. The book tells the two apart, and the second is
-        reserved against the far end of the contract's range because that is
-        the worst price an order that named none could get.
+        parked with no price yet (a peg with no reference, which is not in any
+        book and can create no position until it is) or a market-on-open order,
+        which is resting right now and will trade at whatever the auction
+        clears at. The book tells the two apart, and the second is reserved
+        against the far end of the contract's range because that is the worst
+        price an order that named none could get.
         """
         instrument = self.registry.require(symbol)
         if event.price is not None:
@@ -1088,11 +1234,11 @@ class Venue:
     def _side_of(self, symbol: str, order_id: OrderId, book: dict) -> Side:
         """Which side a replaced order is on, asked of whoever still knows.
 
-        The venue's own record first, then the engine's book. Defaulting to
-        BUY was a guess that is wrong half the time, and there is a real path
-        to it: a pegged order with no reference acknowledges no price, so the
-        venue tracks nothing, and its first reprice then booked a sell as a buy
-        -- reserving against the wrong end of the settlement range entirely.
+        The venue's own record first, then the engine's book. Defaulting to BUY
+        was a guess that is wrong half the time, and there is a real path to
+        it: a pegged order with no reference acknowledges no price, so the
+        venue tracks nothing, and its first reprice then booked a sell as a
+        buy, reserving against the wrong end of the settlement range entirely.
         """
         existing = book.get(order_id)
         if existing is not None:
@@ -1197,9 +1343,9 @@ class Venue:
     def _enforce_lifecycle(self, symbol: str) -> bool:
         """Close a symbol the contract no longer permits trading in.
 
-        The rule itself is old -- once the observation window has closed the
+        The rule itself is old (once the observation window has closed the
         outcome is determined, so anyone still trading is trading against an
-        answer that already exists -- but it was enforced on exactly one path,
+        answer that already exists) but it was enforced on exactly one path,
         the arrival of an order. Every other way the venue acts on a symbol
         skipped it, and a halted symbol is precisely the one nobody sends
         orders to.
@@ -1275,15 +1421,15 @@ class Venue:
         its inventory is not managing risk, it is guessing.
 
         The fills go through exactly the same account path as continuous ones,
-        so collateral, fees and conservation cannot diverge between the two --
-        an auction that settled through its own accounting would be the ideal
+        so collateral, fees and conservation cannot diverge between the two: an
+        auction that settled through its own accounting would be the ideal
         place for a leak to hide.
         """
         instrument = self.registry.require(symbol)
         if self._enforce_lifecycle(symbol):
             # Nothing to cross. A contract past its window or already settled
             # has an answer, and an auction is a mechanism for discovering a
-            # price -- running one here would print trades against a number
+            # price; running one here would print trades against a number
             # everybody could already look up.
             return None, []
         engine = self._engines[symbol]
@@ -1299,8 +1445,8 @@ class Venue:
             # already carrying it: `_book_fills` records every `Traded` the
             # uncross produced, and an auction that clears has to produce at
             # least one. Appending here as well counted a single auction print
-            # twice -- measured, one print at 18,600 and two entries at 18,600
-            # in the window -- which double-weights the auction in the trailing
+            # twice (measured, one print at 18,600 and two entries at 18,600 in
+            # the window), which double-weights the auction in the trailing
             # mean and inflates the count the halting rule waits for.
             self._reference[symbol] = result.price
         self._reopen_at.pop(symbol, None)
@@ -1315,11 +1461,11 @@ class Venue:
 
         An uncross prints, and a print is a print whoever made it. Measured on
         the same book twice: a sell stop parked at 18,000 with a bid of 20 at
-        17,900 behind it. Traded continuously the tape read
-        ``[(10, 18000), (10, 17900)]`` and the stop was gone; cleared by an
-        auction the tape read ``[(10, 18000)]`` and the stop was still parked.
-        So an auction jumped straight over a stop -- and an auction is the event
-        most likely to gap through one, which is exactly why the stop was there.
+        17,900 behind it. Traded continuously the tape read ``[(10, 18000),
+        (10, 17900)]`` and the stop was gone; cleared by an auction the tape
+        read ``[(10, 18000)]`` and the stop was still parked. So an auction
+        jumped straight over a stop, and an auction is the event most likely to
+        gap through one, which is exactly why the stop was there.
 
         **After the phase flip, and that is the whole reason this lives here
         rather than in the engine.** `MatchingEngine.uncross` runs while the
@@ -1328,8 +1474,7 @@ class Venue:
         accumulated at the sentinel price instead. That is the order that once
         printed trades at -4,611,686,018,427,387,904 and billed 4.8e22 in fees.
         The venue owns the phase, so the venue is the only place the sequence
-        can be got right -- uncross, reopen, then release into a continuous
-        book.
+        can be got right: uncross, reopen, then release into a continuous book.
 
         The band is recomputed first, because a cascade is a market order and
         market orders are collared. The reference has just moved to the cleared
@@ -1386,7 +1531,7 @@ class Venue:
         """The mean of prints inside the reference window.
 
         The opening print until the window has filled, which is what a venue
-        uses before it has five minutes of trading to average -- and it is the
+        uses before it has five minutes of trading to average, and it is the
         auction price, so it is a price size actually transacted at.
         """
         window = self._recent.get(symbol)
@@ -1405,9 +1550,9 @@ class Venue:
         that goes quiet keeps a reference from whenever it last printed, the
         market walks away from it, and every unpriced order is then collared
         against a price that no longer exists. Measured, the band on
-        `SPIKE_WR_FUT` sat at 6,392 while the book was quoting 4,760 -- a third
-        of the way across the contract's range -- and no market order could
-        trade at all.
+        a win rate future sat at 6,392 while the book was quoting 4,760, a
+        third of the way across the contract's range, and no market order
+        could trade at all.
 
         A quote is weaker evidence than a trade, which is why it is the
         fallback rather than the rule. It is much better evidence than a price
@@ -1422,8 +1567,8 @@ class Venue:
     def _check_price_band(self, symbol: str, price: Price) -> None:
         """Record a print in the reference window. Nothing else.
 
-        Prints cannot leave the band any more -- the engine refuses to match
-        outside it -- so a print is no longer evidence of anything except where
+        Prints cannot leave the band any more (the engine refuses to match
+        outside it) so a print is no longer evidence of anything except where
         the market is. The limit state is judged from the *quote* instead, in
         :meth:`_check_limit_state`, which is what the rule actually says: a
         symbol is in a limit state when the best bid or offer is *at* a band,
@@ -1432,7 +1577,7 @@ class Venue:
         self._reference.setdefault(symbol, price)
         if self.price_band is None:
             # The window exists to serve the band and nothing else, and it is
-            # only ever trimmed by the two methods the band calls -- both of
+            # only ever trimmed by the two methods the band calls, both of
             # which return immediately when there is no band. So a venue with
             # the breaker switched off appended a print per trade and dropped
             # none: measured, 400 prints retained inside a window five minutes
@@ -1449,10 +1594,11 @@ class Venue:
         """Enter a limit state while the quote presses against a band, and pause
         if it stays there.
 
-        Three states rather than two, which is the whole point of modelling this
-        properly: quoting inside the band, pressing against it, and paused. One
-        order that reaches the edge is not an outage -- it is one order -- so
-        reaching it starts a clock and only staying there stops the market.
+        Three states rather than two, which is the whole point of modelling
+        this properly: quoting inside the band, pressing against it, and
+        paused. One order that reaches the edge is not an outage (it is one
+        order) so reaching it starts a clock and only staying there stops the
+        market.
         """
         if self.price_band is None or self.session(symbol) is not SessionState.CONTINUOUS:
             return
@@ -1460,7 +1606,7 @@ class Venue:
 
         # A locked book is a limit state by definition, whatever the reference
         # says. Bid above offer while trading means interest that wants to
-        # cross and is not allowed to -- which happens when an order slid to a
+        # cross and is not allowed to, which happens when an order slid to a
         # band edge and the band later moved away from it. Nothing in
         # continuous trading can clear that; an auction can, and clearing it at
         # one price is exactly what an auction is for.
@@ -1501,8 +1647,8 @@ class Venue:
         # meaningless here. A binary trading at fifty cents gets a band of two
         # and a half cents, which any ordinary tick of opinion breaks, so the
         # breaker paused every event contract on the exchange repeatedly while
-        # leaving the future -- whose 5% is 233 points, sixteen standard
-        # deviations -- untouched. Percentage bands assume a price with no
+        # leaving the future (whose 5% is 233 points, sixteen standard
+        # deviations) untouched. Percentage bands assume a price with no
         # natural scale. Every contract here has one: its settlement range. The
         # same reasoning already governs the maker's inventory skew, and it
         # makes one parameter mean the same thing on a future and on a coin
@@ -1565,10 +1711,10 @@ class Venue:
         #
         # A runaway algorithm is by definition at its cap at the moment someone
         # reaches for the kill switch, so routing these through the ordinary
-        # path meant every one of them came back RATE_LIMITED -- the one
-        # control that is meant to always work was the one the limiter
-        # disabled, and `kill` reported the symbols as pulled while both orders
-        # were still standing in the book.
+        # path meant every one of them came back RATE_LIMITED: the one control
+        # that is meant to always work was the one the limiter disabled, and
+        # `kill` reported the symbols as pulled while both orders were still
+        # standing in the book.
         self._internal = True
         try:
             for symbol in self.registry.symbols:
@@ -1580,7 +1726,7 @@ class Venue:
                 # market-on-open order acknowledges no price, so nothing was
                 # ever recorded for it, and the kill switch walked straight
                 # past one. Measured, `kill` reported the symbol as pulled
-                # while a 40-lot market-on-open buy stayed standing -- and the
+                # while a 40-lot market-on-open buy stayed standing. And the
                 # stopped participant then took 40 lots in the very auction it
                 # had been stopped before.
                 #
@@ -1614,8 +1760,8 @@ class Venue:
         across a boundary and counted as two quiet windows.
 
         ``reducing`` marks a command that can only take risk *out* of the
-        market. It is still counted -- a burst of them is still traffic, and
-        still costs the sender its ability to add anything -- but it is never
+        market. It is still counted (a burst of them is still traffic, and
+        still costs the sender its ability to add anything) but it is never
         refused, because a participant that cannot withdraw is a participant
         holding exposure nobody is permitted to manage.
         """
@@ -1645,7 +1791,7 @@ class Venue:
         protective: the worst it does is leave an order unfilled. Halting is
         disruptive, so it waits for a reference several prints deep. Holding
         both to the strict bar meant a market order could still walk a thin
-        book to the floor for as long as the tape was quiet -- which is exactly
+        book to the floor for as long as the tape was quiet, which is exactly
         when a thin book is walkable.
         """
         engine = self._engines.get(symbol)
@@ -1670,7 +1816,7 @@ class Venue:
 
         The venue does not reopen them itself. Something has to decide *when*
         time passes, and that is the simulation's business rather than the
-        ledger's -- so this reports and the caller uncrosses.
+        ledger's, so this reports and the caller uncrosses.
         """
         now = self._now()
         due: list[str] = []
@@ -1678,7 +1824,7 @@ class Venue:
             if now < at:
                 continue
             # The calendar is asked here too, because this is the one path that
-            # reaches a symbol nobody is sending orders to -- which is what a
+            # reaches a symbol nobody is sending orders to, which is what a
             # paused symbol is. A contract whose window closed while it was
             # paused has an answer, and reopening it would cross resting orders
             # against a number that already exists.
@@ -1731,6 +1877,8 @@ class Venue:
         # would keep reserving collateral against orders that can never fill.
         for key in [k for k in self._working if k[1] == symbol]:
             del self._working[key]
+        for agent_id in [k[0] for k in self._reserve if k[1] == symbol]:
+            self._restate_reserve(agent_id, symbol)
 
         realised: dict[AgentId, Decimal] = {}
         for agent_id in sorted(self._accounts):
@@ -1811,10 +1959,10 @@ class Venue:
         """Total equity minus total starting capital, in minor units.
 
         Must be **exactly** zero: trading moves value between participants, it
-        does not create it. A non-zero figure means an accounting leak, and this
-        is the single sharpest check available on the whole portfolio layer --
-        which is why the ledger runs on integers, so "exactly" can be meant
-        literally.
+        does not create it. A non-zero figure means an accounting leak, and
+        this is the single sharpest check available on the whole portfolio
+        layer, which is why the ledger runs on integers, so "exactly" can be
+        meant literally.
 
         Fees do not change that. They are a transfer to the venue's own account,
         which is counted here alongside everyone else's, so a schedule with any

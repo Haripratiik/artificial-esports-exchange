@@ -48,7 +48,7 @@ moments, which are not monotone in the scalar the first moments are monotone in.
 **On pooling formats.** A win rate in a ten-way elimination sits against a
 neutral point of 0.100 and a win rate in a three-a-side objective sits against
 0.500, so an average over a window holding both is a function of how many of
-each the schedule happened to run. That is the composition problem the Brawl
+each the schedule happened to run. That is the composition problem the the retired world
 world solves by standardizing onto pinned weights, and here it has a cleaner
 answer: refuse. Every per match average checks that the matches it was handed
 all came from one format and raises otherwise, so a contract on a win rate has
@@ -99,7 +99,7 @@ __all__ = [
 #
 # 8,640 is thirty days at the schedule the circuit actually runs, one match
 # every five minutes. Thirty days is also the longest observation window
-# anything in this repository writes, the Brawl contracts settling on
+# anything in this repository writes, the the retired world contracts settling on
 # twenty-eight, so the ceiling costs nothing anybody wanted and stops a single
 # settlement scanning an unbounded season. The constant lives here rather than
 # with the calendar because it is the number the bound is made of, and a bound
@@ -224,7 +224,7 @@ def _one_format(appearances: Sequence[MatchResult]) -> str:
     and a win in the objective mode against 0.500, and a solo match credits
     exactly 9 eliminations where an objective match credits 3 to 5, so a pooled
     average moves when the calendar changes the mix even though nothing about
-    the competitor changed. That is the composition problem the Brawl world
+    the competitor changed. That is the composition problem the retired statistics world
     spends an entire standardization step on. Here the honest answer is to
     refuse, because the formats are ours and a contract can simply name one.
     """

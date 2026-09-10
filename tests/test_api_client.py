@@ -71,21 +71,25 @@ from arena_client import (  # noqa: E402
 DOC_KEY_ID = "ak_0011223344556677"
 DOC_SECRET = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 DOC_TIMESTAMP = "1787000000"
+# Recomputed when the exchange moved to its own world and the old symbols
+# went with it. The price moved as well as the symbol: the replacement
+# contract carries the tiered tick grid, which steps to 1.00 above 4,000, so
+# 4663.25 is a price this venue refuses and a worked example nobody could send.
 DOC_BODY = {
-    "symbol": "SPIKE_WR_FUT",
+    "symbol": "VANTA_OBJECTIVE_WR",
     "side": "buy",
     "quantity": 5,
-    "price": "4663.25",
+    "price": "4663.00",
 }
-DOC_BODY_BYTES = b'{"price":"4663.25","quantity":5,"side":"buy","symbol":"SPIKE_WR_FUT"}'
+DOC_BODY_BYTES = b'{"price":"4663.00","quantity":5,"side":"buy","symbol":"VANTA_OBJECTIVE_WR"}'
 DOC_CANONICAL = (
     b"1787000000\nPOST\n/v1/orders\n"
-    b'{"price":"4663.25","quantity":5,"side":"buy","symbol":"SPIKE_WR_FUT"}'
+    b'{"price":"4663.00","quantity":5,"side":"buy","symbol":"VANTA_OBJECTIVE_WR"}'
 )
-DOC_SIGNATURE = "05d1de8528b12f2781fb9dc6f81359df95579f59245429c63a40cc047ed13ef2"
+DOC_SIGNATURE = "b6b5153733f44607c8793cd3f19ea62bf35a65b5f9651d478f0252d55948db88"
 
-DOC_GET_PATH = "/v1/instruments/SPIKE_WR_FUT/book?depth=5"
-DOC_GET_SIGNATURE = "37e60b358fd1f467edd50d22df11ea23322c86e3ad404401b29b323751c0cc1a"
+DOC_GET_PATH = "/v1/instruments/VANTA_OBJECTIVE_WR/book?depth=5"
+DOC_GET_SIGNATURE = "6b3a1a689a12d10e9bae1f8f41db14fe1af53461be7c6159d872586fc4cfcae8"
 
 
 # --------------------------------------------------------------------------
@@ -97,16 +101,16 @@ DOC_GET_SIGNATURE = "37e60b358fd1f467edd50d22df11ea23322c86e3ad404401b29b323751c
 # --------------------------------------------------------------------------
 
 REAL_BOOK = {
-    "symbol": "SPIKE_WR_FUT",
+    "symbol": "VANTA_OBJECTIVE_WR",
     "bids": [["4689.00", 22], ["4688.75", 3], ["4684.50", 14], ["4671.75", 2]],
     "asks": [["4693.25", 6], ["4696.75", 30], ["4730.25", 4], ["4757.00", 6]],
     "session": "continuous",
 }
 
 REAL_INSTRUMENT = {
-    "symbol": "SPIKE_WR_FUT",
+    "symbol": "VANTA_OBJECTIVE_WR",
     "class": "future",
-    "contract_id": "SPIKE_WR_FUT",
+    "contract_id": "VANTA_OBJECTIVE_WR",
     "spec_digest": (
         "sha256:5118899e743c009f2680e08970bf545d3970e1b00e960f4b128aa9ab6428c41b"
     ),
@@ -232,7 +236,7 @@ VECTORS = [
     ("GET", "/v1/account", "1787000000", b""),
     ("GET", "/v1/account/fills?limit=50", "1787000001", b""),
     ("POST", "/v1/orders", "1787000002", DOC_BODY_BYTES),
-    ("DELETE", "/v1/orders/SPIKE_WR_FUT/5083", "1787000003", b""),
+    ("DELETE", "/v1/orders/VANTA_OBJECTIVE_WR/5083", "1787000003", b""),
     ("DELETE", "/v1/orders", "0", b""),
     ("get", "/v1/instruments?class=future&subject=SPIKE", "1787000004", b""),
 ]
@@ -256,8 +260,8 @@ def test_the_signature_is_the_one_the_venue_computes(method, path, timestamp, bo
 
 def test_a_body_serialises_to_the_same_bytes_whatever_order_it_was_built_in():
     """A signature covers bytes, so dict ordering must not reach them."""
-    one = {"symbol": "SPIKE_WR_FUT", "side": "buy", "quantity": 5, "price": "4663.25"}
-    other = {"price": "4663.25", "quantity": 5, "side": "buy", "symbol": "SPIKE_WR_FUT"}
+    one = {"symbol": "VANTA_OBJECTIVE_WR", "side": "buy", "quantity": 5, "price": "4663.00"}
+    other = {"price": "4663.00", "quantity": 5, "side": "buy", "symbol": "VANTA_OBJECTIVE_WR"}
     assert arena_client.body_bytes(one) == arena_client.body_bytes(other)
     assert arena_client.body_bytes(one) == keys.body_bytes(one)
     assert arena_client.body_bytes(one) == DOC_BODY_BYTES
@@ -343,7 +347,7 @@ def test_a_signed_post_verifies_with_its_body():
     client, seen = signed_stub(
         {"order_id": 5083}, store, key_id=key.key_id, secret=key.secret
     )
-    client.place_order("SPIKE_WR_FUT", "buy", 5, price=Decimal("4663.25"))
+    client.place_order("VANTA_OBJECTIVE_WR", "buy", 5, price=Decimal("4663.00"))
     request = seen["request"]
     assert request.content == DOC_BODY_BYTES
     assert request.headers["content-type"] == "application/json"
@@ -381,15 +385,15 @@ def test_a_venue_served_under_a_path_prefix_signs_the_prefix():
 def test_an_empty_parameter_is_dropped_rather_than_sent_empty():
     """``?depth=`` and no query at all are two different signed strings."""
     client, seen = stub(REAL_BOOK)
-    client.book("SPIKE_WR_FUT")
-    assert seen["request"].url.raw_path == b"/v1/instruments/SPIKE_WR_FUT/book"
+    client.book("VANTA_OBJECTIVE_WR")
+    assert seen["request"].url.raw_path == b"/v1/instruments/VANTA_OBJECTIVE_WR/book"
 
 
 def test_a_public_endpoint_needs_no_credential():
     """Market data is public, and asking for a key to read it would be theatre."""
     client, _ = stub(REAL_BOOK)
     assert client.authenticated is False
-    assert client.book("SPIKE_WR_FUT", depth=5)["symbol"] == "SPIKE_WR_FUT"
+    assert client.book("VANTA_OBJECTIVE_WR", depth=5)["symbol"] == "VANTA_OBJECTIVE_WR"
 
 
 def test_a_signed_endpoint_without_a_credential_fails_before_the_request():
@@ -439,7 +443,7 @@ def test_the_stream_auth_frame_signs_the_stream_path():
 def test_book_prices_come_back_as_decimal():
     """A ladder is prices, and a price compared as a float is not a price."""
     client, _ = stub(REAL_BOOK)
-    book = client.book("SPIKE_WR_FUT", depth=5)
+    book = client.book("VANTA_OBJECTIVE_WR", depth=5)
     best_bid = book["bids"][0]
     assert isinstance(best_bid, Level)
     assert best_bid.price == Decimal("4689.00")
@@ -458,7 +462,7 @@ def test_the_spread_is_exact():
     rejected by a venue that will not round it back on.
     """
     client, _ = stub(REAL_BOOK)
-    book = client.book("SPIKE_WR_FUT")
+    book = client.book("VANTA_OBJECTIVE_WR")
     spread = book["asks"][0].price - book["bids"][0].price
     assert spread == Decimal("4.25")
     assert spread % Decimal("0.25") == 0
@@ -510,10 +514,10 @@ def test_no_float_appears_anywhere_in_a_parsed_response():
     assert floats_in(client.account()) == []
 
     client, _ = stub(REAL_BOOK)
-    assert floats_in(client.book("SPIKE_WR_FUT")) == []
+    assert floats_in(client.book("VANTA_OBJECTIVE_WR")) == []
 
     client, _ = stub({"trades": [REAL_TRADE]})
-    tape = client.trades("SPIKE_WR_FUT", limit=1)
+    tape = client.trades("VANTA_OBJECTIVE_WR", limit=1)
     assert floats_in(tape) == []
     assert tape["trades"][0]["price"] == Decimal("4694.00")
 
@@ -525,8 +529,8 @@ def test_a_bare_json_number_becomes_a_decimal_not_a_float():
     parser. It is read from the literal digits instead, so the value is the one
     that was published rather than the nearest binary approximation of it.
     """
-    client, _ = stub({"symbol": "SPIKE_WR_FUT", "settles_at": 4669.25, "band": 0.05})
-    payload = client.instrument("SPIKE_WR_FUT")
+    client, _ = stub({"symbol": "VANTA_OBJECTIVE_WR", "settles_at": 4669.25, "band": 0.05})
+    payload = client.instrument("VANTA_OBJECTIVE_WR")
     assert payload["settles_at"] == Decimal("4669.25")
     assert isinstance(payload["settles_at"], Decimal)
     assert payload["band"] == Decimal("0.05")
@@ -541,7 +545,7 @@ def test_a_settlement_bound_in_exponent_notation_parses_exactly():
     ``str(Decimal)`` does with a scaled value.
     """
     client, _ = stub(REAL_INSTRUMENT)
-    instrument = client.instrument("SPIKE_WR_FUT")
+    instrument = client.instrument("VANTA_OBJECTIVE_WR")
     low, high = instrument["settlement_bounds"]
     assert (low, high) == (Decimal(0), Decimal(10_000))
     assert instrument["tick_size"] == Decimal("0.25")
@@ -558,16 +562,16 @@ def test_a_price_that_is_absent_stays_absent():
         key_id=DOC_KEY_ID,
         secret=DOC_SECRET,
     )
-    ack = client.place_order("SPIKE_WR_FUT", "buy", 5)
+    ack = client.place_order("VANTA_OBJECTIVE_WR", "buy", 5)
     assert ack["price"] is None
 
 
 def test_a_field_this_client_does_not_recognise_is_handed_back_verbatim():
     """Lossless, not converted. Guessing that a string is money corrupts ids."""
     client, _ = stub(REAL_INSTRUMENT)
-    instrument = client.instrument("SPIKE_WR_FUT")
+    instrument = client.instrument("VANTA_OBJECTIVE_WR")
     assert instrument["spec_digest"] == REAL_INSTRUMENT["spec_digest"]
-    assert instrument["contract_id"] == "SPIKE_WR_FUT"
+    assert instrument["contract_id"] == "VANTA_OBJECTIVE_WR"
     assert instrument["lot_size"] == 1
 
 
@@ -580,12 +584,12 @@ def test_a_float_price_argument_is_refused():
     """
     client, _ = stub({}, key_id=DOC_KEY_ID, secret=DOC_SECRET)
     with pytest.raises(TypeError, match="float"):
-        client.place_order("SPIKE_WR_FUT", "buy", 1, price=4663.25)
+        client.place_order("VANTA_OBJECTIVE_WR", "buy", 1, price=4663.25)
 
 
 def test_a_price_goes_on_the_wire_as_the_exact_numeral_it_was_given():
     client, seen = stub({}, key_id=DOC_KEY_ID, secret=DOC_SECRET)
-    client.place_order("SPIKE_WR_FUT", "buy", 1, price=Decimal("4663.250"))
+    client.place_order("VANTA_OBJECTIVE_WR", "buy", 1, price=Decimal("4663.250"))
     body = json.loads(seen["request"].content)
     assert body["price"] == "4663.250"
 
@@ -603,11 +607,11 @@ def test_a_mistyped_side_is_refused_at_the_call_site():
     """
     client, _ = stub({}, key_id=DOC_KEY_ID, secret=DOC_SECRET)
     with pytest.raises(ValueError, match="buy or sell"):
-        client.place_order("SPIKE_WR_FUT", "BID", 1, price="4663.25")
+        client.place_order("VANTA_OBJECTIVE_WR", "BID", 1, price="4663.00")
     with pytest.raises(TypeError):
-        client.place_order("SPIKE_WR_FUT", "buy", True, price="4663.25")
+        client.place_order("VANTA_OBJECTIVE_WR", "buy", True, price="4663.00")
     with pytest.raises(ValueError):
-        client.place_order("SPIKE_WR_FUT", "buy", 0, price="4663.25")
+        client.place_order("VANTA_OBJECTIVE_WR", "buy", 0, price="4663.00")
 
 
 def test_a_non_json_token_in_a_response_is_refused():
@@ -619,7 +623,7 @@ def test_a_non_json_token_in_a_response_is_refused():
         ),
     )
     with pytest.raises(ClientError) as raised:
-        client.history("SPIKE_WR_FUT")
+        client.history("VANTA_OBJECTIVE_WR")
     assert raised.value.code == "client_unreadable_response"
 
 
@@ -685,14 +689,14 @@ def test_the_detail_a_refusal_carries_survives():
     body = errors.error_body(
         "invalid_price",
         "price must be a number on the instrument's tick grid",
-        symbol="SPIKE_WR_FUT",
+        symbol="VANTA_OBJECTIVE_WR",
         tick_size="0.25",
     )
     client, _ = stub(body, status=400, key_id=DOC_KEY_ID, secret=DOC_SECRET)
     with pytest.raises(InvalidRequest) as raised:
-        client.place_order("SPIKE_WR_FUT", "buy", 1, price="4663.30")
+        client.place_order("VANTA_OBJECTIVE_WR", "buy", 1, price="4663.30")
     assert raised.value.detail["tick_size"] == "0.25"
-    assert raised.value.detail["symbol"] == "SPIKE_WR_FUT"
+    assert raised.value.detail["symbol"] == "VANTA_OBJECTIVE_WR"
 
 
 def test_a_failure_with_no_envelope_is_still_one_exception_type():
@@ -732,7 +736,7 @@ def test_an_error_envelope_delivered_with_a_success_status_still_raises():
         secret=DOC_SECRET,
     )
     with pytest.raises(Rejected):
-        client.place_order("SPIKE_WR_FUT", "buy", 1, price="4663.25")
+        client.place_order("VANTA_OBJECTIVE_WR", "buy", 1, price="4663.00")
 
 
 def test_a_transport_failure_is_reported_as_one():

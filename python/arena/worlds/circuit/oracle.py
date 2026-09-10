@@ -1,6 +1,6 @@
 """The circuit world's settlement oracle, and the calendar that makes it one.
 
-The Brawl world collects matches and looks them up. This world generates them,
+The the retired world world collects matches and looks them up. This world generates them,
 so the question a contract asks changes shape: "what happened between these two
 dates" has no answer until something decides which matches those dates name.
 That decision is the calendar below, and it is the whole of the mapping.
@@ -263,7 +263,7 @@ class CircuitOracle:
                 f"{ref.metric!r} is not one of {sorted(METRICS)}",
             ) from None
 
-        # `maps` and `trophy_buckets` describe the Brawl world's strata and have
+        # `maps` and `trophy_buckets` describe the retired statistics world's strata and have
         # no meaning to an aggregate over circuit matches. A contract that sets
         # one is asking for a narrowing this oracle cannot perform, and
         # honouring it as a no-op would settle something wider than the contract

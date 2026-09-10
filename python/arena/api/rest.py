@@ -1019,7 +1019,7 @@ def _subjects(instrument: Any) -> list[str]:
     """What this contract is written on, as plain names.
 
     Every class answers, because every contract is an underlying and a payoff
-    and the underlying knows its atoms. A future on one Brawler names one; a
+    and the underlying knows its atoms. A future on one competitor names one; a
     spread names the two it is a difference of; an index names its whole
     basket. Nothing here branches on the class, which is what makes the
     ``subject`` filter mean the same thing for all nine of them.

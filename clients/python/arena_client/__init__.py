@@ -1,4 +1,4 @@
-"""Client library for the Artificial Brawl Stars Exchange trading API.
+"""Client library for the Artificial Esports Exchange trading API.
 
 Ten lines from nothing to a working order::
 
@@ -6,10 +6,10 @@ Ten lines from nothing to a working order::
     from arena_client import ArenaClient
 
     client = ArenaClient("http://localhost:8000", key_id="ak_...", secret="...")
-    book = client.book("SPIKE_WR_FUT", depth=5)
+    book = client.book("VANTA_OBJECTIVE_WR", depth=5)
     best_bid = book["bids"][0].price          # Decimal('4689.00'), not 4689.0
     order = client.place_order(
-        "SPIKE_WR_FUT", "buy", 1, price=best_bid, time_in_force="gtc"
+        "VANTA_OBJECTIVE_WR", "buy", 1, price=best_bid, time_in_force="gtc"
     )
 
 The signing is automatic once a key is present, and every price and balance

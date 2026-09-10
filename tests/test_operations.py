@@ -37,7 +37,7 @@ from arena.sim.time import seconds
 
 from dashboard.build_market import build
 
-SYMBOL = "SPIKE_WR_FUT"
+SYMBOL = "EMBER_OBJECTIVE_WR"
 
 
 def _Ctx(kernel, agent_id):
@@ -290,13 +290,26 @@ def test_the_band_is_a_fraction_of_what_a_contract_can_be_worth():
     ratio is a constant zero on every seed, so it was really comparing a real
     number against an arbitrary floor of one.
 
-    Measured over 240s at a 5% band, halts per contract: events 3.50, 3.67,
-    4.33 and 3.00 on seeds 7, 3, 11 and 41, against 0.00 for the futures on
-    all four. That gap is the world rather than the parameter. A binary
-    converges toward zero or one as evidence arrives, so it genuinely crosses
-    most of its range in a session, while a future converges on a point well
-    inside a wide one. A breaker calibrated to range will fire more on the
-    first, and that is it working.
+    Re-measured on the circuit listing over 240s at a 5% band, halts per
+    contract: events 4.50, 1.30, 2.70 and 2.20 on seeds 7, 3, 11 and 41,
+    against 7.58, 2.16, 6.42 and 6.63 for the futures on the same four.
+
+    **The ordering reversed and the old reading of it was wrong.** On the
+    listing this replaces the events paused 3.00 to 4.33 times each and the
+    futures never paused at all, and that was read as the world rather than the
+    parameter: a binary converges toward zero or one as evidence arrives and so
+    crosses most of its range in a session, while a future converges on a point
+    well inside a wide one. If that were the whole mechanism it would not
+    depend on which contracts are listed, and it does. The futures now pause
+    more often than the events on every one of the four seeds, so whatever
+    produced the old gap was a property of that listing and not of the two
+    payoff shapes.
+
+    What the assertion is actually about survives the reversal, and it is the
+    reason the ceiling below sits on the events: under the old
+    percentage-of-price band the event contracts paused without bound while the
+    future was never touched, and a band that is a fraction of range does not
+    single them out. Bounded at 8.0 against a measured worst of 4.50.
     """
     market = build(seed=7, price_band=0.05)
     market.kernel.start()
@@ -322,12 +335,19 @@ def test_the_band_is_a_fraction_of_what_a_contract_can_be_worth():
     # And the room it buys, in ticks, scales with the range rather than with
     # the price. A binary and a future must differ here by the ratio of their
     # ranges and by nothing else.
-    binary = market.venue.registry.require(
-        next(s for s in market.venue.registry.symbols if s.endswith("GT47"))
-    )
-    future = market.venue.registry.require(
-        next(s for s in market.venue.registry.symbols if s.endswith("_WR_FUT"))
-    )
+    # Chosen by asset class rather than by a suffix, so a relisting moves the
+    # symbols without silently emptying the generator behind `next`.
+    def _first(instrument_class):
+        return market.venue.registry.require(
+            next(
+                s
+                for s in market.venue.registry.symbols
+                if market.venue.registry.require(s).instrument_class == instrument_class
+            )
+        )
+
+    binary = _first("event")
+    future = _first("future")
     def room(instrument):
         low, high = instrument.tick_bounds
         return abs(int(high) - int(low)) * market.venue.price_band
@@ -337,15 +357,16 @@ def test_the_band_is_a_fraction_of_what_a_contract_can_be_worth():
     assert room(binary) / room(future) == pytest.approx(binary_span / future_span)
 
     # The breaker still has to be doing something, or the band is decorative.
-    # Bounded generously against the measured 3.00 to 4.33, because the failure
+    # Bounded generously against the measured 1.30 to 4.50, because the failure
     # this guards against is the old percentage-of-price band, under which the
     # event contracts paused without bound while the future was never touched.
     paused = Counter(
         h["symbol"] for h in market.venue.halts if h["reason"] == "price_band"
     )
     events = [
-        s for s in market.venue.registry.symbols
-        if s.endswith(("GT44", "GT46", "GT47", "GT48"))
+        s
+        for s in market.venue.registry.symbols
+        if market.venue.registry.require(s).instrument_class == "event"
     ]
     assert events
     on_events = sum(paused.get(s, 0) for s in events) / len(events)

@@ -19,10 +19,13 @@ denominated in those ticks. So the table is a rule about which prices may be
 be a whole multiple of the base -- otherwise the rule would forbid prices the
 representation can express, which is a rule nobody could follow.
 
-The feature arrived with no tests. ``PIPER_WR_FUT`` is the one listed contract
-that carries a table -- a quarter of a point up to 4,000 and a whole point
-above it -- so the last tests here run the live market and check the rule
-against real order flow rather than against hand-written orders.
+The feature arrived with no tests. ``VANTA_OBJECTIVE_WR`` is the one listed
+contract that carries a table, a quarter of a point up to 4,000 and a whole
+point above it, so the last tests here run the live market and check the rule
+against real order flow rather than against hand-written orders. It is a team
+win rate rather than an individual one for a reason the listing gives: a team
+rate settles near 5,000 and an individual one near 1,100, so a table
+thresholded at 4,000 would never fire on the individual side.
 """
 
 from __future__ import annotations
@@ -141,10 +144,10 @@ def test_below_the_first_threshold_the_increment_is_the_base_tick():
     contract -- and the bottom of the range is exactly where a fine tick is
     doing its work.
     """
-    piper = future(table=LISTED)
-    assert piper.increment_at(D("0.25")) == D("0.25")
-    assert piper.increment_at(D("1250.50")) == D("0.25")
-    assert piper.increment_at(D("3999.75")) == D("0.25")
+    tiered = future(table=LISTED)
+    assert tiered.increment_at(D("0.25")) == D("0.25")
+    assert tiered.increment_at(D("1250.50")) == D("0.25")
+    assert tiered.increment_at(D("3999.75")) == D("0.25")
 
 
 def test_the_threshold_price_itself_belongs_to_the_coarser_band():
@@ -156,10 +159,10 @@ def test_the_threshold_price_itself_belongs_to_the_coarser_band():
     there, and then the answer would depend on which of two functions was
     asked.
     """
-    piper = future(table=LISTED)
-    assert piper.increment_at(D("3999.75")) == D("0.25")
-    assert piper.increment_at(D("4000.00")) == D("1.00")
-    assert piper.increment_at(D("4000.25")) == D("1.00")
+    tiered = future(table=LISTED)
+    assert tiered.increment_at(D("3999.75")) == D("0.25")
+    assert tiered.increment_at(D("4000.00")) == D("1.00")
+    assert tiered.increment_at(D("4000.25")) == D("1.00")
 
 
 @pytest.mark.parametrize(
@@ -223,9 +226,9 @@ def test_the_same_fraction_is_quotable_below_the_threshold_and_not_above_it():
     because it was dropped on the way to the instrument or because the lookup
     ignores the price it was handed.
     """
-    piper = future(table=LISTED)
-    assert piper.on_grid(D("3990.25"))
-    assert not piper.on_grid(D("4000.25"))
+    tiered = future(table=LISTED)
+    assert tiered.on_grid(D("3990.25"))
+    assert not tiered.on_grid(D("4000.25"))
 
 
 def test_a_price_off_its_band_grid_is_still_a_whole_number_of_base_ticks():
@@ -236,9 +239,9 @@ def test_a_price_off_its_band_grid_is_still_a_whole_number_of_base_ticks():
     Conflating the two would mean either an engine that cannot represent half
     its own price range, or a listing rule that nothing enforces.
     """
-    piper = future(table=LISTED)
-    assert int(piper.to_ticks(D("4000.25"))) == 16_001
-    assert not piper.on_grid(D("4000.25"))
+    tiered = future(table=LISTED)
+    assert int(tiered.to_ticks(D("4000.25"))) == 16_001
+    assert not tiered.on_grid(D("4000.25"))
 
 
 # --------------------------------------------------------------------------
@@ -254,13 +257,13 @@ def test_the_venue_accepts_a_limit_price_on_its_bands_grid():
     order refused for a price the contract does allow is worse than one
     allowed off the grid, because the agent has no way to comply.
     """
-    piper = future(table=LISTED)
-    venue = venue_with(piper)
+    tiered = future(table=LISTED)
+    venue = venue_with(tiered)
     events = venue.submit(
-        MAKER, SYM, limit(MAKER, Side.BUY, piper.to_ticks(D("4000.00")))
+        MAKER, SYM, limit(MAKER, Side.BUY, tiered.to_ticks(D("4000.00")))
     )
     assert RejectReason.INVALID_PRICE not in reasons(events)
-    assert resting(venue.engine(SYM).book.snapshot(), piper) == [D("4000.00")]
+    assert resting(venue.engine(SYM).book.snapshot(), tiered) == [D("4000.00")]
 
 
 def test_the_venue_refuses_a_limit_price_off_its_bands_grid():
@@ -270,10 +273,10 @@ def test_the_venue_refuses_a_limit_price_off_its_bands_grid():
     calls them, in which case the table exists only in the spec and agents
     quote through it freely.
     """
-    piper = future(table=LISTED)
-    venue = venue_with(piper)
+    tiered = future(table=LISTED)
+    venue = venue_with(tiered)
     events = venue.submit(
-        MAKER, SYM, limit(MAKER, Side.BUY, piper.to_ticks(D("4000.25")))
+        MAKER, SYM, limit(MAKER, Side.BUY, tiered.to_ticks(D("4000.25")))
     )
     assert reasons(events) == [RejectReason.INVALID_PRICE]
 
@@ -285,9 +288,9 @@ def test_an_order_refused_for_its_price_does_not_rest():
     and the event stream disagree about what happened. Checking the book as
     well as the event is what separates a refusal from a warning.
     """
-    piper = future(table=LISTED)
-    venue = venue_with(piper)
-    venue.submit(MAKER, SYM, limit(MAKER, Side.BUY, piper.to_ticks(D("4000.25"))))
+    tiered = future(table=LISTED)
+    venue = venue_with(tiered)
+    venue.submit(MAKER, SYM, limit(MAKER, Side.BUY, tiered.to_ticks(D("4000.25"))))
     snapshot = venue.engine(SYM).book.snapshot()
     assert snapshot.priced_bids == ()
     assert snapshot.priced_asks == ()
@@ -301,9 +304,9 @@ def test_a_market_order_names_no_price_and_so_cannot_be_off_grid():
     for a price it never named. Either way the venue stops accepting the one
     order type that exists precisely to leave the price to the book.
     """
-    piper = future(table=LISTED)
-    venue = venue_with(piper)
-    venue.submit(MAKER, SYM, limit(MAKER, Side.BUY, piper.to_ticks(D("4000.00"))))
+    tiered = future(table=LISTED)
+    venue = venue_with(tiered)
+    venue.submit(MAKER, SYM, limit(MAKER, Side.BUY, tiered.to_ticks(D("4000.00"))))
     events = venue.submit(TAKER, SYM, market_order(TAKER, Side.SELL))
     assert reasons(events) == []
     assert venue.account(TAKER).position(SYM).quantity == -1
@@ -393,10 +396,10 @@ def test_a_bid_snaps_down_and_an_offer_snaps_up():
     4,001 instead and pays for a fill it did not ask for. The direction of the
     rounding is the entire safety property.
     """
-    piper = future(table=LISTED)
-    off = piper.to_ticks(D("4000.75"))
-    assert piper.from_ticks(_on_grid(piper, Side.BUY, off)) == D("4000.00")
-    assert piper.from_ticks(_on_grid(piper, Side.SELL, off)) == D("4001.00")
+    tiered = future(table=LISTED)
+    off = tiered.to_ticks(D("4000.75"))
+    assert tiered.from_ticks(_on_grid(tiered, Side.BUY, off)) == D("4000.00")
+    assert tiered.from_ticks(_on_grid(tiered, Side.SELL, off)) == D("4001.00")
 
 
 def test_a_price_already_on_the_grid_is_returned_unchanged():
@@ -406,11 +409,11 @@ def test_a_price_already_on_the_grid_is_returned_unchanged():
     whole point away from the market, which widens the spread for no reason
     and would look like the market maker declining to compete.
     """
-    piper = future(table=LISTED)
+    tiered = future(table=LISTED)
     for price in ("3999.75", "4000.00", "4001.00"):
-        ticks = piper.to_ticks(D(price))
-        assert _on_grid(piper, Side.BUY, ticks) == ticks
-        assert _on_grid(piper, Side.SELL, ticks) == ticks
+        ticks = tiered.to_ticks(D(price))
+        assert _on_grid(tiered, Side.BUY, ticks) == ticks
+        assert _on_grid(tiered, Side.SELL, ticks) == ticks
 
 
 def test_snapping_never_makes_a_quote_more_aggressive():
@@ -422,19 +425,19 @@ def test_snapping_never_makes_a_quote_more_aggressive():
     the spot checks leave out: the result is always on the grid, and always
     less than one increment from where the agent aimed.
     """
-    piper = future(table=LISTED)
+    tiered = future(table=LISTED)
     for tick in range(15_980, 16_041):
-        wanted = piper.from_ticks(Price(tick))
-        step = piper.increment_at(wanted)
+        wanted = tiered.from_ticks(Price(tick))
+        step = tiered.increment_at(wanted)
 
-        bid = piper.from_ticks(_on_grid(piper, Side.BUY, Price(tick)))
+        bid = tiered.from_ticks(_on_grid(tiered, Side.BUY, Price(tick)))
         assert bid <= wanted, f"a bid at {wanted} snapped up to {bid}"
-        assert piper.on_grid(bid), f"a bid at {wanted} snapped to {bid}, off grid"
+        assert tiered.on_grid(bid), f"a bid at {wanted} snapped to {bid}, off grid"
         assert wanted - bid < step
 
-        ask = piper.from_ticks(_on_grid(piper, Side.SELL, Price(tick)))
+        ask = tiered.from_ticks(_on_grid(tiered, Side.SELL, Price(tick)))
         assert ask >= wanted, f"an offer at {wanted} snapped down to {ask}"
-        assert piper.on_grid(ask), f"an offer at {wanted} snapped to {ask}, off grid"
+        assert tiered.on_grid(ask), f"an offer at {wanted} snapped to {ask}, off grid"
         assert ask - wanted < step
 
 
@@ -494,8 +497,8 @@ def test_the_tiered_contract_trades_and_leaves_a_book_behind(live_market):
     check for off-grid prices trivially, and the pass would mean the tiered
     tick had made the symbol unquotable rather than that it worked.
     """
-    assert volume_on(live_market, "PIPER_WR_FUT") > 0
-    assert prices_on(live_market, "PIPER_WR_FUT")
+    assert volume_on(live_market, "VANTA_OBJECTIVE_WR") > 0
+    assert prices_on(live_market, "VANTA_OBJECTIVE_WR")
 
 
 def test_nothing_rests_off_the_grid_on_the_tiered_contract(live_market):
@@ -506,23 +509,23 @@ def test_nothing_rests_off_the_grid_on_the_tiered_contract(live_market):
     to arrive without having been snapped or checked. This is the only test
     here that would notice.
     """
-    piper = live_market.venue.registry.require("PIPER_WR_FUT")
+    tiered = live_market.venue.registry.require("VANTA_OBJECTIVE_WR")
     off_grid = [
         str(price)
-        for price in prices_on(live_market, "PIPER_WR_FUT")
-        if not piper.on_grid(price)
+        for price in prices_on(live_market, "VANTA_OBJECTIVE_WR")
+        if not tiered.on_grid(price)
     ]
     assert off_grid == []
 
 
 def test_the_tiered_contract_quotes_whole_points_above_its_threshold(live_market):
-    """Where PIPER actually trades is above 4,000, so the coarse band is the live one.
+    """Where it actually trades is above 4,000, so the coarse band is the live one.
 
     Without this the test above could pass on a session that spent all its
     time below the threshold, where the coarse band is never consulted and
     every quarter-point price is on the grid anyway.
     """
-    above = [p for p in prices_on(live_market, "PIPER_WR_FUT") if abs(p) >= D("4000")]
+    above = [p for p in prices_on(live_market, "VANTA_OBJECTIVE_WR") if abs(p) >= D("4000")]
     assert above, "nothing rested in the coarse band, so it was never exercised"
     assert all(price % 1 == 0 for price in above)
 
@@ -530,14 +533,14 @@ def test_the_tiered_contract_quotes_whole_points_above_its_threshold(live_market
 def test_the_uniform_contract_still_quotes_quarters(live_market):
     """A listing rule for one contract must not become a rule for the venue.
 
-    SPIKE_WR_FUT trades in the same range as PIPER and has no table, so if the
-    coarse band had leaked -- through a shared default, or a grid check that
-    read some other instrument -- its quarter-point quotes would be the first
-    casualty, and the symptom would be a market that had quietly got worse
-    rather than an error.
+    QUILL_OBJECTIVE_WR is a team win rate too, so it trades in the same range
+    as the tiered contract, and it has no table. If the coarse band had leaked,
+    through a shared default or a grid check that read some other instrument,
+    its quarter-point quotes would be the first casualty, and the symptom would
+    be a market that had quietly got worse rather than an error.
     """
-    prices = prices_on(live_market, "SPIKE_WR_FUT")
-    assert volume_on(live_market, "SPIKE_WR_FUT") > 0
+    prices = prices_on(live_market, "QUILL_OBJECTIVE_WR")
+    assert volume_on(live_market, "QUILL_OBJECTIVE_WR") > 0
     assert any(price % 1 != 0 for price in prices), (
         "no fractional price rested, so the uniform tick was not exercised"
     )
@@ -558,10 +561,10 @@ def test_the_venue_refuses_a_quantity_off_the_contracts_lot():
     listing rule. Measured on a contract listed in lots of ten, an order for
     **seven** was acknowledged, rested, and would have traded.
     """
-    piper = Instrument(SYM, spec(), lot_size=10)
-    venue = venue_with(piper)
+    tiered = Instrument(SYM, spec(), lot_size=10)
+    venue = venue_with(tiered)
     events = venue.submit(
-        MAKER, SYM, limit(MAKER, Side.BUY, piper.to_ticks(D("4000.00")), quantity=7)
+        MAKER, SYM, limit(MAKER, Side.BUY, tiered.to_ticks(D("4000.00")), quantity=7)
     )
     assert reasons(events) == [RejectReason.INVALID_QUANTITY]
     assert venue.engine(SYM).book.total_resting_quantity == 0
@@ -573,10 +576,10 @@ def test_the_venue_accepts_a_whole_number_of_lots():
     -- and an agent told no for a size the contract does allow has no way to
     comply.
     """
-    piper = Instrument(SYM, spec(), lot_size=10)
-    venue = venue_with(piper)
+    tiered = Instrument(SYM, spec(), lot_size=10)
+    venue = venue_with(tiered)
     events = venue.submit(
-        MAKER, SYM, limit(MAKER, Side.BUY, piper.to_ticks(D("4000.00")), quantity=30)
+        MAKER, SYM, limit(MAKER, Side.BUY, tiered.to_ticks(D("4000.00")), quantity=30)
     )
     assert reasons(events) == []
     assert venue.engine(SYM).book.total_resting_quantity == 30
@@ -590,15 +593,15 @@ def test_an_amendment_cannot_resize_an_order_off_the_lot():
     nothing rejected. A modification is a request for a size exactly as it is a
     request for a price.
     """
-    piper = Instrument(SYM, spec(), lot_size=10)
-    venue = venue_with(piper)
+    tiered = Instrument(SYM, spec(), lot_size=10)
+    venue = venue_with(tiered)
     accepted = venue.submit(
-        MAKER, SYM, limit(MAKER, Side.BUY, piper.to_ticks(D("4000.00")), quantity=30)
+        MAKER, SYM, limit(MAKER, Side.BUY, tiered.to_ticks(D("4000.00")), quantity=30)
     )
     order_id = next(e.order_id for e in accepted if isinstance(e, Acknowledged))
 
     events = venue.submit(
-        MAKER, SYM, Replace(MAKER, order_id, Quantity(7), piper.to_ticks(D("3999.00")))
+        MAKER, SYM, Replace(MAKER, order_id, Quantity(7), tiered.to_ticks(D("3999.00")))
     )
     assert reasons(events) == [RejectReason.INVALID_QUANTITY]
     assert venue.engine(SYM).book.total_resting_quantity == 30
@@ -647,12 +650,12 @@ def test_the_venue_refuses_a_price_the_contract_can_never_settle_at():
     it can only gain. The venue's central safety mechanism rates the impossible
     order as the safe one.
     """
-    piper = future()
-    venue = venue_with(piper)
-    low, high = piper.value_bounds
+    tiered = future()
+    venue = venue_with(tiered)
+    low, high = tiered.value_bounds
 
-    below = _at(venue, piper, str(low - D("100")))
-    above = _at(venue, piper, str(high + D("100")))
+    below = _at(venue, tiered, str(low - D("100")))
+    above = _at(venue, tiered, str(high + D("100")))
     assert reasons(below) == [RejectReason.INVALID_PRICE]
     assert reasons(above) == [RejectReason.INVALID_PRICE]
     assert venue.engine(SYM).book.total_resting_quantity == 0
@@ -666,13 +669,13 @@ def test_a_price_on_either_bound_is_still_a_price_the_contract_can_pay():
     inequalities would forbid the two prices a binary spends its whole life
     converging on.
     """
-    piper = future()
-    venue = venue_with(piper)
-    low, high = piper.value_bounds
+    tiered = future()
+    venue = venue_with(tiered)
+    low, high = tiered.value_bounds
 
-    assert reasons(_at(venue, piper, str(low))) == []
-    assert reasons(_at(venue, piper, str(high), side=Side.SELL, who=TAKER)) == []
-    assert resting(venue.engine(SYM).book.snapshot(), piper) == [low, high]
+    assert reasons(_at(venue, tiered, str(low))) == []
+    assert reasons(_at(venue, tiered, str(high), side=Side.SELL, who=TAKER)) == []
+    assert resting(venue.engine(SYM).book.snapshot(), tiered) == [low, high]
     assert venue.conservation_check() == 0
 
 
@@ -682,22 +685,22 @@ def test_an_amendment_cannot_move_an_order_outside_the_range():
     could be amended onto a price the listing forbids and rest there with
     nothing rejected.
     """
-    piper = future()
-    venue = venue_with(piper)
-    _low, high = piper.value_bounds
-    accepted = _at(venue, piper, "4000.00")
+    tiered = future()
+    venue = venue_with(tiered)
+    _low, high = tiered.value_bounds
+    accepted = _at(venue, tiered, "4000.00")
     order_id = next(e.order_id for e in accepted if isinstance(e, Acknowledged))
 
     outside = venue.submit(
         MAKER,
         SYM,
-        Replace(MAKER, order_id, Quantity(5), piper.to_ticks(high + D("100"))),
+        Replace(MAKER, order_id, Quantity(5), tiered.to_ticks(high + D("100"))),
     )
     assert reasons(outside) == [RejectReason.INVALID_PRICE]
-    assert resting(venue.engine(SYM).book.snapshot(), piper) == [D("4000.00")]
+    assert resting(venue.engine(SYM).book.snapshot(), tiered) == [D("4000.00")]
 
     inside = venue.submit(
-        MAKER, SYM, Replace(MAKER, order_id, Quantity(5), piper.to_ticks(high))
+        MAKER, SYM, Replace(MAKER, order_id, Quantity(5), tiered.to_ticks(high))
     )
     assert reasons(inside) == []
     assert venue.conservation_check() == 0

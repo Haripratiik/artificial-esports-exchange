@@ -5,9 +5,10 @@ exchange, with a number at the end you are entitled to believe. It assumes you
 know what a limit order book is and what adverse selection means, and assumes
 nothing at all about this repository.
 
-**No real money and no real securities are involved.** The underlyings are
-public Brawl Stars battle statistics, every counterparty is a simulated agent,
-and the capital is imaginary. What is real is the microstructure: a matching
+**No real money and no real securities are involved.** The underlyings are a
+synthetic esport this repository generates from a seed, its matches and the
+statistics measured on them. Every counterparty is a simulated agent and the
+capital is imaginary. What is real is the microstructure: a matching
 engine with price-time priority, per-agent latency, an opening auction, a
 circuit breaker, integer collateral, and a ledger whose conservation check is
 exactly zero. A strategy that loses money here loses it for reasons that would
@@ -566,39 +567,87 @@ measuring the grid.
 
 ## The contracts
 
-Forty-seven contracts in nine classes, all settling from one bounded scalar per
-underlying, which is what makes collateral arithmetic rather than a model.
-Positions on different underlyings do not net, because netting them would need a
-correlation and a correlation is an estimate.
+Fifty statistical contracts in nine classes, all settling from one bounded
+scalar per underlying, which is what makes collateral arithmetic rather than a
+model. Positions on different underlyings do not net, because netting them would
+need a correlation and a correlation is an estimate. Nor does one competitor
+across the two formats: their win rates rank the field at Spearman -0.357, so
+treating them as one underlying would be assuming a relationship the number says
+is not there.
+
+Whatever matches are open sit on top of that. A ten-entrant solo match adds 270
+event contracts and a three-a-side objective match 38, so the board runs to 355
+markets of which 316 are prediction markets. The table below is the statistical
+listing, because that is what a strategy written against a level or a spread is
+trading; matches have their own section after it.
+
+A ticker names its subject, its format and what it claims: `VANTA_SOLO_WR` is
+VANTA's win rate in the ten-way elimination, `VANTA_OBJECTIVE_WR` the same
+competitor in the three-a-side. They are different underlyings and they do not
+net, which the naming is there to keep visible.
 
 | Class | Count | Tick | What is different about it |
 | --- | --- | --- | --- |
-| `future` | 8 | 0.25 | A linear claim on a win rate. The plainest thing here, and the one everything else is priced off. Four are on the full window and four are weekly. |
-| `call` | 11 | 0.25 | Convex in the same underlying as the futures, so its fair value is a function of the *distribution* rather than the level. Four of the eleven settle at exactly zero. |
-| `put` | 9 | 0.25 | The mirror. Four settle at exactly zero. Together with the calls this is a surface, and the maker that quotes it prices one distribution rather than each book on its own. |
-| `event` | 8 | 0.01 | Binaries, bounded in [0, 1], so the price *is* a probability and a tick is a percentage point. The only class where a wrong quote is bounded by one unit of loss. |
-| `equity` | 2 | 0.25 | Pays as it goes and settles at the end, so a short can be asked for the stream as well as the settlement. `SPIKE_EQ` has `settlement_bounds` of (0, 0) and `value_bounds` of (0, 4000): all of its value is the stream, and collateral has to cover the stream. |
-| `commodity` | 5 | 0.05 | A claim on an amount delivered over a window rather than a proportion, so these come in term structures and carry information about carry as well as level. |
-| `volatility` | 2 | 0.25 | A claim on dispersion. Not a level, so a strategy that treats it as one will be systematically wrong in the same direction. |
-| `spread` | 1 | 0.25 | `SPIKE_CROW`, bounded in [-10000, 10000]. **The only contract that can be worth a negative number.** Any strategy that assumes prices are positive breaks here and nowhere else. |
-| `index` | 1 | 0.25 | A basket. Its identity against its constituents is exactly the kind of relation `StaticArbitrage` trades. |
+| `future` | 19 | 0.25 | A linear claim on a rate. The plainest thing here, and what everything else is priced off. Twelve are win rates, two are eliminations per match, one is a score margin, and four are the weekly legs of the share. |
+| `event` | 10 | 0.01 | Binaries, bounded in [0, 1], so the price *is* a probability and a tick is a percentage point. The only class where a wrong quote is bounded by one unit of loss. |
+| `call` | 5 | 0.25 | Convex in the same underlying as the futures, so its fair value is a function of the *distribution* rather than the level. Two of the five settle at exactly zero. |
+| `put` | 5 | 0.25 | The mirror. One settles at exactly zero. Together with the calls this is a surface, and the maker that quotes it prices one distribution rather than each book on its own. |
+| `commodity` | 5 | 0.25 | A claim on an amount delivered over a window rather than a proportion, so these come in a term structure and carry information about carry as well as level. The one metric here that is a quantity. |
+| `volatility` | 3 | 0.25 | A claim on dispersion. Not a level, so a strategy that treats it as one will be systematically wrong in the same direction. |
+| `spread` | 1 | 0.25 | `HALCYON_FORMAT_SPD`, one competitor's solo win rate against its objective one, bounded in [-10000, 10000]. **The only contract that can be worth a negative number.** Any strategy that assumes prices are positive breaks here and nowhere else. |
+| `index` | 1 | 0.25 | `CIRCUIT_SOLO_IDX`, an equal-weight basket of six solo win rates. Its identity against its constituents is exactly the kind of relation `StaticArbitrage` trades. |
+| `equity` | 1 | 0.25 | Pays as it goes and settles at the end, so a short can be asked for the stream as well as the settlement. `BASTION_SOLO_EQ` has `settlement_bounds` of (0, 0): all of its value is the stream, and collateral has to cover the stream. |
 
 Two things generalise from that table.
 
-**Bounds are the contract, not a convention.** A call bounded in [0, 5450] and a
+**Bounds are the contract, not a convention.** A call bounded in [0, 5200] and a
 binary bounded in [0, 1] are not the same instrument scaled. Collateral is the
 worst case of a piecewise-linear payoff evaluated at its endpoints and kinks, so
-a short in the call ties up capital in proportion to 5450 and a short in the
+a short in the call ties up capital in proportion to 5200 and a short in the
 binary ties up capital in proportion to 1. `row.instrument.collateral_for()`
 computes it, and it is the same arithmetic the venue charges with.
 
-**Tick sizes differ, and one contract has a tiered grid.** `PIPER_WR_FUT` moves
-in 0.25 low down and 1.00 higher up, and every other contract has one increment
-everywhere. Snapping a price is therefore not a single division. Use `snap()`,
+**Tick sizes differ, and one contract has a tiered grid.** `VANTA_OBJECTIVE_WR`
+moves in 0.25 low down and 1.00 above 4,000, and every other contract has one
+increment everywhere. Snapping a price is therefore not a single division. Use `snap()`,
 and note that the agent layer repeats the snap because a single pass can round
 *into* a coarser band and land off its grid: with steps of 1.00 from 100 and
 5.00 from 203, an offer at 202.75 snaps up to 203.00, which is not a multiple of
 five, and comes back `INVALID_PRICE`.
+
+### Matches, which behave differently enough to say so
+
+A match contract is an `event` like any other, and three things about it will
+surprise a strategy written against the statistical listing.
+
+**They settle mid-session.** A competitor who has been eliminated cannot win, so
+that contract is worth zero and settles the moment the elimination is revealed,
+while the rest of the match keeps trading. Your position keeper cannot assume
+settlement only happens at an expiry, and a strategy that treats a vanished
+symbol as a data error will thrash several times a minute.
+
+**There is no arbitrage inside a match, and that is by construction.** Every
+contract on one match is priced as the mean of the settlement rule over a single
+ensemble of drawn outcomes, so the winner set sums to one and both ladders are
+monotone as arithmetic rather than as policy. Measured: zero violations across
+22,650 relation checks in exact rational arithmetic. `StaticArbitrage` will find
+nothing here, and that is the mechanism working. The control is worth knowing
+because it says what the alternative costs: the same contracts priced off eight
+ensembles drawn from the same belief breach 53 of the 395 relations by up to
+0.1163.
+
+**A price of exactly zero is real, and a zero offer is not.** The ensemble is
+finite, so an outcome it never drew prices at zero. Measured at 4,000 draws over
+20 beliefs, as many as 34 of a solo match's 270 contracts priced at exactly 0 or
+1 on one belief, and 611 of the 612 such prices across all twenty were rungs of
+an eliminations ladder. A maker quotes a zero fair value as 0 bid against a
+one-tick offer, because the offer is a ceiling and never a floor.
+
+Symbols look like `SOLO7_WIN_CINDER`, `SOLO7_TOP3_QUILL`, `SOLO7_ELIM_CINDER_GT2`
+and `SOLO7_H2H_VANTA_OVER_QUILL`, with a team side named by its members as in
+`OBJECTIVE12_WIN_KESTREL-QUILL-VANTA`. Read the contract rather than the ticker:
+the view carries the underlying, whose metric is `match_win`, `match_place` or
+`match_eliminations` and whose `maps` filter carries the `match-N` tag.
 
 ---
 
@@ -610,23 +659,24 @@ that already knew. The dislocation is enormous and it is not uniform:
 
 | Contract | Opens at | Fair value | Ratio |
 | --- | --- | --- | --- |
-| `SPIKE_WR_FUT` | 5000.00 | 4669.25 | 1.07 |
-| `SPIKE_C4550` | 2725.00 | 119.25 | 22.9 |
-| `SPIKE_C4650` | 2675.00 | 19.25 | 139 |
-| `ELPRIMO_C4650` | 2675.00 | 16.50 | 162 |
-| `SPIKE_C4700` | 2650.00 | 0.00 | infinite |
-| `SPIKE_GT47` | 0.50 | 0.00 | infinite |
+| `VANTA_OBJECTIVE_WR` | 5000.00 | 4893.50 | 1.02 |
+| `VANTA_SOLO_WR` | 5000.00 | 1397.50 | 3.58 |
+| `EMBER_OBJECTIVE_C4800` | 2600.00 | 238.25 | 10.9 |
+| `QUILL_SOLO_C600` | 4700.00 | 164.75 | 28.5 |
+| `EMBER_OBJECTIVE_C5000` | 2500.00 | 38.25 | 65.4 |
+| `QUILL_SOLO_C800` | 4600.00 | 0.00 | infinite |
+| `VANTA_SOLO_GT140` | 0.50 | 0.00 | infinite |
 
-Twelve of the forty-seven contracts settle at exactly zero, four calls, four
-puts and four binaries, and every one of them opens somewhere between 0.50 and
-2650. A strategy that sells the open would post a spectacular and
+Seven of the fifty statistical contracts settle at exactly zero, two calls, one
+put and four binaries, and every one of them opens somewhere between 0.50 and
+4,600. A strategy that sells the open would post a spectacular and
 meaningless Sharpe ratio, and it would be measuring the builder rather than
 itself. The call clears at ten simulated seconds, so the harness holds your
 strategy out of the market until the warmup has elapsed and starts every
 statistic at the end of it. Both halves matter: excluding the warmup from the
 statistics without also holding the strategy out would leave the inventory it
 took in the auction inside the measured window. Measured on seed 3 with the
-minimal maker quoting all 47 books, letting it trade the open books 2,739,688 in
+minimal maker quoting the statistical books, letting it trade the open books 2,739,688 in
 fourteen seconds, which is 13.7% of its capital, and then takes the post-warmup
 P&L from -2,044,297 to -9,028,498. Run that control yourself with
 `BacktestConfig(trade_during_warmup=True)`.
@@ -675,7 +725,7 @@ crosses what is actually there.
 
 **Nothing may be hardcoded to a symbol, a seed, a strike or an agent.** That is
 a house rule for this repository and it is also self-interested advice. A
-strategy tuned to `SPIKE_C4550` on seed 7 has stopped being evidence about
+strategy tuned to `QUILL_SOLO_C600` on seed 7 has stopped being evidence about
 anything, and the harness makes that visible rather than comfortable: run it on
 `seeds=range(8)` and the per-seed dispersion is right there.
 

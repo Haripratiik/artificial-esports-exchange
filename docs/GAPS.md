@@ -7,22 +7,41 @@ exactly which claims are load-bearing.
 ## The size of the thing
 
 ```
-dashboard                4,973 lines    the exchange as a website
-python/arena/market      3,224          venue, instruments, sessions, live market
-python/arena/agents      2,719          participants, market makers, surface maker
-python/arena/exchange    2,564          matching engine, order book, order types
-python/arena/worlds      1,939          the underlying: stratified estimation, dispersion
-python/arena/research    1,364          trial harness, manifests, baselines
-collectors               1,251          Supercell crawl, normalisation, store
-python/arena/contracts     832          underlying algebra, payoffs, specs
-python/arena/sim           759          kernel, latency, messages
-tools + experiments      1,226          diagnostics and the experimental runs
-python/arena/portfolio     623          positions, accounts, money, netting
-python/arena/settlement     398          oracle protocol, settlement engine
+dashboard                7,424 lines    the exchange as a website, server and front end
+python/arena/strategies  5,819          the strategy interface and six reference strategies
+python/arena/market      5,803          venue, instruments, sessions, live market, matches
+python/arena/api         5,170          REST routes, signing, the streaming socket
+python/arena/agents      4,386          participants, market makers, surface and match makers
+python/arena/research    3,566          trial harness, manifests, baselines
+python/arena/exchange    2,881          matching engine, order book, order types
+python/arena/sim         2,043          kernel, latency, messages
+clients + examples       1,765          the API client library and the runnable demos
+python/arena/worlds      1,626          the synthetic esport: roster, formats, matches, metrics
+python/arena/contracts     843          underlying algebra, payoffs, specs
+python/arena/portfolio     812          positions, accounts, money, netting
+experiments                524          the experimental runs
+python/arena/settlement    422          oracle protocol, settlement engine
+python/arena              128           determinism primitives
                         ------
-                        22,085 lines of production code
-                        11,867 lines of tests
+                        43,212 lines of source
+                        31,084 lines of tests, carrying 1,550 tests across 49 files
 ```
+
+Counted with `wc -l` over `.py`, `.js`, `.css` and `.html`, excluding
+`__pycache__`, the one vendored JavaScript file, and the retired collector along
+with the world it fed. `tools/` is excluded for the same reason: all four
+scripts there built fixtures and reference snapshots for that world. The test
+figure is a collection count from `pytest --collect-only`, which is a count of
+tests rather than a claim about a green run.
+
+**On the figures in this document.** The exchange changed the world it settles
+on: it used to be another party's published statistics and it is now a synthetic
+esport this repository generates. Every number here was measured, and the ones
+taken before that change are still what they were, because they are measurements
+of the venue's own machinery rather than of the world. Where such a figure names
+a contract, the contract named is the one in the current listing that occupies
+the same role: the flagship win-rate future, the call that settles worthless, the
+spread and its legs. Anything measured on the circuit world itself says so.
 
 A production venue is six to seven figures of code and clears real money. This
 is a research instrument, so the useful question is not size but whether the
@@ -87,8 +106,8 @@ production venue offers twenty or more.
 ### Why margin stays absent
 
 Not an omission. Every contract here settles inside a known interval, which is
-what makes collateral exact arithmetic rather than a value-at-risk estimate --
-a short at 5,100 on a contract bounded by 10,000 can lose at most 4,900 per lot,
+what makes collateral exact arithmetic rather than a value-at-risk estimate.
+A short at 5,100 on a contract bounded by 10,000 can lose at most 4,900 per lot,
 and nothing needs to model volatility to know it. Leverage is precisely the
 decision to hold *less* than that, which replaces the subtraction with an
 estimate and brings with it a liquidation engine, a margin model, and every way
@@ -109,8 +128,8 @@ Not everything thin is wrong, and these have been checked rather than assumed:
 - **Exact conservation of value** through trading and settlement, on integer
   money. Not nearly-zero: zero.
 - **Exact collateral**, because every instrument settles inside a known
-  interval -- arithmetic rather than a value-at-risk estimate.
-- **Twelve instrument classes** from one algebra, including compositions nobody
+  interval: arithmetic rather than a value-at-risk estimate.
+- **Nine instrument classes** from one algebra, including compositions nobody
   designed for, with put-call parity exact at settlement.
 - **Lookahead prevented structurally** on five channels.
 
@@ -119,7 +138,7 @@ Not everything thin is wrong, and these have been checked rather than assumed:
 `arena/market/lmsr_venue.py` runs Hanson's logarithmic scoring rule beside the
 order book. It subclasses `Venue` rather than reimplementing it, so accounts,
 collateral, expiry, settlement and the conservation check are literally the same
-code on both -- if they were separate implementations, a difference between the
+code on both. If they were separate implementations, a difference between the
 two experiments could be an accounting difference.
 
 The cost curve is rendered as an L2 book (level `T` holds the shares that move
@@ -127,20 +146,20 @@ the marginal price from tick `T` to `T+1`), so `VenueAgent`, the market-data
 feeds and every agent work against it unchanged. Two honest departures from a
 book, both documented in the module: nothing rests, so every order is
 effectively immediate-or-cancel; and raw LMSR has **no bid-ask spread at all**
-because it is path independent -- the spread here comes from quantising prices to
+because it is path independent, so the spread here comes from quantising prices to
 the tick grid, always in the maker's favour, which is also what keeps the ledger
 exact and the bounded-loss guarantee intact.
 
 Liquidity is parameterised by **subsidy**, not by `b`: the subsidy is what the
 venue will lose making the market, which is the quantity anyone actually
 decides, and `b` is its consequence. `subsidy_for_depth` inverts it again so the
-two venues can be calibrated to the same depth at the touch -- without that, a
+two venues can be calibrated to the same depth at the touch. Without that, a
 comparison of mechanisms would really be a comparison of depths.
 
 **Result: the mechanism does not matter.** 200 paired trials, order book 0.03108
 against scoring rule 0.03115, difference +0.00007 with a 95% interval of
 [-0.0035, +0.0031]. A tight null, not an underpowered one. Sweeping depth across
-a 70x range does not rescue it either -- error is U-shaped with its minimum at
+a 70x range does not rescue it either: error is U-shaped with its minimum at
 the depth-matched point and never approaches the precision-weighted baseline.
 
 ## Fees, sessions, halts and realistic flow
@@ -150,13 +169,13 @@ actually delivers rather than what it was aimed at.
 
 **Fees** (`arena/market/fees.py`) are maker-taker on notional in basis points.
 They land in a real venue account inside the conservation check, because the
-quiet failure here is charging the right amount and banking it nowhere -- the
+quiet failure here is charging the right amount and banking it nowhere, and the
 ledger would still balance to within a rounding error. Rounding always goes
 toward the venue, or many tiny fills would extract a fraction of a unit each.
 `POST_ONLY` exists because maker-taker creates it: a maker that crosses by
 accident pays the taker fee instead of earning the rebate.
 
-**Call auctions** (`arena/exchange/session.py`) clear on four tie-breaks --
+**Call auctions** (`arena/exchange/session.py`) clear on four tie-breaks:
 maximum volume, minimum surplus, the surplus's own side, nearest the reference.
 Everyone trades at one price, market orders become market-on-open orders, and
 limit IOC/FOK are refused during a call rather than silently rested. Auction
@@ -172,7 +191,7 @@ arrivals, with parameters quoted from the literature rather than fitted here.
 
 ### Two things it measured that were not what was expected
 
-**The cancel rate is ~60%, not the >90% of real equity books** -- 58.8% without
+**The cancel rate is ~60%, not the >90% of real equity books**, 58.8% without
 these agents and 60.4% with, so they barely move it. The missing thirty points
 are structural: real cancellation is dominated by makers requoting on every tick
 at microsecond scale, and nothing here requotes faster than 300ms. Left as a gap
@@ -201,7 +220,7 @@ rather than "reduced them".
 The first Hawkes implementation added excitation in the wrong units with no
 stability condition. One agent reached 26,000x its baseline intensity, its
 inter-arrival time collapsed to microseconds, and it emitted roughly 6,000
-orders a second forever -- the suite simply stopped returning. It is now a real
+orders a second forever, and the suite simply stopped returning. It is now a real
 Hawkes process parameterised by branching ratio, the constructor refuses any
 value at or above one, and a test checks the realised rate against the
 theoretical `mu / (1 - n)`.
@@ -227,13 +246,13 @@ each item. Struck items link to what actually happened.
 2. ~~Fees, auctions, halts and the scoring-rule venue are built and never
    run.~~ **All running now**, and switching them on found four bugs in tested
    code and cost the market half its accuracy. See below.
-3. ~~No auth.~~ **Every browser is its own trader now** -- its own account,
+3. ~~No auth.~~ **Every browser is its own trader now**, with its own account,
    balance, blotter and working orders, and it cannot cancel anyone else's.
    There are still no passwords, and that is stated rather than implied; see
    below.
 4. ~~Liquidity does not replenish, and one maker is the whole other side.~~
    **Fixed by having three of them**, differing in spread, quote size and
-   inventory limit -- identical makers would be one maker with three times the
+   inventory limit, because identical makers would be one maker with three times the
    balance sheet. After the same 60% sweep the spread now comes back from 1.25
    to 2.50 rather than to 24.50, and `test_a_large_order_moves_the_price`
    asserts the recovery it used to assert the absence of. What it replaced is
@@ -250,40 +269,52 @@ each item. Struck items link to what actually happened.
    is really measuring.
 6. ~~A share and its future have no relation the arbitrageur knows.~~
    **Fixed by listing the legs.** The 0.4x relation to the four-week future was
-   never an identity -- the four weekly rates are each battle-weighted, so they
-   do not average to the four-week rate, and they differ by 0.08%. Small, and
-   small is what makes it dangerous to trade as though it were exact. So the
-   four weekly futures are listed instead: `SPIKE_EQ` = `SPIKE_WR_W1` + ... +
-   `W4`, exactly, because both sides resolve the same metric over the same
-   windows under the same evidential bar. Settlement confirms it to the tick:
-   1,874 + 1,859 + 1,875 + 1,869 = 7,477. `CROW_EQ` deliberately has no legs,
-   so one share is arbitrage-linked and one is not.
+   never an identity: the four weekly rates are each weighted by that week's
+   appearances, so they do not average to the four-week rate, and they differ by
+   0.08%. Small, and small is what makes it dangerous to trade as though it were
+   exact. So the four weekly futures are listed instead: `BASTION_SOLO_EQ` =
+   `BASTION_SOLO_W1` + ... + `W4`, exactly, because both sides resolve the same
+   metric over the same windows under the same evidential bar. Settlement
+   confirms it to the tick on the current listing: 123.00 + 126.50 + 123.75 +
+   115.50 = 488.75, against a share that settles at 488.75.
 
 ### Still open now, re-measured
 
 Every item above is struck through, so the list was carrying no information.
-These replace it. All six were measured this session and each names how.
+These replace it. Four are open and each names how it was measured. Two are
+closed and are kept because how they closed is the useful part: one dissolved
+when the world stopped being something anybody had to collect, and one was
+answered by listing matches rather than by finding more data.
 
-1. **There is no C++ kernel.** Zero `.cpp`, `.hpp` or `CMakeLists.txt` files in
-   the repository, against a stated stack of Python for research and C++ for
-   the exchange. `tests/test_differential.py` was built as its acceptance test
-   and has been hardened over roughly 1.2 million fuzzed commands, so the
-   specification exists and the work is the port. This is the largest single
-   item here and the one a reader will notice first.
+1. **There is no C++ kernel, and the profile says one is not the next thing to
+   build.** Zero `.cpp`, `.hpp` or `CMakeLists.txt` files in the repository,
+   against a stack that once listed Python for research and C++ for the
+   exchange. That reads as half a stack missing until you profile it: over two
+   simulated minutes of the live market the time is in `kernel.send`,
+   `latency.delay` and the book snapshot the venue broadcasts, and matching does
+   not appear in the fourteen most expensive functions by self time. Porting the
+   matcher would move a small share of a total spent on message plumbing. So
+   this is an evidence-led performance decision waiting on evidence, not an
+   unmet promise. `tests/test_differential.py` was built as its acceptance test
+   and has been hardened over roughly 1.2 million fuzzed commands, so if the
+   evidence ever arrives the specification is already there.
 
-2. **No real data has been collected.** `data/raw` holds zero files. The
-   collector is written and needs an API key bound to a static IP, which is not
-   something the codebase can supply itself.
+2. **There is no data to collect, by design.** This entry used to read "no real
+   data has been collected", with an empty `data/raw` and a crawler waiting on
+   an API key bound to a static IP. The world is generated now: `worlds/circuit`
+   draws a season from a seed and the oracle replays the matches a window names,
+   so a settlement is re-derivable from the seed rather than from a corpus
+   somebody has to hold. The gap is closed by removal, and with it goes the
+   whole class of problems where a statistic moves because a crawler's reach
+   moved.
 
-3. **Nothing relists, and it is blocked on the item above rather than on
-   effort.** Contracts settle correctly now, so the market drains as they
-   expire: at the default 600 simulated seconds to the trading day, the
-   four-week window runs out after about 4.7 hours. Listing a new series needs
-   data for the new window, and the fixture spans 2026-06-17 to 2026-09-30
-   against a contract window ending 2026-09-28. Two days. Recycling the fixture
-   to keep the market populated would be fabricating evidence, which is the one
-   thing the no-hardcoding rule exists to forbid, so this waits for the
-   collector rather than being worked around.
+3. ~~**Nothing relists.**~~ **Closed by matches.** Contracts used to expire with
+   nothing to replace them, so the market drained: at the default 600 simulated
+   seconds to the trading day, a four-week window ran out after about 4.7 hours.
+   Matches are generated rather than collected, so the operator opens another
+   one whenever the board has room, and the listing no longer runs out. What it
+   costs is time: the market runs at 1.85x real time without matches and 0.75x
+   with them.
 
 4. **The netting flag relaxes the gate without changing the bill.**
    `Venue._portfolio_affords` runs as a fallback when the per-contract check
@@ -323,15 +354,15 @@ These replace it. All six were measured this session and each names how.
 
 ## Netting, which is the part of a clearing house that matters here
 
-A CCP does two things. It novates -- becoming buyer to every seller so nobody
-is exposed to anyone's default -- and it nets. The first is **already true and
+A CCP does two things. It novates, becoming buyer to every seller so nobody
+is exposed to anyone's default, and it nets. The first is **already true and
 by construction**: collateral here is exact, so no participant can ever owe
 more than it posted, and there is no default to be protected from. Building
 novation would be ceremony.
 
 The second was missing and mattered. Collateral was charged per contract, so an
 account holding a long future, a long put and a short call at one strike posted
-against all three worst cases at once -- for a package that put-call parity says
+against all three worst cases at once, for a package that put-call parity says
 cannot lose anything at any level. The arbitrageur felt it hardest, since
 holding offsetting packages is its entire business.
 
@@ -344,8 +375,8 @@ the worst case of a portfolio is
     min over level in [0, 1] of  sum_i quantity_i * payoff_i(level)
 
 the minimum of a piecewise-linear function of one bounded variable. It is
-attained at an endpoint or a kink, every kink is known in advance -- a strike, a
-threshold -- and there are a handful. Evaluating each is not an approximation of
+attained at an endpoint or a kink, every kink is known in advance, a strike or a
+threshold, and there are a handful. Evaluating each is not an approximation of
 the answer; it is the answer.
 
 | portfolio | gross | net | released |
@@ -361,11 +392,14 @@ an exchange that charges for them is charging for arithmetic it can do itself.
 The vertical's residual 500 is exactly the fifty-point gap between its strikes
 on ten lots.
 
-**Only same-underlying positions net.** A future on SPIKE and a future on CROW
-are functions of different numbers, and netting them would need a correlation --
-which would be an estimate, and the whole guarantee would be gone. That is not
-a limitation to be lifted later; it is the line between arithmetic and
-modelling.
+**Only same-underlying positions net.** A future on VANTA and a future on QUILL
+are functions of different numbers, and netting them would need a correlation,
+which would be an estimate, and the whole guarantee would be gone. The same
+applies to one competitor across the two formats, and there the number says so
+out loud: solo and objective win rates rank the field at Spearman -0.357, so
+treating them as one underlying would be assuming a relationship that is not
+there. That is not a limitation to be lifted later; it is the line between
+arithmetic and modelling.
 
 Off by default so every published measurement keeps meaning what it meant. With
 it on, over five minutes on seed 41, the arbitrageur attempted 1,094 trades
@@ -373,23 +407,32 @@ against 944 and was starved of capital on 281 occasions against 374.
 
 ## A ninth asset class: a claim on the second moment
 
-`SPIKE_DISP` and `CROW_DISP` settle on how *unevenly* a Brawler performs across
-the maps and modes it plays, not on how well. The metric walks exactly the same
-strata as `adjusted_win_rate`, with the same shrinkage and the same coverage
-gate; the only difference is which moment comes out at the end.
+`QUILL_SOLO_DISP` and `BASTION_SOLO_DISP` settle on how *unevenly* a competitor performs,
+not on how well. It runs over exactly the same matches as the win rate on the
+same subject over the same window; the only difference is which moment comes out
+at the end.
 
 That makes it a different kind of claim rather than a different number. A
-Brawler winning everywhere at 0.52 and one winning at 0.70 on half the maps and
-0.34 on the other half have the same adjusted win rate and are not remotely the
-same thing to own. Measured on the fixture, SPIKE and CROW settle within 1.2% of
-each other on level and **68% apart** on dispersion -- 0.0535 against 0.0318.
-Nothing else on the exchange could express that.
+competitor winning everywhere at 0.52 and one winning at 0.70 in half its
+matches and 0.34 in the other half have the same win rate and are not remotely
+the same thing to own, and the two orderings are genuinely different orderings.
+Measured on the current listing: `QUILL_SOLO_DISP` settles at **0.3158** against
+`BASTION_SOLO_DISP` at **0.2900**, an 8.9% gap, while the same two competitors'
+solo win rates sit at 764.75 and 1,221.25, which is 60% apart. Nothing else on
+the exchange could express that difference.
+
+It matters more here than it did on the old world, because dispersion is one of
+the few places a second family of information exists at all. Within one format
+every skill statistic ranks the field almost identically, Spearman +1.000, so a
+first moment is a first moment however it is dressed. A second moment is not
+monotone in the scalar the first moments are monotone in, which is exactly why
+this contract is worth listing and a ninth statistic on the same mean is not.
 
 It joins on the same terms as everything else: a rate lives in [0, 1], so the
 standard deviation of a set of rates cannot exceed 0.5, and collateral stays
-arithmetic. Imputed strata count toward it and pull it *down*, which is the
-honest direction -- an unmeasured cell is not evidence of variability, and a
-metric that let thin data widen the spread would pay out for having none.
+arithmetic. A competitor that appeared once has a dispersion of exactly 0.0,
+which is well formed and is not a measurement, so the metric refuses it rather
+than handing the engine a number it would happily settle.
 
 ## Risk controls, and one that disabled the other
 
@@ -401,7 +444,7 @@ that goes down with it.
 
 **A kill switch.** Pulls everything a participant has working and refuses it
 more. Deliberately blunt, because the point of a kill switch is that it is the
-one control that always works. A stopped participant may still *cancel* --
+one control that always works. A stopped participant may still *cancel*, because
 refusing that too would trap it in the orders it already has, which is the
 opposite of what stopping it is for.
 
@@ -415,13 +458,13 @@ by running the market.
 ## Tiered tick tables
 
 A tick has two jobs that pull against each other. Too fine and queue priority
-is worthless -- anyone can step in front of a resting order for a hundredth of a
+is worthless, because anyone can step in front of a resting order for a hundredth of a
 penny, so nobody posts size. Too coarse and the spread cannot narrow to what
 the market knows. The resolution that is right at a price of 4 is wrong at
 4,000.
 
-`PIPER_WR_FUT` carries the one tiered table -- a quarter point below 4,000, a
-whole point above -- so the rule is exercised rather than merely available. The
+`VANTA_OBJECTIVE_WR` carries the one tiered table, a quarter point below 4,000 and a
+whole point above, so the rule is exercised rather than merely available. The
 base tick stays the unit everything is represented in, because the engine
 matches on integer ticks and a variable unit would make a tick index mean
 different prices at different levels. The table is a rule about which prices
@@ -436,7 +479,7 @@ order for ten thousand lots announces what you are doing before you have done
 any of it, so it is worked in slices, and each refreshed slice goes to the back
 of its level behind everything that arrived while the last one was working.
 That cost is what makes an iceberg a trade-off rather than simply a better
-order -- a venue that refreshed in place would let one participant hold the
+order: a venue that refreshed in place would let one participant hold the
 front of a queue indefinitely while showing a single lot.
 
 The depth publishes the slice and the resting quantity counts the whole thing,
@@ -447,8 +490,8 @@ while they wait. Publishing one would say exactly where the market has to go to
 set off a cascade, which is the single fact its owner most wants kept quiet.
 
 A triggered stop prints, which can trigger more stops. Nothing here prevents
-that -- being able to *measure* a cascade is most of the reason to model stops
-at all -- and `MatchingEngine.cascade_depth` records how many rounds each one
+that, since being able to *measure* a cascade is most of the reason to model stops
+at all, and `MatchingEngine.cascade_depth` records how many rounds each one
 ran for. What is prevented is a cascade that never ends, which would be a bug
 in the model rather than an event in a market.
 
@@ -456,15 +499,15 @@ Two things had to be got right for a stop to be a stop rather than a leak:
 
 - **A triggered plain stop becomes a market order, which is immediate-or-cancel
   by construction here.** Carrying the stop's own time-in-force through handed
-  the engine a GTC market order, which it refuses -- so the stop vanished on
+  the engine a GTC market order, which it refuses, so the stop vanished on
   being triggered, with nothing in the tape to say so.
 - **Collateral is reserved from the moment a stop is parked.** The engine
   releases a triggered stop inside its own matching, which never passes back
   through the venue's affordability check, so an unreserved stop would create a
   position the account had never been asked to cover. It acknowledges at its
   limit if it has one and its trigger otherwise, and the venue reserves against
-  that. A plain stop can still fill through its trigger in a fast market --
-  which is the risk its owner takes in reality -- and the collar on unpriced
+  that. A plain stop can still fill through its trigger in a fast market,
+  which is the risk its owner takes in reality, and the collar on unpriced
   orders bounds how far through.
 
 **The differential harness caught the bug in this.** A visible slice was
@@ -472,8 +515,8 @@ computed once when an order was constructed rather than when it joined a level,
 so an order that partially filled on the way in and then rested published its
 *original* size as depth. The reference matcher's book was one lot shallower
 than the engine's, and that one lot was the whole of it. Icebergs themselves
-are outside the harness -- the deliberately naive reference does not model them
--- so the guarantee it still gives is the one that matters for the C++ port:
+are outside the harness, since the deliberately naive reference does not model
+them, so the guarantee it still gives is the one that matters for the C++ port:
 ordinary matching is unchanged.
 
 ## A flow of information, and the two bugs it uncovered
@@ -481,7 +524,7 @@ ordinary matching is unchanged.
 Every agent used to receive its whole sample at `t=0`. The market therefore had
 an information *stock*: it converged within seconds and then nothing could move
 it, because there was nothing left to arrive. Realised dispersion of
-`SPIKE_WR_FUT` over ten minutes was **14.6** on a price near 4,670, so options
+`VANTA_OBJECTIVE_WR` over ten minutes was **14.6** on a price near 4,670, so options
 were worth their intrinsic value and nothing more.
 
 Evidence now arrives over the session as ordinary Gaussian updating, written in
@@ -497,19 +540,19 @@ predictably and cannot be anticipated by anything except better information.
 Redrawing a view each wakeup would have been far simpler and would have
 produced a noise trader wearing a posterior.
 
-**Beliefs start at the pre-window level, not at the truth.** SPIKE ran at 0.4839
+**Beliefs start at the pre-window level, not at the truth.** VANTA ran at 0.4839
 for the twelve weeks before the contract window and settles at 0.4669, so a
 market that opens on history opens wrong and has something to discover. Starting
 from the truth and adding noise makes every agent unbiased from the first
 instant: the market opens at the answer with a wide spread and merely tightens.
-The prior is lookahead-free by construction -- the window it measures ends where
+The prior is lookahead-free by construction: the window it measures ends where
 the contract's window begins.
 
 **Six informed traders, log-spaced in precision, rather than two.** Two is not a
 population, it is an anecdote, and it had a measurable consequence: both ran
 into their position limits about a minute in and the price stopped there.
 `fund-sharp` believed 4,687 against a true 4,669, was short its full 900 lots,
-and could do nothing while the market printed 5,005 -- with the makers holding
+and could do nothing while the market printed 5,005, with the makers holding
 capacity for 1,300 more.
 
 ### What it cost, on six paired seeds
@@ -519,7 +562,7 @@ capacity for 1,300 more.
 | mean pricing error, end of session | 10.5% of range | 12.7% |
 | late-session dispersion of the future | 11.0 | 278.6 |
 
-The accuracy difference is **+2.20%, 95% interval [-0.21%, +4.61%]** -- leaning
+The accuracy difference is **+2.20%, 95% interval [-0.21%, +4.61%]**, leaning
 worse and not distinguishable from zero. The dispersion difference is a factor
 of twenty-five, and it is the point: an option is written on how much something
 moves, and under a stock of information the answer was "it does not". Two of the
@@ -546,7 +589,7 @@ enough.
 `venue.uncross()` directly, which moved cash and positions in the ledger and
 sent not one participant a fill. Measured after two minutes: **362 of 494**
 (agent, symbol) pairs had an agent's belief about its own position disagreeing
-with the venue's record -- `mm-1` believed +807 where the ledger said -63. A
+with the venue's record: `mm-1` believed +807 where the ledger said -63. A
 market maker skewing its quotes off an inventory that is not its inventory is
 not managing risk, it is guessing. Uncrossing now goes through the venue agent,
 which owns the mailbox. Afterwards: **2 of 494**, and both are fills genuinely
@@ -586,7 +629,7 @@ Getting there took two wrong turns worth recording, because both looked more
 principled than the answer.
 
 **Collaring limit orders too.** They slid to the band's edge, the band later
-moved away from them, and the book locked -- bid above offer, neither permitted
+moved away from them, and the book locked: bid above offer, neither permitted
 to trade, and nothing in continuous trading able to clear it. On that version:
 **2,492 limit states in five minutes** and a future marking at 9,267 against a
 settlement of 4,669. A trader who says 30,000 has said 30,000; the collar is for
@@ -595,16 +638,16 @@ orders that said nothing.
 **A reference that fell back to the last cleared price.** A symbol that goes
 quiet keeps a reference from whenever it last printed, the market walks away
 from it, and every unpriced order is collared against a price that no longer
-exists. Measured: the band on `SPIKE_WR_FUT` sat at 6,392 while the book quoted
+exists. Measured: the band on `VANTA_SOLO_WR` sat at 6,392 while the book quoted
 4,760, a third of the way across the contract's range, and no market order could
-trade at all. The fallback is now the quote -- weaker evidence than a trade,
+trade at all. The fallback is now the quote, weaker evidence than a trade,
 which is why it is the fallback, and much better evidence than a price from a
 minute ago.
 
 **A limit state triggered by a print.** Once trades cannot leave the band, a
 rule written in terms of prints outside it can never fire. A symbol is in a
-limit state when the best bid or offer is *at* a band -- interest that wants to
-be somewhere the venue will not let it go -- which is what the rule says and
+limit state when the best bid or offer is *at* a band, interest that wants to
+be somewhere the venue will not let it go, which is what the rule says and
 what it now checks.
 
 ## Running the machinery, and what that found
@@ -615,7 +658,7 @@ found four bugs inside an hour, every one of them in code that had tests.
 
 **A market-on-open order that did not fill stayed in the book.** It rests at a
 sentinel price so that it crosses every candidate the auction considers, which
-is the whole point of it -- and makes it the best offer in a continuous book by
+is the whole point of it, and makes it the best offer in a continuous book by
 a margin of 2^61. The first order afterwards matched it *at that price*: trades
 printed at -4,611,686,018,427,387,904, the mark went to zero, and the venue
 billed 4.8e22 in fees. A market order is an instruction about the auction it
@@ -644,7 +687,7 @@ them, so an auction fill now pays the taker rate on both sides.
 
 **The breaker needed a second clock.** The calendar decides whether a contract
 has expired; elapsed simulated time decides how long a symbol has been outside
-its band. Sharing one meant the limit-state timer never advanced -- 241
+its band. Sharing one meant the limit-state timer never advanced: 241
 excursions in three minutes and not one pause.
 
 **The band is a fraction of what a contract can be *worth*, not of what it
@@ -666,11 +709,11 @@ Scaled by the same fraction of the session, the reference keeps up.
 
 ### The opening auction, and who brings interest to it
 
-Withdrawing the makers from the call was tried, on sound reasoning -- a maker
+Withdrawing the makers from the call was tried, on sound reasoning. A maker
 that turns up with a mid-range guess makes the guess the official opening
 price, and the market's walk away from it then trips the breaker. It was worse.
 With two informed agents and a crowd of random market orders, an auction with
-no maker in it cleared `SPIKE_WR_FUT` at **9,377** against a fair value of
+no maker in it cleared `VANTA_SOLO_WR` at **9,377** against a fair value of
 4,669. A mediocre anchored open beats a wild unanchored one.
 
 What was genuinely missing is that every agent here reacts to a price, so with
@@ -698,7 +741,7 @@ direction on all six. Running an exchange the way exchanges are run roughly
 doubles the pricing error here: a halt stops price discovery by design, a fee
 widens the band inside which a mispricing is not worth correcting, and an
 auction that opens away from fair value gives the market somewhere worse to
-start from. None of that is an argument for switching them off -- it is what
+start from. None of that is an argument for switching them off. It is what
 these mechanisms cost, and the point of building them was to be able to say so
 with a number.
 
@@ -716,8 +759,8 @@ whose premise is people trading against each other is the premise not holding.
 A signed session cookie now carries an account id and a display name,
 authenticated by an HMAC over both. The browser can read what it is and cannot
 write itself a different account. The account is a real participant: its own
-`HumanAgent`, its own opening capital -- the amount a person can read a profit
-against, not the bots' forty million -- and the same latency to the exchange as
+`HumanAgent`, its own opening capital, the amount a person can read a profit
+against rather than the bots' forty million, and the same latency to the exchange as
 anyone else at a browser.
 
 Joining happens on arrival rather than from a pool of seats. A pool would have
@@ -728,13 +771,13 @@ and it is documented as such: a market with a human in it was never
 byte-reproducible, since the human acts at wall-clock moments the seed knows
 nothing about, so a second human arriving is the same kind of event as the
 first one placing an order. Every experiment harness builds its population up
-front and never calls it. A test pins the rest -- seating someone mid-session
+front and never calls it. A test pins the rest: seating someone mid-session
 leaves the tape of everyone else's trading identical, because each agent's
 random stream is seeded from its own id.
 
 **There are no passwords, and the page does not pretend there are.** Signing in
-means choosing a name, a name is not an identity -- two people called Ada get
-two accounts -- and losing the cookie loses the account. That is the right
+means choosing a name, a name is not an identity, so two people called Ada get
+two accounts, and losing the cookie loses the account. That is the right
 shape for an exchange whose capital is imaginary, and saying so is the point:
 the distance between "signed in" and "authenticated" is exactly the sort of
 thing that is comfortable to leave vague. A real one needs credentials to
@@ -743,8 +786,8 @@ all of it. None of that is built.
 
 ## The option surface, and the bug underneath it
 
-The symptom was a riskless trade sitting in the book: `SPIKE_C4700` marking at
-72.7 while `SPIKE_C4600` marked at 59.1. A call struck higher cannot be worth
+The symptom was a riskless trade sitting in the book: `QUILL_SOLO_C800` marking at
+72.7 while `EMBER_OBJECTIVE_C4800` marked at 59.1. A call struck higher cannot be worth
 more than one struck lower, because the lower strike pays whatever the higher
 one pays and sometimes more. Put-call parity was out by 35 ticks at the same
 moment.
@@ -752,17 +795,17 @@ moment.
 The diagnosis written here was that the market maker priced each book
 independently. That was true and it was the smaller half.
 
-**The larger half was that every agent held a separate view of the same Brawler
-for every contract written on it.** `FundamentalTrader` drew its estimate, and
-its Monte Carlo sample, per *symbol*. So `SPIKE_C4600` and `SPIKE_C4650` were
+**The larger half was that every agent held a separate view of the same
+competitor for every contract written on it.** `FundamentalTrader` drew its estimate, and
+its Monte Carlo sample, per *symbol*. So `EMBER_OBJECTIVE_C4800` and `EMBER_OBJECTIVE_C5000` were
 valued from independent draws of the same posterior, the sampling error between
 them was independent, and the ladder the agent believed in was not monotone.
 Measured before the fix: `fund-vague` valued the 4,650 call at **119.03** and
-the strictly more valuable 4,600 call at **36.67** -- and then traded on the
+the strictly more valuable 4,600 call at **36.67**, and then traded on the
 difference, which was entirely its own Monte Carlo error. `BayesianFundamental`
 had the same shape of bug one level deeper: it drew a fresh posterior per
-symbol, so it observed a different sample of battles for each contract on one
-Brawler.
+symbol, so it observed a different sample of matches for each contract on one
+competitor.
 
 Both now hold one view per *underlying*, keyed by what the contract is written
 on. Common random numbers make ``max(F - K, 0)`` decreasing in ``K`` draw by
@@ -781,7 +824,7 @@ Two things it does not do, because they would make it price the answer:
 
 - the distribution is centred on the **market's** live mid for the underlying,
   never on the settlement value. If the future is mispriced the whole chain is
-  consistently mispriced, which is the point -- consistency is what was broken,
+  consistently mispriced, which is the point: consistency is what was broken,
   not accuracy.
 - its width is **estimated from the tape**, an exponentially-weighted variance
   of prints around its anchor, converted to a Beta concentration by matching
@@ -791,8 +834,8 @@ Two things it does not do, because they would make it price the answer:
 
 Inventory skews the *underlying*, in units of that estimated dispersion, and
 the whole ladder reprices from the shifted forward. Skewing each strike by a
-fraction of its own settlement range -- what the plain maker does, and what this
-class first copied -- was measured at a 165-point shift from 66 lots of net
+fraction of its own settlement range, which is what the plain maker does and what
+this class first copied, was measured at a 165-point shift from 66 lots of net
 delta, which sent every call in the chain to zero and tripled the puts.
 
 ### Measured, over six minutes of live market, seed 7
@@ -800,15 +843,15 @@ delta, which sent every call in the chain to zero and tripled the puts.
 | | plain maker | plain + arb | surface maker | surface + arb |
 |---|---|---|---|---|
 | every strike two-sided | 71% | 74% | **100%** | **100%** |
-| `SPIKE_C4700` two-sided | 0% | 0% | **100%** | **100%** |
+| `QUILL_SOLO_C800` two-sided | 0% | 0% | **100%** | **100%** |
 | monotonicity breached | 0/29 | 0/31 | 0/68 | 0/68 |
 | vertical bound breached | 0/29 | 0/31 | 0/68 | 0/68 |
 | butterfly breached | n/a | n/a | 0/34 | 0/34 |
 | parity gap, mean | n/a | n/a | 14.88 | **8.64** |
 
-The plain maker's zeros are not a pass. `SPIKE_C4700` never has two sides at
+The plain maker's zeros are not a pass. `QUILL_SOLO_C800` never has two sides at
 all under it, so a third of the chain has no price, there is no butterfly to
-check and parity cannot be measured -- its consistency is three quotable books
+check and parity cannot be measured: its consistency is three quotable books
 out of five. Each check is scored only when the books it needs are two-sided,
 which is why the denominators differ.
 
@@ -821,16 +864,16 @@ strip relation below.
 **A latent bug fell out of it.** The arbitrageur keyed contracts by their
 underlying alone, so two contracts differing only in the *window* they measure
 were indistinguishable and the last one listed silently won the lookup. Nothing
-was mispriced by it -- no composite referenced a weekly contract at the time --
+was mispriced by it, since no composite referenced a weekly contract at the time,
 but listing weekly futures is exactly what would have made it start forming
 identities between two things that are not the same thing.
 
 ### What is still missing, and it is not consistency
 
 The chain is consistent and carries very little time value, because the
-underlying barely moves: realised dispersion of `SPIKE_WR_FUT` over a ten-minute
+underlying barely moves: realised dispersion of `VANTA_SOLO_WR` over a ten-minute
 session is **14.6** on a price near 4,670. The market has an information
-*stock*, not an information *flow* -- every agent receives its whole sample at
+*stock*, not an information *flow*: every agent receives its whole sample at
 t=0 and the price converges within seconds, so there is nothing left to arrive.
 Releasing each agent's evidence progressively would make the underlying
 genuinely diffuse and give options something to be about. That, not the
@@ -838,25 +881,28 @@ surface, is the next thing worth building for them.
 
 ## Asset classes
 
-Eight classes, derived from the contract rather than declared: `future`,
-`event`, `call`, `put`, `spread`, `index`, and now `commodity` and `equity`.
-Twenty-one contracts listed on the live exchange.
+Nine classes, derived from the contract rather than declared: `future`,
+`event`, `call`, `put`, `spread`, `index`, `commodity`, `equity` and
+`volatility`. The board carries 355 markets across them, 316 of them prediction
+markets against 8 before matches were listed, and it presents as 9 rows because
+a match is one row rather than 270.
 
 **Commodities** are a claim on an *amount delivered* rather than on a
 proportion, which is what makes the delivery window part of the contract and
 gives four consecutive weeks a term structure instead of four copies of the same
-thing. `battle_volume` is deliberately neither shrunk nor standardized:
-reweighting a count onto reference proportions produces a number that is the
-count of nothing. The consequence, stated in the metric and worth repeating, is
-that it measures volume **in the canonical corpus, not in the game**, a wider
-crawl sees more battles. Sample-based volume indices trade on that footing in
-the real world; the honest move is to say so rather than imply a census.
+thing. `match_volume` is the one quantity among the six metrics, and it is
+deliberately left alone: reweighting a count onto reference proportions produces
+a number that is the count of nothing. It is also the one metric that pools
+formats freely, because a count of appearances means the same thing whichever
+format produced it, where a per-match average does not. The metric says what it
+counts on its face: entries in the scheduled season, which is a census here
+rather than a sample, because the season is generated rather than observed.
 
 **Shares** pay before they settle, which is the entire difference between a
-share and a future. `SPIKE_EQ` pays 1,000 times a Brawler's adjusted win rate
+share and a future. `BASTION_SOLO_EQ` pays 1,000 times a competitor's win rate
 at the end of each of four weeks and then expires worth nothing, because it has
 paid everything out. Each week is measured on its own evidence, so a bad week
-is a smaller payment rather than a smaller number at the end -- and the price is
+is a smaller payment rather than a smaller number at the end, and the price is
 the stream that is left, which is why a share reprices on news about one period
 rather than only on news about its last day.
 
@@ -876,7 +922,7 @@ kind of thing that would have looked fine while being wrong:
   first.
 
 **What is deliberately absent is the perpetuity.** A stock has no expiry, and
-every contract here settles inside a known interval -- which is exactly what
+every contract here settles inside a known interval, which is exactly what
 makes collateral arithmetic rather than a value-at-risk estimate. A claim that
 never settles has no such interval. Real perpetuals live without one by using
 funding rates and margin calls, which is a different risk model from the one
@@ -889,8 +935,114 @@ that reason.
 and a lump sum of the same size are worth the same, so a share and 0.4 of the
 matching future differ only in when collateral comes back. That should be worth
 something here, because Experiment 1 found capital is the binding constraint on
-this market -- but it is a prediction, not a result, and measuring it needs the
+this market. But it is a prediction, not a result, and measuring it needs the
 relation in the arbitrageur and a controlled run.
+
+## Live matches, and an arbitrage that had been sitting in the book all along
+
+The statistical contracts settle once, at the end of a four-week window. That is a real market
+and it is a slow one: nothing resolves inside a session, a trader has no terminal event to be
+scored against, and the exchange drains as contracts expire with nothing to replace them. A
+match fixes all three. It opens, runs for a few minutes, and ends with an outcome that is a
+fact, and because matches are generated rather than collected there is always another one.
+
+### The riskless trade the standalone listing had
+
+Eight standalone `Binary(> threshold)` contracts were written on one win rate, and the ladder
+identity `P(>0.44) >= P(>0.46) >= P(>0.47) >= P(>0.48)` was enforced by nothing. Measured: **3
+of 3 observed runs violated it, by 0.23 and 0.31 on a claim bounded in [0, 1]**. The option
+chain on the same underlying broke its own vertical bound **0 times out of 8** in the same runs,
+and the reason is not that options are better policed. It is that the surface maker prices every
+strike as an expectation under a single law, and two expectations under one measure cannot
+disagree any more than `E[max(F-4600,0)]` and `E[max(F-4700,0)]` can disagree under a single
+`F`.
+
+A match carries far more identities than a strike ladder does, so listing one the standalone way
+would have been listing far more free trades. A ten-entrant solo match lists **270 contracts
+across four families and 395 exact relations**; a three-a-side objective match lists **38 and
+58**. Policing 395 relations after the fact is not a plan.
+
+### One bag of outcomes, and the relations become arithmetic
+
+Every contract on a match is priced as the mean of *the same settlement rule that will settle
+it* over one finite ensemble of hypothetical results drawn under the caller's belief. Nothing
+else prices anything. Any identity that holds outcome by outcome therefore holds in the prices:
+the winner set sums to one because each drawn match has exactly one winner, not because anything
+was normalised afterwards.
+
+| | violations | of | how |
+|---|---:|---:|---|
+| One ensemble, both formats, 50 random beliefs each | **0** | 22,650 | exact rational arithmetic |
+| The same prices converted to float | worst excess **3.9e-15** | 22,650 | on the conservation set that adds 90 contracts to nine |
+| Eight ensembles from one belief, one solo match | **53** | 395 | worst breach **0.1163** |
+
+The last row is the control, and it is the whole argument. Drawing eight ensembles from the
+*same* belief is what a book of independently quoted contracts amounts to, and it breaches one
+relation in seven by up to 0.1163 on claims bounded in [0, 1]. The coherence is bought by the
+single measure, not by the model being good.
+
+### Where this approximates, and why that is the honest place to do it
+
+The ensemble is Monte Carlo, so a price is an **exact expectation under an approximate measure**
+rather than an approximate expectation under an exact one. That is the right way round, because
+coherence is what is being bought and coherence is a property of the first.
+
+Closed forms exist for two of the four families under a Plackett-Luce belief, `w_i / W` for the
+winner set and `w_A / (w_A + w_B)` for a head to head, and they are deliberately not used.
+Mixing a closed form for one family with an ensemble for another is two measures, which is the
+defect above wearing better clothes. What that costs is sampling error, measured on the default
+solo field: the worst winner price sits 0.0297 from `w_i / W` at 1,000 draws, **0.0100 at the
+default 4,000** and 0.0042 at 16,000, against a quoting increment of 0.01, while the whole
+270-contract book takes 0.14s, 0.59s and 2.34s to price.
+
+Exact enumeration is not an option either. The placement marginals need a walk over the `2^n`
+prefixes of the finishing order and the elimination counts a further `n` states per competitor
+on top, which is 100k states at ten entrants and 16M at sixteen.
+
+**A finite ensemble has a finite support**, which is worth naming rather than leaving to be
+discovered. An outcome it never drew prices at exactly zero. Measured at 4,000 draws over 20
+beliefs, as many as 34 of the 270 solo contracts priced at exactly 0 or 1 on a single belief, and
+of the 612 such prices across all twenty, **611 were rungs of an eliminations ladder**, which is
+where the tail is. Those prices are coherent and simply at the boundary. A maker publishing a
+zero as its *offer* would be selling a lottery ticket for nothing, so a zero fair value quotes 0
+bid against a one-tick offer: the offer is a ceiling and never a floor.
+
+### Settlement arriving in pieces
+
+A competitor who has been eliminated cannot win, so that contract is worth exactly zero and is
+settled the moment it happens, while everyone still in keeps trading. Nothing had to be built to
+model an in-play market: an elimination is a contract resolving early, and the venue has always
+been able to resolve a contract. The mutually exclusive set still sums to one, because the
+settled legs pay zero and the live ones carry the whole of it.
+
+Only certainties settle early. An elimination says nothing final about where the survivors will
+place, so their contracts stay open. Settling anything less than certain would be paying out a
+forecast, which is the one thing a settlement may never be.
+
+### What it costs
+
+The market runs at **1.85x real time without matches and 0.75x with them**. That is the price of
+pricing a 270-contract book off an ensemble, and it is the reason the draw count is 4,000 rather
+than 16,000.
+
+The board changed shape too. **355 markets present as 9 rows, 316 of them prediction markets
+against 8 before matches existed.** One card per instrument would render a page nobody could
+read, so a match is one row named for the match rather than 270 rows named for competitors.
+
+### The gap that remains
+
+The model of the world inside the sampler is the format's own rules rather than a fitted
+approximation: a weighted sample without replacement for an elimination format, a race to the
+target for a team format, with every drawn outcome put through `fmt.check` exactly as a real
+match is. It is tested as an identity rather than a resemblance. Handed `exp(strength)` as its
+belief and `match.play`'s own random stream, `draw_outcome` returns the match the world actually
+played, placement for placement and credit for credit, on 400 real matches in each format with
+**0 mismatches**.
+
+What that does not establish is that any of this resembles a real in-play market. Nobody here
+has a stale price, a broadcast delay, or a view of the match that another participant does not
+have. Latency is the only asymmetry, and in a real venue on a real event it is not the largest
+one.
 
 ## Superseded reasoning, kept for the record
 
@@ -904,7 +1056,7 @@ In the order that buys the most realism per unit of work:
    matching engine. This should come before more agent sophistication, because
    it is the thing that tells you whether the agents are right.
 2. **Realistic order flow.** Power-law order sizes, clustered arrivals, and a
-   cancel rate above 90% -- real books are mostly cancellations, and queue
+   cancel rate above 90%: real books are mostly cancellations, and queue
    dynamics depend on it.
 3. ~~**An arbitrageur.**~~ **Written, and it half-works.** See below.
 4. **Fees.** Maker/taker economics change market-maker behaviour qualitatively,
@@ -919,7 +1071,7 @@ tell a good market maker from a badly calibrated one.
 ## The arbitrageur, and what measuring it actually showed
 
 `arena/agents/arbitrageur.py` derives its pricing identities from the listed
-contracts rather than from a hand-written table -- list a new spread and it
+contracts rather than from a hand-written table: list a new spread and it
 becomes arbitrageable with no code change; list an index whose component has no
 future and no relation is formed, because a relation traded against a proxy is
 a bet rather than an arbitrage.
@@ -930,17 +1082,18 @@ Three predictions were made before it was measured. **Two were wrong.**
 to switch it on.
 
 **The spread gap: bought with liquidity, and not worth the price.** Paired
-seeds, 600 simulated seconds, mean `|SPIKE_CROW - (SPIKE_WR_FUT - CROW_WR_FUT)|`
+seeds, 600 simulated seconds, mean
+`|HALCYON_FORMAT_SPD - (HALCYON_SOLO_WR - HALCYON_OBJECTIVE_WR)|`
 over the second half of each session, against visible ask depth in the top ten
-levels of `SPIKE_WR_FUT`:
+levels of `HALCYON_SOLO_WR`:
 
 | version | mean gap (ticks) | ask depth | attempts |
 |---|---|---|---|
-| no arbitrageur | 307.7 | 785 | -- |
+| no arbitrageur | 307.7 | 785 | n/a |
 | aggressive (fires on every wakeup) | 180.7 | ~130 | 337 |
 | restrained (scale-in rule) | 282.9 | 625 | 78 |
 
-The aggressive version really does enforce the relation better -- 41% tighter --
+The aggressive version really does enforce the relation better, 41% tighter,
 and it does so by **stripping the book**, taking depth down by 83%. It fired on
 93% of its wakeups, roughly 1,400 times a session, because the gap never closed
 and nothing stopped it re-entering the same trade. A market that thin cannot
@@ -950,7 +1103,7 @@ absorb anyone else's order, and it broke a previously-verified property: a
 Restraining it (do not add to a package unless the dislocation has widened
 1.5x, and never take more than 25% of visible depth) restores the book and
 loses most of the consistency gain. Per seed, the gap ratio with the restrained
-version is 0.65, 1.29, 0.61, 0.90 -- it makes one of four seeds **worse**, and
+version is 0.65, 1.29, 0.61, 0.90, so it makes one of four seeds **worse**, and
 four seeds cannot distinguish a mean of 0.86 from 1.0.
 
 So the honest verdict is that this design does not reliably do its job. The
@@ -966,14 +1119,14 @@ conserve value exactly.
 
 **Put-call parity: unenforceable, for a reason worth recording.** The call book
 is two-sided in **2% of samples**. The arbitrageur cannot check the relation
-98% of the time -- not because it declines, but because there is no price. Its
+98% of the time, not because it declines but because there is no price. Its
 own inventory in the option never exceeds 72 of a 300 limit; it is starved, not
 constrained.
 
 The cause turned out not to be a missing market maker. Both options are struck
-at 4700 while SPIKE settles at 4669, so the call is worth **exactly zero** and
+at 4700 while the underlying settles at 4669, so the call is worth **exactly zero** and
 the put 123 ticks of an 18,800-tick range. Both sit pinned on the price floor,
-and a book at zero cannot carry a bid below it -- measured across a session, the
+and a book at zero cannot carry a bid below it. Measured across a session, the
 options show a bid 14-16% of the time and an ask 100% of the time, which is what
 a worthless option is *supposed* to look like. The binary on the same underlying
 is also worth zero but stays two-sided, because its range is 100 ticks rather
@@ -993,12 +1146,12 @@ from its legs. It is not. Measured per instrument:
 
 | symbol | VR(32) without arb | with arb |
 |---|---|---|
-| SPIKE_CROW (spread) | 0.27 | 0.25 |
-| SPIKE_WR_FUT (leg) | 1.73 | 1.26 |
-| CROW_WR_FUT (leg) | 1.47 | 1.09 |
+| HALCYON_FORMAT_SPD (spread) | 0.27 | 0.25 |
+| HALCYON_SOLO_WR (leg) | 1.73 | 1.26 |
+| HALCYON_OBJECTIVE_WR (leg) | 1.47 | 1.09 |
 
 Both legs trend; their difference mean-reverts. That is the signature of
-**cointegration**, not of a broken market -- it is the reason pairs trading
+**cointegration**, not of a broken market: it is the reason pairs trading
 exists. Tying the spread to its legs did not move its variance ratio and should
 not have. The prediction that it would go to 1 was wrong on the theory, and the
 market was right.

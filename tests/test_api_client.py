@@ -131,7 +131,7 @@ REAL_ACCOUNT = {
     "equity": "124026029.734567",
     "positions": [
         {
-            "symbol": "CROW_DISP",
+            "symbol": "BASTION_SOLO_DISP",
             "quantity": 356,
             "cost_basis": "1238641.085568",
             "average_price": "3479.328892044943820224719101",
@@ -238,7 +238,7 @@ VECTORS = [
     ("POST", "/v1/orders", "1787000002", DOC_BODY_BYTES),
     ("DELETE", "/v1/orders/VANTA_OBJECTIVE_WR/5083", "1787000003", b""),
     ("DELETE", "/v1/orders", "0", b""),
-    ("get", "/v1/instruments?class=future&subject=SPIKE", "1787000004", b""),
+    ("get", "/v1/instruments?class=future&subject=EMBER", "1787000004", b""),
 ]
 
 
@@ -594,7 +594,7 @@ def test_a_price_goes_on_the_wire_as_the_exact_numeral_it_was_given():
     assert body["price"] == "4663.250"
 
     client, seen = stub({}, key_id=DOC_KEY_ID, secret=DOC_SECRET)
-    client.place_order("CROW_GT47", "sell", 2, price="0.45")
+    client.place_order("RIFT_OBJECTIVE_GT500", "sell", 2, price="0.45")
     assert json.loads(seen["request"].content)["price"] == "0.45"
 
 

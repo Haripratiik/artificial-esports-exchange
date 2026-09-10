@@ -745,13 +745,15 @@ def test_an_unknown_metric_or_format_is_refused(oracle):
 def test_a_filter_from_the_other_world_is_refused_rather_than_ignored(oracle):
     """A filter that is ignored is a filter that does not exist.
 
-    Maps and trophy buckets are the Brawl world's strata. A circuit match has
-    no such dimension, and honouring the request as a no-op would settle
-    something wider than the contract named while looking entirely normal,
-    which is the shape of every guard in this repository that never fired.
+    Maps and trophy buckets are the retired world's strata, and `MetricRef`
+    still carries the fields because the contract layer is world-agnostic. A
+    circuit match has no such dimension, and honouring the request as a no-op
+    would settle something wider than the contract named while looking entirely
+    normal, which is the shape of every guard in this repository that never
+    fired.
     """
     ref = MetricRef(
-        metric="win_rate", subject="VANTA", modes=("solo",), maps=("HardRockMine",)
+        metric="win_rate", subject="VANTA", modes=("solo",), maps=("ANY_ARENA",)
     )
     with pytest.raises(MetricUnavailable, match="not meaningful in this world"):
         oracle.resolve(ref, WEEK)

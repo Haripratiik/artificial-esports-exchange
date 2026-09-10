@@ -62,7 +62,7 @@ def _spec(contract_id, payoff, tick="0.25", underlying=None, distribution=None):
     """
     return ContractSpec(
         contract_id=contract_id,
-        underlying=underlying or Single(MetricRef("adjusted_win_rate", "SPIKE")),
+        underlying=underlying or Single(MetricRef("win_rate", "EMBER")),
         payoff=payoff,
         window=WINDOW,
         policy=DataPolicy(min_sample_size=1),
@@ -83,15 +83,20 @@ def test_a_riskless_package_needs_no_collateral(listed):
 
     Long the future, long the put and short the call at one strike is the
     definition of put-call parity. Charged per contract it posts against all
-    three worst cases at once -- a hundred thousand on ten lots -- for a package
-    whose value does not depend on the outcome at all.
+    three worst cases at once, 100,000 on ten lots, for a package whose value
+    does not depend on the outcome at all.
+
+    The three prices are the levels this chain actually settles at: the team
+    win rate future at 5,038.25, the 5,000 put at nothing and the 5,000 call at
+    38.25, rounded to the quarter-point grid. They sum to the strike exactly,
+    which is what makes the package riskless rather than merely cheap.
     """
     gross, net = netting_benefit(
         _holdings(
             listed,
-            ("SPIKE_WR_FUT", 10, "4670"),
-            ("SPIKE_P4700", 10, "31"),
-            ("SPIKE_C4700", -10, "1"),
+            ("EMBER_OBJECTIVE_WR", 10, "5038"),
+            ("EMBER_OBJECTIVE_P5000", 10, "1"),
+            ("EMBER_OBJECTIVE_C5000", -10, "39"),
         )
     )
     assert gross > 0
@@ -99,9 +104,15 @@ def test_a_riskless_package_needs_no_collateral(listed):
 
 
 def test_a_share_against_its_weekly_legs_needs_no_collateral(listed):
-    """The strip is an identity, so the package is riskless and costs nothing."""
-    rows = [("SPIKE_EQ", -10, "1869")] + [
-        (f"SPIKE_WR_W{n}", 10, "467") for n in (1, 2, 3, 4)
+    """The strip is an identity, so the package is riskless and costs nothing.
+
+    The share settles at nothing and pays 1,000 a week times that week's win
+    rate; the four weekly legs pay the same 1,000 times the same rates. Priced
+    at 489 against four legs of 122.25 the strip costs exactly what the share
+    does, which is the state in which the package cannot lose.
+    """
+    rows = [("BASTION_SOLO_EQ", -10, "489")] + [
+        (f"BASTION_SOLO_W{n}", 10, "122.25") for n in (1, 2, 3, 4)
     ]
     gross, net = netting_benefit(_holdings(listed, *rows))
     assert gross > 0
@@ -111,19 +122,30 @@ def test_a_share_against_its_weekly_legs_needs_no_collateral(listed):
 def test_a_vertical_spread_is_charged_only_the_gap_between_its_strikes(listed):
     """Which is the most it can lose, and is nothing like the sum of its legs.
 
-    Ten spreads between 4,600 and 4,650 can lose at most fifty points a lot.
-    Charged per contract it posts 54,000 for a risk of 500.
+    Ten spreads between 4,800 and 5,000 can lose at most two hundred points a
+    lot. Measured on the settlement prices of the two legs, 238.25 and 38.25,
+    which is the full width of the spread paid as a debit: charged per contract
+    it posts 52,000 for a risk of 2,000, a factor of 26.
+
+    The gross is dominated by the short leg, which is charged the whole
+    distance from its price to the top of its own range whatever it is held
+    against.
     """
     gross, net = netting_benefit(
-        _holdings(listed, ("SPIKE_C4600", 10, "70"), ("SPIKE_C4650", -10, "20"))
+        _holdings(
+            listed,
+            ("EMBER_OBJECTIVE_C4800", 10, "238.25"),
+            ("EMBER_OBJECTIVE_C5000", -10, "38.25"),
+        )
     )
-    assert net == pytest.approx(D(500), abs=1)
-    assert gross > 50 * net
+    assert net == pytest.approx(D(2_000), abs=1)
+    assert gross == pytest.approx(D(52_000), abs=1)
+    assert gross > 25 * net
 
 
 def test_a_lone_position_gets_no_discount(listed):
     """There is nothing to net against, and netting must not invent a benefit."""
-    gross, net = netting_benefit(_holdings(listed, ("SPIKE_WR_FUT", 10, "4670")))
+    gross, net = netting_benefit(_holdings(listed, ("EMBER_OBJECTIVE_WR", 10, "5038")))
     assert net == gross
 
 
@@ -142,11 +164,11 @@ def test_netting_never_asks_for_more_than_the_gross(listed):
     can settle in. Neither needed slack once fixed.
     """
     portfolios = [
-        (("SPIKE_WR_FUT", 7, "4670"),),
-        (("SPIKE_C4600", -3, "70"), ("SPIKE_C4700", 5, "10")),
-        (("SPIKE_GT47", 40, "0.50"), ("SPIKE_WR_FUT", -2, "4670")),
-        (("SPIKE_WR_W1", 5, "467"), ("SPIKE_WR_FUT", -4, "4670")),
-        (("SPIKE_EQ", 3, "1869"), ("SPIKE_P4700", -2, "31")),
+        (("EMBER_OBJECTIVE_WR", 7, "5038"),),
+        (("EMBER_OBJECTIVE_C4800", -3, "238"), ("EMBER_OBJECTIVE_C5000", 5, "38")),
+        (("EMBER_OBJECTIVE_GT500", 40, "0.50"), ("EMBER_OBJECTIVE_WR", -2, "5038")),
+        (("BASTION_SOLO_W1", 5, "122"), ("BASTION_SOLO_WR", -4, "1221")),
+        (("BASTION_SOLO_EQ", 3, "489"), ("BASTION_SOLO_W2", -2, "122")),
     ]
     for rows in portfolios:
         gross, net = netting_benefit(_holdings(listed, *rows))
@@ -163,33 +185,47 @@ def test_two_underlyings_are_refused_rather_than_netted(listed):
     """Netting them would be a correlation, and a correlation is an estimate.
 
     The rule was a sentence in a docstring and nothing else, and breaking it was
-    silent. Measured before the check: a long of four SPIKE_WR_FUT at 4,670
-    against a short of four CROW_WR_FUT at the same price netted to **zero**
-    against a gross of 40,000, because both are Linear(10000) and the arithmetic
-    treated two Brawlers as one number. That is not conservative and it is not
-    exact -- it is a perfect-correlation assumption, which is precisely the risk
-    model this collateral exists to avoid.
+    silent. Re-measured on this listing: a long of four EMBER_OBJECTIVE_WR at
+    5,038 against a short of four RIFT_OBJECTIVE_WR at the same price is a gross
+    of 40,000, and netting them as one scalar gives **zero**, because both are
+    Linear(10000) and the arithmetic would treat two competitors as one number.
+    That is not conservative and it is not exact: it is a perfect-correlation
+    assumption, which is precisely the risk model this collateral exists to
+    avoid.
     """
     with pytest.raises(ValueError, match="not written on the same underlying"):
         worst_case(
             _holdings(
-                listed, ("SPIKE_WR_FUT", 4, "4670"), ("CROW_WR_FUT", -4, "4670")
+                listed,
+                ("EMBER_OBJECTIVE_WR", 4, "5038"),
+                ("RIFT_OBJECTIVE_WR", -4, "5038"),
             )
         )
 
 
 def test_the_same_subject_is_not_the_same_underlying(listed):
-    """A win rate and a dispersion are different numbers about one Brawler.
+    """A win rate and a dispersion are different numbers about one competitor.
 
-    They can be adverse at once -- a Brawler can be losing everywhere *and*
-    losing unevenly -- so nothing about sharing a subject makes them net.
-    Measured before the check: long four SPIKE_WR_FUT against short five
-    SPIKE_DISP charged 26,030 against a gross of 41,030.
+    They can be adverse at once, since a competitor can be losing everywhere
+    *and* losing unevenly, so nothing about sharing a subject makes them net.
+    The two even take different ranges: a win rate runs to 1.0 and a placement
+    dispersion cannot exceed 0.5, so there is not one scalar here to minimise
+    over.
+
+    Measured on this pair: four long QUILL_SOLO_WR at 765 and five short
+    QUILL_SOLO_DISP at 3,160 are charged 3,060 and 9,200 separately, a gross of
+    12,260, and `worst_case` refuses to answer for the two together rather than
+    returning some smaller number.
     """
+    rows = (("QUILL_SOLO_WR", 4, "765"), ("QUILL_SOLO_DISP", -5, "3160"))
+    gross = sum(
+        (spec.collateral_for(quantity, price) for spec, quantity, price in
+         _holdings(listed, *rows)),
+        start=D(0),
+    )
+    assert gross == D(12_260)
     with pytest.raises(ValueError, match="not written on the same underlying"):
-        worst_case(
-            _holdings(listed, ("SPIKE_WR_FUT", 4, "4670"), ("SPIKE_DISP", -5, "530"))
-        )
+        worst_case(_holdings(listed, *rows))
 
 
 def test_the_venue_groups_by_exactly_the_rule_netting_enforces(listed):
@@ -215,13 +251,13 @@ def test_the_venue_groups_by_exactly_the_rule_netting_enforces(listed):
 
 def test_an_option_kinks_at_its_strike(listed):
     """Miss the kink and the minimum is evaluated everywhere except where it is."""
-    call = listed["SPIKE_C4600"].spec
+    call = listed["EMBER_OBJECTIVE_C4800"].spec
     kinks = kinks_of(call.payoff, call.underlying.bounds())
-    assert kinks == pytest.approx([0.46])
+    assert kinks == pytest.approx([0.48])
 
 
 def test_a_linear_payoff_has_no_kink(listed):
-    future = listed["SPIKE_WR_FUT"].spec
+    future = listed["EMBER_OBJECTIVE_WR"].spec
     assert kinks_of(future.payoff, future.underlying.bounds()) == []
 
 
@@ -231,11 +267,11 @@ def test_a_binary_offers_both_sides_of_its_threshold(listed):
     Which side is adverse depends on the sign of the position, and the caller
     should not have to know -- so both are offered and both are evaluated.
     """
-    binary = listed["SPIKE_GT47"].spec
+    binary = listed["EMBER_OBJECTIVE_GT500"].spec
     kinks = kinks_of(binary.payoff, binary.underlying.bounds())
     assert len(kinks) == 2
-    assert min(kinks) == pytest.approx(0.47)
-    assert max(kinks) > 0.47
+    assert min(kinks) == pytest.approx(0.50)
+    assert max(kinks) > 0.50
 
 
 def test_an_empty_portfolio_can_lose_nothing():
@@ -283,7 +319,7 @@ def test_a_step_below_minus_one_still_finds_its_far_side():
     -1.5 got a "far side" candidate of -1.5000000000005, on the *same* side, so
     the payout branch went unevaluated: 1,500 charged against a loss of 2,000.
     """
-    ref = MetricRef("adjusted_win_rate_lift", "SPIKE", bounds=(-2.0, 2.0))
+    ref = MetricRef("score_margin", "EMBER", bounds=(-2.0, 2.0))
     linear = _spec("LIFT", Linear(1_000.0), underlying=Single(ref))
     step = _spec(
         "GT_NEG", Binary(">", -1.5, payout=1_000.0), tick="0.01", underlying=Single(ref)
@@ -327,7 +363,7 @@ def test_an_unknown_payoff_shape_is_refused_rather_than_sampled():
     so a shape whose kinks are unknown is refused.
     """
 
-    class Spike(Payoff):
+    class Needle(Payoff):
         def apply(self, level):
             return -1_000.0 if abs(level - 0.5031) <= 0.002 else 0.0
 
@@ -335,12 +371,12 @@ def test_an_unknown_payoff_shape_is_refused_rather_than_sampled():
             return (-1_000.0, 0.0)
 
         def to_dict(self):
-            return {"kind": "spike"}
+            return {"kind": "needle"}
 
     with pytest.raises(TypeError, match="no declared kinks"):
-        kinks_of(Spike(), (0.0, 1.0))
+        kinks_of(Needle(), (0.0, 1.0))
     with pytest.raises(TypeError, match="no declared kinks"):
-        worst_case([(_spec("SPIKEY", Spike()), 1, D("0"))])
+        worst_case([(_spec("NEEDLE", Needle()), 1, D("0"))])
 
 
 # --------------------------------------------------------------------------
@@ -364,9 +400,9 @@ def test_the_tick_grid_is_where_exactness_stops(listed):
     exact number either. The loss is bounded by ``sum |quantity| * tick / 2``,
     and this asserts that bound so a future change cannot quietly widen it.
     """
-    future = listed["SPIKE_WR_FUT"].spec
-    weekly = listed["SPIKE_WR_W1"].spec
-    holdings = [(future, 1, D("4670")), (weekly, -10, D("467"))]
+    future = listed["BASTION_SOLO_WR"].spec
+    weekly = listed["BASTION_SOLO_W1"].spec
+    holdings = [(future, 1, D("1220")), (weekly, -10, D("122"))]
     assert worst_case(holdings) == 0
 
     worst = D(0)
@@ -523,9 +559,9 @@ def test_a_riskless_package_is_still_charged_for_by_the_venue():
     """
     listed = {i.symbol: i for i in instruments()}
     rows = [
-        ("SPIKE_WR_FUT", 10, "4670"),
-        ("SPIKE_P4700", 10, "31"),
-        ("SPIKE_C4700", -10, "1"),
+        ("EMBER_OBJECTIVE_WR", 10, "5038"),
+        ("EMBER_OBJECTIVE_P5000", 10, "1"),
+        ("EMBER_OBJECTIVE_C5000", -10, "39"),
     ]
     gross, net = netting_benefit(_holdings(listed, *rows))
     assert net == 0 and gross > 0

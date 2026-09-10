@@ -15,9 +15,12 @@ gets you the market's own latency model, and skips authentication entirely.
 
 **This is a simulation. There is no real money and no real security here.**
 
-The underlyings are public Brawl Stars battle statistics. Every counterparty is
-a simulated agent. Nothing connects to a broker, an exchange, or a payment
-system, and no position here can be transferred anywhere that does.
+The underlyings are a synthetic esport that this repository generates from a
+seed: its competitors, its two formats and every statistic written on them are
+invented here, and none of them refers to a real game, league, team or player.
+Every counterparty is a simulated agent. Nothing connects to a broker, an
+exchange, or a payment system, and no position here can be transferred anywhere
+that does.
 
 Every HTTP response carries `arena-simulated: true`. If you are acting on a
 person's behalf, that header is the thing to surface. An agent that reports
@@ -36,10 +39,11 @@ These are not conveniences. They change which strategies are computable, so
 they are worth understanding before you design anything.
 
 **Every contract settles as a known function of one bounded scalar.** Not a
-price process, a statistic: an adjusted win rate, a battle count, a dispersion.
-`GET /v1/instruments/{symbol}` gives you the exact range it can settle in, and
-settlement is verified to fall inside it. There is no tail beyond the bounds
-because the bounds are arithmetic, not an estimate.
+price process, a statistic: a win rate in one format, eliminations per match, a
+count of appearances, a dispersion, or, on a match, whether a stated thing
+happened. `GET /v1/instruments/{symbol}` gives you the exact range it can settle
+in, and settlement is verified to fall inside it. There is no tail beyond the
+bounds because the bounds are arithmetic, not an estimate.
 
 **Collateral is exact, and you can compute it in advance.** A position's
 requirement is the worst case of a piecewise-linear function of one bounded
@@ -53,8 +57,12 @@ Two consequences that matter more than they sound:
 
 - **Positions on different underlyings do not net.** Netting them would require
   a correlation, and a correlation is an estimate. Two contracts on the same
-  Brawler's win rate net; that Brawler's win rate against its dispersion does
-  not, because a Brawler can be losing everywhere and losing unevenly at once.
+  competitor's win rate in the same format net; its win rate against its
+  dispersion does not, because a competitor can be losing everywhere and losing
+  unevenly at once. Nor does its win rate in one format net against its win rate
+  in the other: the two formats rank the field at Spearman -0.357, so treating
+  them as one underlying would be assuming exactly the correlation the number
+  says is not there.
 - **Collateral is charged against your position's own basis**, not the current
   mark. Averaging down changes your requirement in a way marking does not.
 
@@ -106,7 +114,7 @@ The venue rejects rather than silently adjusting, so every one of these is
 recoverable if you read the reason.
 
 **`invalid_price` means you are off the grid, and the grid is not uniform.**
-Most contracts have one tick everywhere. At least one does not: `PIPER_WR_FUT`
+Most contracts have one tick everywhere. At least one does not: `VANTA_OBJECTIVE_WR`
 steps by 1.00 above 4,000 while its base tick is 0.25. Rounding a modelled
 price to the base tick returns 5232.25 there, which is refused. Round to the
 increment in force *at that price*, and check again afterwards, because one
@@ -174,7 +182,10 @@ sequence you processed and ask for it.
 
 **Contracts expire and settle.** Positions realise, cash moves, and the symbol
 stops trading. This is not an error condition and your position keeper has to
-expect it.
+expect it. Since matches were listed it is no longer only an end-of-window
+event: a match contract can settle mid-session, seconds after you traded it,
+because the outcome it named became certain. Code that treats "the symbol is
+gone" as a transport failure will thrash against this several times a minute.
 
 ---
 
@@ -182,14 +193,71 @@ expect it.
 
 Nine asset classes on one matching engine: futures, binaries, calls, puts,
 calendar spreads, an index, commodities, equities and a volatility contract.
-Forty-seven listed instruments, which group into **ten netting groups**, and
-the group is the only granularity at which collateral is actually released.
-Netting is currently off, so the venue charges gross per contract.
+The listing runs to **355 markets, 316 of them prediction markets**, and it is
+mostly matches: a ten-entrant solo match lists 270 contracts on its own and a
+three-a-side objective match lists 38.
 
-The population is three market makers, informed traders holding Bayesian
-posteriors over the underlying statistic, noise traders, a flow trader and an
-arbitrageur. They are not obstacles placed to be beaten; the informed agents
-genuinely know things, and the price genuinely aggregates what they know.
+Collateral is released at the **netting group**, and nowhere else. Netting is
+currently off, so the venue charges gross per contract, which is worth knowing
+before you size a package that looks self-hedging.
+
+The population is three market makers, a maker that quotes whole matches,
+informed traders holding Bayesian posteriors over the underlying statistic,
+noise traders, a flow trader and an arbitrageur. They are not obstacles placed
+to be beaten; the informed agents genuinely know things, and the price genuinely
+aggregates what they know.
+
+Uninformed flow is 3.0% of volume, up from 0.5%. That is a dial rather than a
+fact about the world, and it is set low deliberately: a realistic 16% costs ten
+times real time to simulate. Do not calibrate an adverse-selection model here
+against a real venue's toxicity and expect the numbers to transfer.
+
+### Trading a live match
+
+A match is where this venue stops resembling a statistics book, and there are
+four things about it that will surprise a client written against the rest of
+the exchange.
+
+**Symbols name the match, not the world.** `SOLO7_WIN_CINDER`,
+`SOLO7_TOP3_QUILL`, `SOLO7_ELIM_CINDER_GT2`, `SOLO7_H2H_VANTA_OVER_QUILL`, and
+on a team format `OBJECTIVE12_WIN_KESTREL-QUILL-VANTA`, where the side is named
+by its members. The field is drawn per match, so the same competitor is not in
+every match and a symbol from one match does not exist in the next.
+
+Do not parse a ticker to work out what a contract is. `GET
+/v1/instruments/{symbol}` returns the contract, and its underlying's metric
+reference is where the answer actually lives: `metric` is `match_win`,
+`match_place` or `match_eliminations`, `subject` is the competitor or the side,
+and the match tag rides in `maps` as `match-7`. A relation recovered by string
+surgery on a ticker breaks the first time anything is renamed, and it breaks
+silently, because the wrong string still parses.
+
+**The prices are coherent, and they are coherent by construction.** Every
+contract on one match is priced as the mean of the settlement rule over one
+ensemble of drawn outcomes, so the winner set sums to one, the placement ladders
+are monotone and a competitor who wins is above every other competitor, exactly
+rather than approximately. Measured: zero violations across 22,650 relation
+checks in exact rational arithmetic. **There is no free arbitrage inside a
+match**, and a strategy built to harvest one will find nothing. The same
+contracts quoted off eight independently drawn ensembles breach 53 of the 395
+relations by up to 0.1163, which is what you would be looking for, and it is not
+there.
+
+**Contracts settle while the match is still running.** A competitor who has been
+eliminated cannot win, so that contract is worth zero and is settled the moment
+the elimination is revealed, while everyone still in keeps trading. Your
+position keeper has to expect settlement inside a session, not only at an
+expiry. Only certainties settle early: an elimination says nothing final about
+where the survivors will place, so their contracts stay open.
+
+**A price of exactly zero is a real price, and a zero offer is not.** The
+pricing ensemble is finite, so an outcome it never drew prices at exactly zero.
+Measured at 4,000 draws over 20 beliefs, as many as 34 of a solo match's 270
+contracts priced at exactly 0 or 1 on a single belief, and 611 of the 612 such
+prices across all twenty were rungs of an eliminations ladder, which is where
+the tail is. Those prices are coherent, they are simply at the boundary. A maker
+quotes a zero fair value as 0 bid against a one-tick offer, because the offer is
+a ceiling and never a floor.
 
 Two measured facts to design around:
 

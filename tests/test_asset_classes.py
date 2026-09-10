@@ -49,7 +49,7 @@ SYM = "SYM"
 
 
 def wr(subject: str, bounds=(0.0, 1.0)) -> Single:
-    return Single(MetricRef("adjusted_win_rate", subject, bounds=bounds))
+    return Single(MetricRef("win_rate", subject, bounds=bounds))
 
 
 def make(underlying, payoff, tick="0.25") -> Instrument:
@@ -416,13 +416,13 @@ def test_a_quantity_metric_makes_a_commodity_not_a_future():
 
     A linear claim is a future when it is written on a rate and a commodity
     when it is written on an amount delivered. The metric declares which, so
-    the layer doing the classifying never has to know what a Brawler is.
+    the layer doing the classifying never has to know what a competitor is.
     """
     from dashboard.build_market import instruments
 
     listed = {i.symbol: i for i in instruments()}
-    assert listed["SPIKE_VOL_W1"].instrument_class == "commodity"
-    assert listed["SPIKE_WR_FUT"].instrument_class == "future"
+    assert listed["RIFT_SOLO_VOL_W1"].instrument_class == "commodity"
+    assert listed["EMBER_OBJECTIVE_WR"].instrument_class == "future"
 
 
 def test_a_commodity_has_a_term_structure():
@@ -434,7 +434,11 @@ def test_a_commodity_has_a_term_structure():
     """
     from dashboard.build_market import instruments
 
-    rungs = [i for i in instruments() if i.symbol.startswith("SPIKE_VOL_")]
+    rungs = [
+        i
+        for i in instruments()
+        if i.symbol.startswith("RIFT_SOLO_VOL_W") and "_GT" not in i.symbol
+    ]
     assert len(rungs) >= 3
 
     windows = [(i.spec.window.start, i.spec.window.end) for i in rungs]
@@ -454,7 +458,7 @@ def test_the_delivery_weeks_settle_at_different_amounts():
     from dashboard.build_market import instruments, true_values
 
     values = true_values(instruments())
-    curve = [values[f"SPIKE_VOL_W{n}"] for n in (1, 2, 3, 4)]
+    curve = [values[f"RIFT_SOLO_VOL_W{n}"] for n in (1, 2, 3, 4)]
     assert len(set(curve)) > 1, f"the term structure is flat: {curve}"
 
 
@@ -463,22 +467,29 @@ def test_a_metric_must_declare_whether_it_is_a_rate_or_a_quantity():
     from arena.contracts.underlying import MetricRef
 
     with pytest.raises(ValueError, match="must be 'rate', 'quantity' or"):
-        MetricRef(metric="battle_volume", subject="SPIKE", kind="amount")
+        MetricRef(metric="match_volume", subject="RIFT", kind="amount")
 
 
-def test_volume_is_not_standardized_and_says_so():
-    """Reweighting a count onto reference proportions counts nothing.
+def test_exactly_one_metric_is_a_quantity_and_it_is_the_commodity():
+    """The whole asset class rests on one field of one metric declaration.
 
-    Standardization exists to remove the crawler's composition from a *rate*.
-    Applied to an amount it produces a number nobody could deliver, so the
-    metric declines to do it -- and records that it declined, because the
-    consequence is that this measures the corpus rather than the game.
+    A commodity is a linear claim on an amount delivered, and nothing decides
+    which claims those are except `METRIC_KINDS`. Every other metric in this
+    world is scale invariant in the length of the window, so a March contract
+    and an April contract on it are the same contract measured twice; only
+    `match_volume` doubles when the window doubles, and that is what gives the
+    four delivery weeks a term structure rather than four copies of one number.
+
+    Asserted as a count rather than as a lookup, because the failure this
+    guards against is a second metric quietly acquiring the kind, which a
+    lookup on the one name would not see.
     """
-    from arena.worlds.brawl.metrics import METRIC_KINDS, METRICS
+    from arena.worlds.circuit.metrics import METRIC_KINDS, METRICS
 
-    assert METRIC_KINDS["battle_volume"] == "quantity"
-    assert "battle_volume" in METRICS
-    assert METRICS["battle_volume"].__doc__ is not None
+    quantities = [name for name, kind in METRIC_KINDS.items() if kind == "quantity"]
+    assert quantities == ["match_volume"]
+    assert set(METRIC_KINDS) == set(METRICS)
+    assert METRICS["match_volume"].__doc__ is not None
 
 
 # --------------------------------------------------------------------------
@@ -491,12 +502,12 @@ def test_a_schedule_of_payments_makes_a_share_not_a_future():
     from dashboard.build_market import instruments
 
     listed = {i.symbol: i for i in instruments()}
-    assert listed["SPIKE_EQ"].instrument_class == "equity"
-    assert listed["SPIKE_WR_FUT"].instrument_class == "future"
+    assert listed["BASTION_SOLO_EQ"].instrument_class == "equity"
+    assert listed["BASTION_SOLO_WR"].instrument_class == "future"
     # Written on the same metric, so nothing but the stream separates them.
     assert (
-        listed["SPIKE_EQ"].spec.underlying.to_dict()
-        == listed["SPIKE_WR_FUT"].spec.underlying.to_dict()
+        listed["BASTION_SOLO_EQ"].spec.underlying.to_dict()
+        == listed["BASTION_SOLO_WR"].spec.underlying.to_dict()
     )
 
 
@@ -509,16 +520,16 @@ def test_a_share_settles_at_nothing_and_is_worth_something_anyway():
     from dashboard.build_market import instruments, true_values
 
     listed = {i.symbol: i for i in instruments()}
-    share = listed["SPIKE_EQ"]
+    share = listed["BASTION_SOLO_EQ"]
     low, high = share.settlement_bounds
     assert low == high == 0
 
     values = true_values(list(listed.values()))
-    assert values["SPIKE_EQ"] > 0
+    assert values["BASTION_SOLO_EQ"] > 0
     # And its range covers the payments, or a short could owe more than it
     # posted.
     low, high = share.value_bounds
-    assert float(share.from_ticks(int(values["SPIKE_EQ"]))) <= float(high)
+    assert float(share.from_ticks(int(values["BASTION_SOLO_EQ"]))) <= float(high)
 
 
 def test_a_share_is_a_scaled_claim_on_the_same_thing_as_its_future():
@@ -532,10 +543,11 @@ def test_a_share_is_a_scaled_claim_on_the_same_thing_as_its_future():
     from dashboard.build_market import instruments, true_values
 
     values = true_values(instruments())
-    ratio = values["SPIKE_EQ"] / values["SPIKE_WR_FUT"]
+    ratio = values["BASTION_SOLO_EQ"] / values["BASTION_SOLO_WR"]
     # Not exactly 0.4: each week is measured on its own evidence, so the four
     # weekly rates do not average to the four-week rate once each is rounded to
-    # the tick grid. Within a tenth of a percent, which is the rounding.
+    # the tick grid. Re-measured on this listing the ratio is 0.400205, two
+    # hundredths of a percent out, which is that rounding.
     assert abs(ratio - 0.4) < 0.001, ratio
 
 
@@ -551,7 +563,7 @@ def test_paying_a_distribution_moves_cash_and_conserves_it():
     # Bought when the share is actually trading. At a fixed moment it may be
     # mid-auction -- either the opening call or a breaker pause -- and an order
     # into a halted book rests until the uncross rather than filling.
-    symbol = "SPIKE_EQ"
+    symbol = "BASTION_SOLO_EQ"
     for moment in range(20, 300, 5):
         market.kernel.advance(until=seconds(moment))
         book = market.venue.engine(symbol).book.snapshot()
@@ -595,11 +607,11 @@ def test_paying_a_distribution_moves_cash_and_conserves_it():
 
     before = int(venue.account(HUMAN_ID).cash)
     assert int(venue.conservation_check()) == 0
-    moved = int(venue.distribute("SPIKE_EQ", Money(467 * 1_000_000)))
+    moved = int(venue.distribute("BASTION_SOLO_EQ", Money(123 * 1_000_000)))
     assert moved > 0
     # The human was paid its share of the stream, to the unit.
     after = int(venue.account(HUMAN_ID).cash)
-    assert after - before == position.quantity * 467 * 1_000_000
+    assert after - before == position.quantity * 123 * 1_000_000
     # And it came from somewhere: value moved, none appeared.
     assert int(venue.conservation_check()) == 0
 
@@ -623,13 +635,14 @@ def test_a_distribution_leaves_no_account_short_of_collateral():
     `posted_collateral` sums that dict, the credit was quietly funding
     positions on other underlyings. That is cross-underlying netting arriving
     through the back door, which is the one thing collateral here may never do
-    -- netting two different Brawlers assumes they move together, and a
+    Netting two different competitors assumes they move together, and a
     correlation is an estimate. Flooring the requirement at zero is what closed
     it, and this is the visible consequence.
 
-    Measured on seed 7 at t=40s: six shorts pinned to the floor, `fund-0` short
-    332 at an average near 3,800 against a ceiling of 3,533. Every long and
-    every short whose requirement stayed positive lost exactly nothing.
+    The live sweep finds whoever happens to be holding the share at t=40s, and
+    which accounts those are depends on the whole market's composition. The
+    exception itself is constructed below rather than waited for, which is why
+    nothing here asserts a count of floored shorts.
     """
     market = build(seed=7)
     market.kernel.start()
@@ -639,7 +652,7 @@ def test_a_distribution_leaves_no_account_short_of_collateral():
     holders = [
         agent
         for agent, account in venue.accounts.items()
-        if account.positions.get("SPIKE_EQ") and account.positions["SPIKE_EQ"].quantity
+        if account.positions.get("BASTION_SOLO_EQ") and account.positions["BASTION_SOLO_EQ"].quantity
     ]
     assert holders, "nobody is holding the share; the test proves nothing"
 
@@ -651,16 +664,16 @@ def test_a_distribution_leaves_no_account_short_of_collateral():
     # capital the fixture happens to hand out. What must hold is that meeting
     # an obligation does not make anyone worse off: the cash goes out and the
     # requirement falls by exactly as much.
-    payment = 467
+    payment = 123
     before = {
         agent: (
             int(venue.accounts[agent].free_cash),
-            int(venue.accounts[agent].collateral.get("SPIKE_EQ", Money(0))),
-            venue.accounts[agent].positions["SPIKE_EQ"].quantity,
+            int(venue.accounts[agent].collateral.get("BASTION_SOLO_EQ", Money(0))),
+            venue.accounts[agent].positions["BASTION_SOLO_EQ"].quantity,
         )
         for agent in holders
     }
-    venue.distribute("SPIKE_EQ", Money(payment * 1_000_000))
+    venue.distribute("BASTION_SOLO_EQ", Money(payment * 1_000_000))
 
     floored = 0
     for agent in holders:
@@ -673,7 +686,7 @@ def test_a_distribution_leaves_no_account_short_of_collateral():
         # room to fall, and then by exactly the remainder. Anything else is the
         # payment being charged twice.
         floored += 1
-        assert int(account.collateral.get("SPIKE_EQ", Money(0))) == 0, (
+        assert int(account.collateral.get("BASTION_SOLO_EQ", Money(0))) == 0, (
             f"{agent} lost {lost} of headroom while its requirement could "
             "still have fallen"
         )
@@ -694,20 +707,20 @@ def test_a_distribution_leaves_no_account_short_of_collateral():
     # exercising the path it names. Measured: it passes on `best_price` and
     # fails on `best_priced`, which is the wrong way round for a test of
     # collateral arithmetic to depend on a market-data defect.
-    instrument = venue.registry.require("SPIKE_EQ")
+    instrument = venue.registry.require("BASTION_SOLO_EQ")
     _low, high = venue.bounds_in_minor(instrument)
     venue.open_account("floor-probe", 10_000_000)
     probe = venue.accounts["floor-probe"]
     # Short at the very top of what the claim can settle for, so the next
     # payment drops the ceiling below the basis and the requirement floors.
     probe.apply_fill(
-        "SPIKE_EQ", -20, Money(int(high)), venue.bounds_in_minor(instrument)
+        "BASTION_SOLO_EQ", -20, Money(int(high)), venue.bounds_in_minor(instrument)
     )
     cash_before = int(probe.free_cash)
-    required_before = int(probe.collateral.get("SPIKE_EQ", Money(0)))
-    venue.distribute("SPIKE_EQ", Money(payment * 1_000_000))
+    required_before = int(probe.collateral.get("BASTION_SOLO_EQ", Money(0)))
+    venue.distribute("BASTION_SOLO_EQ", Money(payment * 1_000_000))
 
-    assert int(probe.collateral.get("SPIKE_EQ", Money(0))) == 0, (
+    assert int(probe.collateral.get("BASTION_SOLO_EQ", Money(0))) == 0, (
         "the constructed short was not pinned to the floor, so the exception "
         "is still untested"
     )
@@ -730,9 +743,9 @@ def test_a_share_cannot_pay_more_than_it_promised():
     market = build(seed=7)
     venue = market.venue
     for _ in range(4):
-        venue.distribute("SPIKE_EQ", Money(100 * 1_000_000))
+        venue.distribute("BASTION_SOLO_EQ", Money(100 * 1_000_000))
     with pytest.raises(ValueError, match="already paid all 4"):
-        venue.distribute("SPIKE_EQ", Money(100 * 1_000_000))
+        venue.distribute("BASTION_SOLO_EQ", Money(100 * 1_000_000))
 
 
 def test_only_a_share_can_pay_a_distribution():
@@ -741,7 +754,7 @@ def test_only_a_share_can_pay_a_distribution():
 
     market = build(seed=7)
     with pytest.raises(ValueError, match="declares no distribution schedule"):
-        market.venue.distribute("SPIKE_WR_FUT", Money(1_000_000))
+        market.venue.distribute("EMBER_OBJECTIVE_WR", Money(1_000_000))
 
 
 def test_the_payments_differ_from_week_to_week():
@@ -749,8 +762,8 @@ def test_the_payments_differ_from_week_to_week():
     from dashboard.build_market import _world, instruments
     from arena.settlement.engine import distributions
 
-    _dataset, _reference, oracle = _world()
-    share = {i.symbol: i for i in instruments()}["SPIKE_EQ"]
+    oracle = _world()
+    share = {i.symbol: i for i in instruments()}["BASTION_SOLO_EQ"]
     paid = distributions(share.spec, oracle)
     assert len(paid) == 4
     assert len(set(paid)) > 1, f"every week paid the same: {paid}"
@@ -767,7 +780,7 @@ def test_distribution_windows_must_lie_inside_the_contract_window():
         DistributionSchedule,
         ObservationWindow,
     )
-    from arena.worlds.brawl.metrics import metric_ref
+    from arena.worlds.circuit.metrics import metric_ref
     from arena.contracts.underlying import Single
 
     window = ObservationWindow(
@@ -777,7 +790,7 @@ def test_distribution_windows_must_lie_inside_the_contract_window():
     with pytest.raises(ValueError, match="outside the observation window"):
         ContractSpec(
             contract_id="BAD",
-            underlying=Single(metric_ref("adjusted_win_rate", "SPIKE")),
+            underlying=Single(metric_ref("win_rate", "QUILL", modes=("solo",))),
             payoff=Linear(0.0),
             window=window,
             policy=DataPolicy(min_sample_size=1),
@@ -814,72 +827,107 @@ def test_a_dispersion_metric_makes_a_volatility_contract():
     from dashboard.build_market import instruments
 
     listed = {i.symbol: i for i in instruments()}
-    assert listed["SPIKE_DISP"].instrument_class == "volatility"
-    assert listed["SPIKE_WR_FUT"].instrument_class == "future"
+    assert listed["QUILL_SOLO_DISP"].instrument_class == "volatility"
+    assert listed["EMBER_OBJECTIVE_WR"].instrument_class == "future"
 
 
 def test_dispersion_and_level_are_different_questions_about_the_same_subject():
-    """Two Brawlers can share an average and not share a spread.
+    """How well a competitor does and how evenly are not one number twice.
 
-    That is the whole reason the contract exists, and it is measurable here:
-    SPIKE and CROW settle within two percent of each other on win rate and
-    differ by nearly seventy percent on how evenly they earn it.
+    Re-measured on the circuit listing, and the gap moved the other way round
+    from the world this replaces. QUILL and BASTION settle 37.4% apart on their
+    individual win rate and only 8.9% apart on placement dispersion, a factor
+    of 4.2, where the retired pair sat within two percent on the level and
+    nearly seventy percent apart on the spread.
+
+    Either arrangement makes the same point, which is that the second moment
+    does not follow the first through a fixed scale. It is worth being precise
+    about how much this shows on its own: two subjects cannot separate a
+    correlation from an identity, and the listing measures that separately at a
+    residual of 0.0068 after a straight line in the win rate. What this asserts
+    is the part visible from the two contracts the exchange actually lists.
     """
     from dashboard.build_market import instruments, true_values
 
     values = true_values(instruments())
-    level_gap = abs(values["SPIKE_WR_FUT"] - values["CROW_WR_FUT"]) / values["CROW_WR_FUT"]
-    spread_gap = abs(values["SPIKE_DISP"] - values["CROW_DISP"]) / values["CROW_DISP"]
-    assert level_gap < 0.05, f"the two levels are not close: {level_gap:.2%}"
-    assert spread_gap > 0.3, f"the two dispersions are not far apart: {spread_gap:.2%}"
+    level_gap = (
+        abs(values["QUILL_SOLO_WR"] - values["BASTION_SOLO_WR"])
+        / values["BASTION_SOLO_WR"]
+    )
+    spread_gap = (
+        abs(values["QUILL_SOLO_DISP"] - values["BASTION_SOLO_DISP"])
+        / values["BASTION_SOLO_DISP"]
+    )
+    assert level_gap > 0.3, f"the two levels are not far apart: {level_gap:.2%}"
+    assert spread_gap < 0.15, f"the two dispersions are not close: {spread_gap:.2%}"
+    assert level_gap > 3 * spread_gap, (
+        f"level gap {level_gap:.2%} against spread gap {spread_gap:.2%}: the "
+        "two moments are moving together on one scale"
+    )
 
 
 def test_dispersion_is_bounded_so_collateral_stays_arithmetic():
-    """A rate lives in [0, 1], so a set of rates cannot spread further than 0.5.
+    """A normalized placement lives in [0, 1], so its spread cannot exceed 0.5.
 
     That bound is not decoration. It is what lets a second-moment claim join an
     exchange whose whole collateral model is "every contract settles inside a
     known interval" -- without it, a short would need a variance estimate
-    rather than a subtraction.
+    rather than a subtraction. The ceiling is reached only by a competitor that
+    finishes first in half its matches and last in the other half, which is
+    arithmetic rather than an observed maximum.
     """
-    from arena.worlds.brawl.metrics import METRIC_BOUNDS
+    from arena.worlds.circuit.metrics import METRIC_BOUNDS
 
-    assert METRIC_BOUNDS["stratum_dispersion"] == (0.0, 0.5)
+    assert METRIC_BOUNDS["placement_dispersion"] == (0.0, 0.5)
 
     from dashboard.build_market import instruments, true_values
 
     catalogue = instruments()
     listed = {i.symbol: i for i in catalogue}
     values = true_values(catalogue)
-    for symbol in ("SPIKE_DISP", "CROW_DISP"):
+    for symbol in ("QUILL_SOLO_DISP", "BASTION_SOLO_DISP"):
         low, high = listed[symbol].tick_bounds
         assert int(low) <= values[symbol] <= int(high)
 
 
-def test_dispersion_measures_the_same_walk_as_the_level():
-    """Same strata, same shrinkage, same coverage gate -- a different moment.
+def test_dispersion_measures_the_same_matches_as_the_level():
+    """Same window, same format, same appearances, a different moment.
 
-    If it walked different cells it would be a different measurement wearing
-    the same contract's name, and the two would not be comparable.
+    If it ran over different matches it would be a different measurement
+    wearing the same contract's name, and the two would not be comparable. Both
+    metrics start from `_appearances`, so the check is that the evidence trail
+    they publish agrees rather than that the two happen to look similar.
+
+    Measured on the prior window of seed 7: QUILL is drawn into 6,640 of the
+    8,064 solo matches, wins 490 of them for a rate of 0.0738, and finishes
+    with a placement dispersion of 0.3140 around a mean normalized placement of
+    0.5638. One set of matches, two moments of it.
     """
-    from arena.worlds.brawl.metrics import METRICS
+    from arena.worlds.circuit.metrics import METRICS, metric_ref
     from dashboard.build_market import PRIOR_WINDOW, _world
-    from arena.worlds.brawl.metrics import metric_ref
 
-    _dataset, _reference, oracle = _world()
-    level = oracle.resolve(metric_ref("adjusted_win_rate", "SPIKE"), PRIOR_WINDOW)
-    spread = oracle.resolve(metric_ref("stratum_dispersion", "SPIKE"), PRIOR_WINDOW)
-    assert "stratum_dispersion" in METRICS
-    assert level.sample_size == spread.sample_size
-    diagnostics = dict(spread.diagnostics)
-    assert diagnostics["standardized_mean"] == pytest.approx(level.value)
+    oracle = _world()
+    level = oracle.resolve(
+        metric_ref("win_rate", "QUILL", modes=("solo",)), PRIOR_WINDOW
+    )
+    spread = oracle.resolve(
+        metric_ref("placement_dispersion", "QUILL", modes=("solo",)), PRIOR_WINDOW
+    )
+    assert "placement_dispersion" in METRICS
+    assert level.sample_size == spread.sample_size == 6_640
+    level_diagnostics = dict(level.diagnostics)
+    spread_diagnostics = dict(spread.diagnostics)
+    assert level_diagnostics["appearances"] == spread_diagnostics["appearances"]
+    assert level_diagnostics["formats"] == spread_diagnostics["formats"] == "solo"
+    assert level.value == pytest.approx(0.0738, abs=0.0001)
+    assert spread.value == pytest.approx(0.3140, abs=0.0001)
 
 
 def test_an_unknown_metric_kind_is_refused():
     from arena.contracts.underlying import MetricRef
 
     with pytest.raises(ValueError, match="must be 'rate', 'quantity' or 'dispersion'"):
-        MetricRef(metric="stratum_dispersion", subject="SPIKE", kind="moment")
+        MetricRef(metric="placement_dispersion", subject="QUILL", kind="moment")
 
 
 
@@ -898,8 +946,9 @@ def test_a_live_market_reaches_expiry_and_settles():
     asked. Wiring it to a wall clock would not have helped either: the kernel
     would have had to run for a month of real time to reach the date.
 
-    Measured before the calendar existed: after a simulated hour all 47 listed
-    contracts were still `continuous` and the settled set was empty. A position
+    Measured before the calendar existed: after a simulated hour all 47 of the
+    contracts then listed were still `continuous` and the settled set was
+    empty. A position
     was marked forever and realised never, which leaves an algorithm no
     terminal event to score itself against.
 
@@ -911,8 +960,15 @@ def test_a_live_market_reaches_expiry_and_settles():
     The mapping is the one the venue already used rather than a new one:
     `build_market` scales the breaker windows by `session_seconds / trading
     day`, so `session_seconds` of simulated time is already one trading day.
-    Here a ten second day makes the four-week window close after 280 simulated
-    seconds instead of 16,800.
+
+    The run is 600 simulated seconds and used to be 340, and the extra four
+    minutes are the listing moving rather than the market getting slower. The
+    contract calendar starts on publication day, which is the day before the
+    circuit opens, and the observation window no longer opens there: it opens
+    four weeks in, after the prior window every informed trader reads its
+    opening belief off. So a four week contract now expires 57 trading days out
+    rather than 29, which at a ten second day is 570 simulated seconds instead
+    of 290.
     """
     market = build(seed=7, session_seconds=10.0)
     market.kernel.start()
@@ -922,7 +978,7 @@ def test_a_live_market_reaches_expiry_and_settles():
     opened = market.calendar.now()
 
     settled_at = {}
-    for moment in range(20, 340, 20):
+    for moment in range(20, 620, 20):
         market.kernel.advance(until=seconds(moment))
         market.calendar.advance_to(moment)
         for symbol in market.settle_due():
@@ -940,7 +996,7 @@ def test_a_live_market_reaches_expiry_and_settles():
     # calendar is being compared against each contract's *own* window rather
     # than against one exchange-wide deadline.
     weekly = {s for s in listed if s.endswith(("_W1", "_W2"))}
-    monthly = {s for s in listed if s.endswith("_WR_FUT")}
+    monthly = {s for s in listed if s.endswith("_WR")}
     assert weekly and monthly, "the fixture no longer lists both tenors"
     assert max(settled_at[s] for s in weekly) < max(settled_at[s] for s in monthly), (
         "a one-week contract outlived a four-week one"
@@ -955,7 +1011,7 @@ def test_nothing_trades_after_its_window_closes():
     """
     market = build(seed=7, session_seconds=10.0)
     market.kernel.start()
-    for moment in range(20, 340, 20):
+    for moment in range(20, 620, 20):
         market.kernel.advance(until=seconds(moment))
         market.calendar.advance_to(moment)
         market.settle_due()

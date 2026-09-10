@@ -58,7 +58,7 @@ def test_a_name_is_trimmed_capped_and_stripped():
     assert " " in display_name(None), "a generated name should read as a name"
 
 
-def _open_book(market, symbol: str = "SPIKE_WR_FUT", until: int = 240):
+def _open_book(market, symbol: str = "EMBER_OBJECTIVE_WR", until: int = 240):
     """Advance until ``symbol`` is trading two-sided, and return its touch.
 
     A market with a circuit breaker spends part of its session halted, and the
@@ -99,7 +99,7 @@ def test_two_people_get_two_accounts():
     grace = market.seat("Grace")
     assert ada != grace
 
-    market.submit("SPIKE_WR_FUT", "buy", 5, None, trader=ada)
+    market.submit("EMBER_OBJECTIVE_WR", "buy", 5, None, trader=ada)
     market.kernel.advance(until=seconds(60))
 
     mine = market.snapshot(ada)
@@ -161,14 +161,14 @@ def test_one_person_cannot_cancel_another_persons_order():
     # milliseconds after it was acknowledged, because the book is about sixty
     # lots a side and something is always sweeping it. A working order is a
     # thing markets keep taking away; the test asks again.
-    instrument = market.venue.registry.require("SPIKE_WR_FUT")
+    instrument = market.venue.registry.require("EMBER_OBJECTIVE_WR")
     working: list = []
     for attempt in range(12):
         book = _open_book(market, until=600)
         resting = float(instrument.from_ticks(book.best_bid)) - (
             float(instrument.tick_size) * (1 + attempt * 4)
         )
-        market.submit("SPIKE_WR_FUT", "buy", 5, f"{resting:.2f}", trader=ada)
+        market.submit("EMBER_OBJECTIVE_WR", "buy", 5, f"{resting:.2f}", trader=ada)
         market.kernel.advance(
             until=Timestamp(int(market.kernel.now) + int(millis(120)))
         )
@@ -205,8 +205,8 @@ def test_joining_a_running_market_does_not_disturb_anyone_else():
     busy.seat("Ada")
     busy.kernel.advance(until=seconds(45))
 
-    assert len(quiet.venue.engine("SPIKE_WR_FUT").tape) == len(
-        busy.venue.engine("SPIKE_WR_FUT").tape
+    assert len(quiet.venue.engine("EMBER_OBJECTIVE_WR").tape) == len(
+        busy.venue.engine("EMBER_OBJECTIVE_WR").tape
     ), "seating someone changed what everyone else did"
 
 

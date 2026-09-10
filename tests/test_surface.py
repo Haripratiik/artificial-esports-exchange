@@ -2,19 +2,20 @@
 
 A set of call prices at a single maturity is free of static arbitrage exactly
 when it is decreasing and convex in strike with slope in [-1, 0] (Davis and
-Hobson 2007; Carr and Madan 2005). The live market satisfied none of those:
-`SPIKE_C4700` marked at 72.7 while `SPIKE_C4600` marked at 59.1, which is a
-riskless trade anyone could take, and put-call parity was out by 35 ticks.
+Hobson 2007; Carr and Madan 2005). The live market satisfied none of those: a
+call struck higher marked at 72.7 while the one struck below it marked at 59.1,
+which is a riskless trade anyone could take, and put-call parity was out by 35
+ticks.
 
 Two causes, and the smaller one was the market maker.
 
-The larger was that **every agent held a separate view of the same Brawler for
-every contract written on it**. `FundamentalTrader` drew its estimate and its
-Monte Carlo sample per symbol, so SPIKE_C4600 and SPIKE_C4650 were valued from
+The larger was that **every agent held a separate view of the same competitor
+for every contract written on it**. `FundamentalTrader` drew its estimate and
+its Monte Carlo sample per symbol, so two adjacent strikes were valued from
 independent draws of the same posterior; the error between them was
 independent, so the ladder was not monotone and the agent traded on the
-difference. Measured before the fix: `fund-vague` valued the 4,650 call at
-119.03 and the strictly more valuable 4,600 call at 36.67.
+difference. Measured before the fix: `fund-vague` valued the higher strike at
+119.03 and the strictly more valuable lower one at 36.67.
 
 These tests pin both, and they pin the property rather than the numbers: what
 must hold is that a chain priced off one distribution cannot be arbitraged, and
@@ -34,8 +35,12 @@ from arena.sim.time import seconds
 from dashboard.build_market import build, instruments
 
 SCALE = 10_000.0
-FORWARD = 4_669.0
-LADDER = (4_500, 4_600, 4_650, 4_700, 4_750, 4_800)
+# The forward and the ladder are the team win rate chain this exchange lists:
+# EMBER's objective win rate settles at 5,038.25 and the listed strikes sit at
+# 4,800 and 5,000 either side of the format's neutral 5,000. The rungs below
+# widen that to six so convexity has something to be convex over.
+FORWARD = 5_038.0
+LADDER = (4_800, 4_900, 5_000, 5_100, 5_200, 5_300)
 
 
 # --------------------------------------------------------------------------
@@ -91,7 +96,7 @@ def test_a_tighter_belief_is_worth_less_time_value():
     underlying stops moving the chain has to converge on intrinsic value, or
     the maker is selling insurance against a risk that has gone away.
     """
-    strike = 4_700
+    strike = 5_100
     values = [
         option_value(FORWARD, strike, SCALE, k, True)
         for k in (100.0, 1_000.0, 10_000.0, 1_000_000.0)
@@ -102,7 +107,7 @@ def test_a_tighter_belief_is_worth_less_time_value():
 
 def test_delta_is_the_derivative_of_the_price():
     """``dC/dK = -P(F > K)``, which is what makes delta hedging arithmetic."""
-    strike, step = 4_650.0, 0.01
+    strike, step = 5_000.0, 0.01
     up = option_value(FORWARD, strike + step, SCALE, 900.0, True)
     down = option_value(FORWARD, strike - step, SCALE, 900.0, True)
     numeric = -(up - down) / (2 * step)
@@ -121,17 +126,17 @@ def test_delta_falls_from_one_to_zero_across_the_ladder():
 
 
 def test_an_agent_holds_one_view_per_underlying_not_per_contract():
-    """Three strikes on SPIKE are three contracts and one opinion.
+    """Three strikes on QUILL are three contracts and one opinion.
 
-    Independent draws per contract made the agent's own ladder non-monotone --
-    measured at 119.03 for the 4,650 call against 36.67 for the 4,600 -- and it
-    then traded on a difference that was entirely its own Monte Carlo error.
+    Independent draws per contract made the agent's own ladder non-monotone,
+    measured at 119.03 for the higher strike against 36.67 for the lower, and
+    it then traded on a difference that was entirely its own Monte Carlo error.
     """
     market = build(seed=7)
     market.kernel.start()
     market.kernel.advance(until=seconds(90))
 
-    calls = ["SPIKE_C4600", "SPIKE_C4650", "SPIKE_C4700"]
+    calls = ["QUILL_SOLO_C600", "QUILL_SOLO_C800", "QUILL_SOLO_C1000"]
     checked = 0
     for agent in market.kernel._agents.values():
         view = getattr(agent, "_estimate", None) or getattr(agent, "_value", None)
@@ -140,7 +145,7 @@ def test_an_agent_holds_one_view_per_underlying_not_per_contract():
         values = [view[s] for s in calls]
         assert values == sorted(values, reverse=True), (
             f"{agent.agent_id} values {dict(zip(calls, values))}, which is not a "
-            "ladder any single view of SPIKE could produce"
+            "ladder any single view of QUILL could produce"
         )
         assert values[0] - 2 * values[1] + values[2] >= -1e-6, (
             f"{agent.agent_id}'s own ladder is not convex"
@@ -149,8 +154,8 @@ def test_an_agent_holds_one_view_per_underlying_not_per_contract():
     assert checked >= 2, "no informed agent had a view; the test proves nothing"
 
 
-def test_two_contracts_on_one_brawler_share_a_posterior():
-    """The sample is battles involving a Brawler, not battles involving a bet."""
+def test_two_contracts_on_one_competitor_share_a_posterior():
+    """The sample is matches involving a competitor, not matches involving a bet."""
     from arena.agents.bayesian import BayesianFundamental
     from arena.exchange.types import AgentId
     from arena.market.live import VENUE_ID
@@ -169,12 +174,12 @@ def test_two_contracts_on_one_brawler_share_a_posterior():
         rng = market.kernel.rng_for(AgentId("probe"))
 
     ctx = _Ctx()
-    first = agent.posterior(ctx, "SPIKE_C4600")
-    second = agent.posterior(ctx, "SPIKE_C4700")
-    third = agent.posterior(ctx, "SPIKE_WR_FUT")
-    other = agent.posterior(ctx, "CROW_WR_FUT")
-    assert first == second == third, "one Brawler, three posteriors"
-    assert other != first, "two Brawlers collapsed into one posterior"
+    first = agent.posterior(ctx, "QUILL_SOLO_C600")
+    second = agent.posterior(ctx, "QUILL_SOLO_C1000")
+    third = agent.posterior(ctx, "QUILL_SOLO_WR")
+    other = agent.posterior(ctx, "RIFT_SOLO_WR")
+    assert first == second == third, "one competitor, three posteriors"
+    assert other != first, "two competitors collapsed into one posterior"
 
 
 # --------------------------------------------------------------------------
@@ -215,14 +220,15 @@ def test_a_share_relates_to_the_weeks_it_pays():
 
     listed = instruments()
     relations = {r.name: r for r in derive_relations({i.symbol: i for i in listed})}
-    strip = relations.get("strip:SPIKE_EQ")
+    strip = relations.get("strip:BASTION_SOLO_EQ")
     assert strip is not None, "the share has no replicating package"
 
     values = true_values(listed)
     replicated = sum(values[leg] for leg, _weight in strip.legs)
-    assert replicated == values["SPIKE_EQ"], (
-        f"the strip settles at {replicated} and the share at {values['SPIKE_EQ']}; "
-        "if these differ the relation is not an identity and must not be traded"
+    assert replicated == values["BASTION_SOLO_EQ"], (
+        f"the strip settles at {replicated} and the share at "
+        f"{values['BASTION_SOLO_EQ']}; if these differ the relation is not an "
+        "identity and must not be traded"
     )
 
 
@@ -237,11 +243,15 @@ def test_two_contracts_differing_only_by_window_are_not_confused():
     from arena.agents.arbitrageur import _underlying_key
 
     listed = {i.symbol: i for i in instruments()}
-    weekly = [s for s in listed if s.startswith("SPIKE_WR_W")]
-    assert len(weekly) >= 2
+    weekly = [
+        s
+        for s in listed
+        if s.startswith("BASTION_SOLO_W") and s != "BASTION_SOLO_WR"
+    ]
+    assert len(weekly) == 4
     keys = {_underlying_key(listed[s]) for s in weekly}
     assert len(keys) == len(weekly), "two delivery weeks share one key"
-    assert _underlying_key(listed["SPIKE_WR_FUT"]) not in keys
+    assert _underlying_key(listed["BASTION_SOLO_WR"]) not in keys
 
 
 # --------------------------------------------------------------------------
@@ -273,8 +283,8 @@ def test_the_live_chain_carries_no_tradeable_arbitrage_worth_the_name():
     The maker's own ladder is coherent by construction -- one forward, one
     volatility, one width across every strike -- but a *mark* is the mid of the
     touch, and the touch belongs to whoever is at it. Measured at t=540 on seed
-    7: the 4,600 call's offer was set by a **noise trader** sitting inside the
-    maker's quote, which dragged that strike's mid down and left the three
+    7: the lowest strike's offer was set by a **noise trader** sitting inside
+    the maker's quote, which dragged that strike's mid down and left the three
     marks at 120.38 / 71.12 / 10.12. That is concave by 11.74, and a butterfly
     costs 6.00 to put on, so 5.74 of it was free to anyone who would take it --
     and nobody in that market would.
@@ -289,17 +299,21 @@ def test_the_live_chain_carries_no_tradeable_arbitrage_worth_the_name():
 
     market = build(seed=7, surface=True, arbitrageur=True)
     market.kernel.start()
-    instrument = market.venue.registry.require("SPIKE_C4600")
+    instrument = market.venue.registry.require("QUILL_SOLO_C600")
 
     # Measured on a settled market. Evidence arrives over the session, so the
     # first minutes are a violent repricing in which different strikes lag by
     # different amounts and the chain is momentarily inconsistent -- measured
-    # at t=100, the 4,650 call marked 45 below the 4,700. Real option markets
+    # at t=100, the middle call marked 45 below the top one. Real option markets
     # do this too, which is why exchanges have obvious-error rules, and it is
     # recorded in docs/GAPS.md rather than asserted away here.
     market.kernel.advance(until=seconds(180))
 
-    strikes = [(4_600, "SPIKE_C4600"), (4_650, "SPIKE_C4650"), (4_700, "SPIKE_C4700")]
+    strikes = [
+        (600, "QUILL_SOLO_C600"),
+        (800, "QUILL_SOLO_C800"),
+        (1_000, "QUILL_SOLO_C1000"),
+    ]
     scored = 0
     outside_band = 0
     worst = 0.0
@@ -402,7 +416,7 @@ def test_every_strike_stays_quotable():
 
     Two seeds, because one was measuring luck. This asserted a per-strike floor
     of 60% and ran only seed 7, where it passed by a single sampled moment:
-    `CROW_C4750` at 13 of 21 against the 12.6 the threshold needed. Re-measured
+    one strike at 13 of 21 against the 12.6 the threshold needed. Re-measured
     across four seeds on the unmodified maker, the floor was already breached
     on two of them, one strike on seed 3 at 0.571 and two on seed 11 with the
     worst at 0.476, so it was never a property this market had.
@@ -420,8 +434,8 @@ def test_every_strike_stays_quotable():
     tenth of the chain rather than asserted away, against a measured worst of
     2 of 28.
 
-    The floor asserted flat is the one that was the original symptom:
-    `SPIKE_C4700` under the plain maker never had two sides at all.
+    The floor asserted flat is the one that was the original symptom: the top
+    strike of the chain under the plain maker never had two sides at all.
     """
     from arena.exchange.session import SessionState
 

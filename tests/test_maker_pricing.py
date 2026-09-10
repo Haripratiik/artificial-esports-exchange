@@ -109,8 +109,8 @@ def session() -> Session:
     a mid sampled every 250ms, a factor of sixteen. What the coarse reading is
     mostly catching is the maker requoting between two samples on the books
     that move fastest, which on this fixture are the commodities, whose opening
-    reference is the middle of a 10,000 tick range against a `SPIKE_VOL_W1`
-    that settles at 1,422.
+    reference is the middle of their declared range against a front week volume
+    contract that settles at 1,685.
     """
     market = build(seed=SEED)
     attribution = TradeAttribution(market.venue, horizons=HORIZONS)
@@ -238,19 +238,18 @@ def test_passive_flow_on_the_event_ladder_is_not_one_sided(session):
     produce it is a price the whole market disagrees with in one direction.
 
     Measured over 300s before the binaries were priced off the surface, on the
-    ladder of eight: seed 7 averaged 0.898 with `ELPRIMO_GT47`, `ELPRIMO_GT49`
-    and `SPIKE_GT47` all at exactly 1.00, and seed 3 averaged 0.960 with four
-    contracts at 1.00. Exactly 1.00 means every passive fill on that contract
-    landed on the same side, without a single exception, which no distribution
-    of luck produces. Priced off the same law as the option chain the same runs
-    give 0.556 and 0.611.
+    ladder of eight the exchange then listed: seed 7 averaged 0.898 with three
+    of the eight at exactly 1.00, and seed 3 averaged 0.960 with four at 1.00.
+    Exactly 1.00 means every passive fill on that contract landed on the same
+    side, without a single exception, which no distribution of luck produces.
+    Priced off the same law as the option chain the same runs give 0.556 and
+    0.611.
 
     The bound is on the mean and not on the worst contract, because the worst
-    contract is still 1.00 on seed 3 after the fix: `SPIKE_GT44` traded 11 lots
-    in the final minute and its ratio is a statement about eleven lots. A per
-    contract bound would be dominated by whichever binary is closest to
-    resolved and therefore least traded, which is the opposite of what this is
-    asking.
+    contract was still 1.00 on seed 3 after the fix: it traded 11 lots in the
+    final minute and its ratio is a statement about eleven lots. A per contract
+    bound would be dominated by whichever binary is closest to resolved and
+    therefore least traded, which is the opposite of what this is asking.
     """
     imbalance = session.imbalance()
     ladder = {
@@ -278,13 +277,14 @@ def test_every_event_contract_is_still_trading_at_the_end_of_the_session(session
     stops moving, and the quote that stopped it is exactly the quote that keeps
     it stopped.
 
-    Measured on seed 7 before the fix, in lots printed per minute:
-    `SPIKE_GT47` traded 145, 21, 0, 0, 0 and `SPIKE_GT44` 211, 0, 0, 0, 0.
-    Every one of the eight event contracts was dead inside two minutes while
+    Measured on seed 7 before the fix, in lots printed per minute: one rung of
+    the ladder traded 145, 21, 0, 0, 0 and another 211, 0, 0, 0, 0. Every one
+    of the eight event contracts then listed was dead inside two minutes while
     the futures were still printing thousands of lots a minute, and the maker
-    spent the rest of the session quoting `CROW_GT47` around 0.40 against a
-    settlement of 1.00. Priced off the surface the same run gives `SPIKE_GT47`
-    806, 865, 761, 779, 730 and every contract trading in every minute.
+    spent the rest of the session quoting a rung around 0.40 against a
+    settlement of 1.00. Priced off the surface the same run gives the first of
+    those 806, 865, 761, 779, 730 and every contract trading in every
+    minute.
 
     The mechanism that killed them is worth naming, because it is not the
     anchor alone. The venue collars a market order to a band around a trailing
@@ -329,8 +329,8 @@ def test_the_surface_reports_the_exposure_a_delta_limit_cannot_see(session):
     11. Every strike that fails does so with all three makers at exactly their
     short position limit, -1,200, -950 and -700, at which a maker stops adding
     to a side and the strike has no offer at all. On seed 7 the weakest link
-    passes by one sampled moment, `CROW_C4750` at 13 of 21 against the 12.6 the
-    threshold needs.
+    passed by one sampled moment, at 13 of 21 against the 12.6 the threshold
+    needs.
 
     This asserts only that the accessor measures what it says, because the
     quantity itself is a defect and not an invariant: the surface's implied

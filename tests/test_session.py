@@ -45,7 +45,7 @@ from arena.exchange.types import (
 from arena.market.fees import MAKER_TAKER
 from arena.market.instrument import Instrument
 from arena.market.venue import FEE_ACCOUNT_ID, Venue
-from arena.worlds.brawl.metrics import metric_ref
+from arena.worlds.circuit.metrics import metric_ref
 
 UTC = timezone.utc
 START = datetime(2026, 8, 31, tzinfo=UTC)
@@ -260,7 +260,7 @@ def _instrument() -> Instrument:
         "F",
         ContractSpec(
             contract_id="F",
-            underlying=Single(metric_ref("adjusted_win_rate", "SUBJECT")),
+            underlying=Single(metric_ref("win_rate", "SUBJECT")),
             payoff=Linear(10_000.0),
             window=ObservationWindow(START, START + timedelta(days=28)),
             policy=DataPolicy(

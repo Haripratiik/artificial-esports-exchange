@@ -67,7 +67,7 @@ def acked(events) -> Acknowledged:
 
 @pytest.fixture
 def engine() -> MatchingEngine:
-    return MatchingEngine("SPIKE_WR_FUT")
+    return MatchingEngine("EMBER_OBJECTIVE_WR")
 
 
 # --------------------------------------------------------------------------

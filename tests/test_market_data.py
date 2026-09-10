@@ -36,8 +36,9 @@ def test_the_opening_sentinel_never_reaches_a_subscriber():
     """It is the top of the book and it is not a price.
 
     Measured on seed 7 over 20 simulated seconds before the fix: 78,742
-    published touches sat outside the contract's own settlement range, across
-    all 47 of 47 symbols, each exactly 4,611,686,018,427,387,904 ticks. Every
+    published touches sat outside the contract's own settlement range, on
+    every one of the 47 symbols then listed, each exactly
+    4,611,686,018,427,387,904 ticks. Every
     agent takes its `LocalBook` from this feed, so a strategy marking against
     it reported equity of 1.7e18 on an account of 400,000.
 
@@ -99,7 +100,7 @@ def test_a_crossed_touch_is_a_real_cross_and_not_a_leaked_sentinel():
     ask, which sounds like an invariant and is not one. `Venue.mark` says why
     in as many words: a book in a call phase is crossed on purpose, because
     orders accumulate without matching. Measured, the assertion fails on
-    SPIKE_GT48 at bid 45 against ask 23, and both of those are ordinary prices
+    a binary at bid 45 against ask 23, and both of those are ordinary prices
     inside the contract's range.
 
     So the property worth having is narrower and is the one that actually

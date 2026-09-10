@@ -34,7 +34,7 @@ from dashboard.server import app, runner
 from dashboard.state import FEE_SCHEDULES, MarketConfig, MarketRunner
 
 REPO = Path(__file__).resolve().parents[1]
-SYMBOL = "SPIKE_WR_FUT"
+SYMBOL = "EMBER_OBJECTIVE_WR"
 
 
 def as_operator() -> dict[str, str]:
@@ -1002,7 +1002,7 @@ def test_the_revealed_value_is_a_price_not_a_tick_count(client):
 def test_a_percentage_gives_way_to_points_when_its_base_has_no_resolution(tmp_path):
     """A ratio divided by almost nothing is correct and useless.
 
-    An option can open a session worth one tick. `SPIKE_C4600` did, reached
+    An option can open a session worth one tick. One on this board did, reached
     96.375, and the market rail rendered the move as **+308,825.00%** -- which
     is arithmetically right and says only that the contract went from the
     smallest price it can represent to a real one. The move itself says that

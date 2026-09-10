@@ -216,7 +216,7 @@ def test_recording_cannot_fail_a_command_that_would_have_been_refused():
 
     `cancel` is reached with a `(symbol, id)` key as well as a bare id, and the
     lookup refuses the former on its own terms. Building the journal payload
-    coerced it eagerly, so `int(("SPIKE_WR_FUT", 4))` raised and a refusal
+    coerced it eagerly, so `int(("EMBER_OBJECTIVE_WR", 4))` raised and a refusal
     became a crash, on a path that had worked for as long as it existed, and on
     a market with no journal attached at all.
 
@@ -234,7 +234,7 @@ def test_recording_cannot_fail_a_command_that_would_have_been_refused():
     watched.kernel.start()
     watched.kernel.advance(until=seconds(10))
 
-    malformed = ("SPIKE_WR_FUT", 4)
+    malformed = ("EMBER_OBJECTIVE_WR", 4)
     assert plain.cancel(malformed) == watched.cancel(malformed)
     assert plain.replace(malformed, 1) == watched.replace(malformed, 1)
 

@@ -61,7 +61,7 @@ from arena.market.venue_agent import VenueAgent
 from arena.sim.kernel import Kernel, SimulationContext
 from arena.sim.latency import PairwiseLatency
 from arena.sim.time import Duration, Timestamp, micros, millis, seconds
-from arena.worlds.brawl.metrics import metric_ref
+from arena.worlds.circuit.metrics import metric_ref
 
 __all__ = ["TrialConfig", "TrialResult", "run_trial", "draw_trials", "manifest_digest"]
 
@@ -180,7 +180,7 @@ def _spec(threshold: float, window_battles: int) -> ContractSpec:
     start = datetime(2026, 8, 31, tzinfo=UTC)
     return ContractSpec(
         contract_id=SYMBOL,
-        underlying=Single(metric_ref("adjusted_win_rate", "TRIAL_SUBJECT")),
+        underlying=Single(metric_ref("win_rate", "TRIAL_SUBJECT")),
         payoff=Binary(">", threshold, payout=1.0),
         window=ObservationWindow(start, start + timedelta(days=28)),
         policy=DataPolicy(

@@ -80,7 +80,7 @@ from arena.sim.journal import (
 )
 
 ENGINE = "arena-engine-1"
-SYMBOL = "SPIKE_WR_FUT"
+SYMBOL = "EMBER_OBJECTIVE_WR"
 
 
 # ---------------------------------------------------------------------------

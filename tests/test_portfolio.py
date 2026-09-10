@@ -41,7 +41,7 @@ def make_spec(contract_id="C", payoff=None, underlying=None, tick="0.25") -> Con
     )
     return ContractSpec(
         contract_id=contract_id,
-        underlying=underlying or Single(MetricRef("adjusted_win_rate", "SPIKE")),
+        underlying=underlying or Single(MetricRef("win_rate", "EMBER")),
         payoff=payoff or Linear(scale=10_000.0),
         window=window,
         policy=DataPolicy(min_sample_size=1),
@@ -51,7 +51,7 @@ def make_spec(contract_id="C", payoff=None, underlying=None, tick="0.25") -> Con
     )
 
 
-def future(symbol="SPIKE_FUT") -> Instrument:
+def future(symbol="EMBER_FUT") -> Instrument:
     return Instrument(symbol=symbol, spec=make_spec(symbol))
 
 
@@ -78,8 +78,8 @@ def test_spread_bounds_account_for_interval_subtraction():
     with zero collateral.
     """
     spread = Difference(
-        Single(MetricRef("adjusted_win_rate", "SPIKE")),
-        Single(MetricRef("adjusted_win_rate", "CROW")),
+        Single(MetricRef("win_rate", "EMBER")),
+        Single(MetricRef("win_rate", "RIFT")),
     )
     spec = make_spec(underlying=spread, payoff=Linear(scale=10_000.0))
     assert spec.settlement_bounds == (D("-10000"), D("10000"))
@@ -444,12 +444,12 @@ def test_a_trade_becomes_a_position():
     maker, taker = AgentId("maker"), AgentId("taker")
 
     ticks = instrument.to_ticks(D("5000"))
-    venue.submit(maker, "SPIKE_FUT", order(maker, Side.SELL, ticks, 10))
-    venue.submit(taker, "SPIKE_FUT", order(taker, Side.BUY, ticks, 10))
+    venue.submit(maker, "EMBER_FUT", order(maker, Side.SELL, ticks, 10))
+    venue.submit(taker, "EMBER_FUT", order(taker, Side.BUY, ticks, 10))
 
-    assert venue.account(taker).position("SPIKE_FUT").quantity == 10
-    assert venue.account(maker).position("SPIKE_FUT").quantity == -10
-    assert venue.account(taker).position("SPIKE_FUT").average_price == D("5000")
+    assert venue.account(taker).position("EMBER_FUT").quantity == 10
+    assert venue.account(maker).position("EMBER_FUT").quantity == -10
+    assert venue.account(taker).position("EMBER_FUT").average_price == D("5000")
 
 
 def test_settlement_flows_all_the_way_to_pnl():
@@ -460,18 +460,18 @@ def test_settlement_flows_all_the_way_to_pnl():
     maker, taker = AgentId("maker"), AgentId("taker")
 
     ticks = instrument.to_ticks(D("5000"))
-    venue.submit(maker, "SPIKE_FUT", order(maker, Side.SELL, ticks, 10))
-    venue.submit(taker, "SPIKE_FUT", order(taker, Side.BUY, ticks, 10))
+    venue.submit(maker, "EMBER_FUT", order(maker, Side.SELL, ticks, 10))
+    venue.submit(taker, "EMBER_FUT", order(taker, Side.BUY, ticks, 10))
 
     result = SettlementResult(
-        contract_id="SPIKE_FUT",
+        contract_id="EMBER_FUT",
         spec_digest=instrument.spec.spec_digest,
         status=SettlementStatus.SETTLED,
         settlement_value=D("5500"),
         underlying_level=0.55,
         resolutions=(),
     )
-    realised = venue.settle("SPIKE_FUT", result)
+    realised = venue.settle("EMBER_FUT", result)
 
     assert realised[taker] == M("5000")
     assert realised[maker] == M("-5000")
@@ -486,7 +486,7 @@ def test_a_settlement_for_a_different_contract_is_refused():
     instrument = future()
     venue.list_instrument(instrument)
     result = SettlementResult(
-        contract_id="SPIKE_FUT",
+        contract_id="EMBER_FUT",
         spec_digest="sha256:something-else",
         status=SettlementStatus.SETTLED,
         settlement_value=D("5500"),
@@ -494,7 +494,7 @@ def test_a_settlement_for_a_different_contract_is_refused():
         resolutions=(),
     )
     with pytest.raises(ValueError, match="not the contract that traded"):
-        venue.settle("SPIKE_FUT", result)
+        venue.settle("EMBER_FUT", result)
 
 
 def test_orders_beyond_collateral_are_rejected_before_they_reach_the_book():
@@ -505,10 +505,10 @@ def test_orders_beyond_collateral_are_rejected_before_they_reach_the_book():
     buyer = AgentId("buyer")
 
     events = venue.submit(
-        buyer, "SPIKE_FUT", order(buyer, Side.BUY, instrument.to_ticks(D("5000")), 100)
+        buyer, "EMBER_FUT", order(buyer, Side.BUY, instrument.to_ticks(D("5000")), 100)
     )
     assert events[0].reason is RejectReason.INSUFFICIENT_COLLATERAL
-    assert venue.engine("SPIKE_FUT").book.snapshot().best_bid is None
+    assert venue.engine("EMBER_FUT").book.snapshot().best_bid is None
 
 
 def test_trading_stops_at_the_close_but_cancels_still_work():
@@ -518,15 +518,15 @@ def test_trading_stops_at_the_close_but_cancels_still_work():
     agent = AgentId("a")
     ticks = instrument.to_ticks(D("5000"))
 
-    ack = venue.submit(agent, "SPIKE_FUT", order(agent, Side.BUY, ticks, 1))[0]
-    venue.close("SPIKE_FUT")
+    ack = venue.submit(agent, "EMBER_FUT", order(agent, Side.BUY, ticks, 1))[0]
+    venue.close("EMBER_FUT")
 
-    blocked = venue.submit(agent, "SPIKE_FUT", order(agent, Side.BUY, ticks, 1))
+    blocked = venue.submit(agent, "EMBER_FUT", order(agent, Side.BUY, ticks, 1))
     assert blocked[0].reason is RejectReason.ALREADY_TERMINAL
 
     from arena.exchange.events import Cancel
 
-    tidied = venue.submit(agent, "SPIKE_FUT", Cancel(agent, ack.order_id))
+    tidied = venue.submit(agent, "EMBER_FUT", Cancel(agent, ack.order_id))
     assert not any(getattr(e, "reason", None) for e in tidied)
 
 
@@ -548,18 +548,18 @@ def test_instrument_class_is_derived_from_the_contract():
     assert future().instrument_class == InstrumentClass.FUTURE
 
     binary = Instrument(
-        "SPIKE_GT55",
-        make_spec("SPIKE_GT55", payoff=Binary(">", 0.55), tick="0.01"),
+        "EMBER_GT55",
+        make_spec("EMBER_GT55", payoff=Binary(">", 0.55), tick="0.01"),
     )
     assert binary.instrument_class == InstrumentClass.EVENT
 
     spread = Instrument(
-        "SPIKE_CROW",
+        "EMBER_RIFT",
         make_spec(
-            "SPIKE_CROW",
+            "EMBER_RIFT",
             underlying=Difference(
-                Single(MetricRef("adjusted_win_rate", "SPIKE")),
-                Single(MetricRef("adjusted_win_rate", "CROW")),
+                Single(MetricRef("win_rate", "EMBER")),
+                Single(MetricRef("win_rate", "RIFT")),
             ),
         ),
     )
@@ -570,7 +570,7 @@ def test_an_untraded_instrument_marks_at_the_middle_of_its_range():
     """Marking it at zero would report every short as instantly profitable."""
     venue = Venue()
     venue.list_instrument(future())
-    assert venue.mark("SPIKE_FUT") == M("5000")
+    assert venue.mark("EMBER_FUT") == M("5000")
 
 
 # --------------------------------------------------------------------------
@@ -599,7 +599,7 @@ def test_value_is_conserved_across_random_trading(seed):
         price = instrument.to_ticks(D(rng.randrange(4800, 5200, 25)) / 4 * 4)
         venue.submit(
             agent,
-            "SPIKE_FUT",
+            "EMBER_FUT",
             order(agent, side, price, rng.randint(1, 8)),
         )
 
@@ -621,17 +621,17 @@ def test_value_is_conserved_through_settlement(seed):
         agent = rng.choice(agents)
         side = rng.choice([Side.BUY, Side.SELL])
         price = instrument.to_ticks(D(rng.randrange(19200, 20800, 1)) * D("0.25"))
-        venue.submit(agent, "SPIKE_FUT", order(agent, side, price, rng.randint(1, 5)))
+        venue.submit(agent, "EMBER_FUT", order(agent, side, price, rng.randint(1, 5)))
 
     result = SettlementResult(
-        contract_id="SPIKE_FUT",
+        contract_id="EMBER_FUT",
         spec_digest=instrument.spec.spec_digest,
         status=SettlementStatus.SETTLED,
         settlement_value=D("5137.25"),
         underlying_level=0.513725,
         resolutions=(),
     )
-    venue.settle("SPIKE_FUT", result)
+    venue.settle("EMBER_FUT", result)
     assert venue.conservation_check() == 0
     assert all(a.posted_collateral == 0 for a in venue.accounts.values())
 
@@ -639,22 +639,22 @@ def test_value_is_conserved_through_settlement(seed):
 def test_multiple_instruments_trade_side_by_side():
     """A venue, not a book: several assets with independent order books."""
     venue = Venue(starting_cash=D("1000000"))
-    fut = future("SPIKE_FUT")
+    fut = future("EMBER_FUT")
     binary = Instrument(
-        "SPIKE_GT55", make_spec("SPIKE_GT55", payoff=Binary(">", 0.55), tick="0.01")
+        "EMBER_GT55", make_spec("EMBER_GT55", payoff=Binary(">", 0.55), tick="0.01")
     )
     venue.list_instrument(fut)
     venue.list_instrument(binary)
 
     a, b = AgentId("a"), AgentId("b")
-    venue.submit(a, "SPIKE_FUT", order(a, Side.SELL, fut.to_ticks(D("5000")), 4))
-    venue.submit(b, "SPIKE_FUT", order(b, Side.BUY, fut.to_ticks(D("5000")), 4))
-    venue.submit(a, "SPIKE_GT55", order(a, Side.SELL, binary.to_ticks(D("0.60")), 20))
-    venue.submit(b, "SPIKE_GT55", order(b, Side.BUY, binary.to_ticks(D("0.60")), 20))
+    venue.submit(a, "EMBER_FUT", order(a, Side.SELL, fut.to_ticks(D("5000")), 4))
+    venue.submit(b, "EMBER_FUT", order(b, Side.BUY, fut.to_ticks(D("5000")), 4))
+    venue.submit(a, "EMBER_GT55", order(a, Side.SELL, binary.to_ticks(D("0.60")), 20))
+    venue.submit(b, "EMBER_GT55", order(b, Side.BUY, binary.to_ticks(D("0.60")), 20))
 
-    assert venue.registry.symbols == ("SPIKE_FUT", "SPIKE_GT55")
-    assert venue.account(b).position("SPIKE_FUT").quantity == 4
-    assert venue.account(b).position("SPIKE_GT55").quantity == 20
+    assert venue.registry.symbols == ("EMBER_FUT", "EMBER_GT55")
+    assert venue.account(b).position("EMBER_FUT").quantity == 4
+    assert venue.account(b).position("EMBER_GT55").quantity == 20
     # Independent books: the binary's collateral is tiny next to the future's.
-    assert venue.account(b).collateral["SPIKE_GT55"] == M("12")
+    assert venue.account(b).collateral["EMBER_GT55"] == M("12")
     assert venue.conservation_check() == 0

@@ -275,13 +275,29 @@ def test_shrinkage_reduces_the_stake_it_asks_for():
     applied to the level rather than to the price, so it means the same thing
     for a future, a binary and an option.
 
-    Measured on a Beta(150, 150) belief about a rung struck at 0.44, quoted
-    0.69 at 0.70: the unshrunk stake is 93.8% of bankroll, half a standard
-    deviation takes it to 81.0%, and a full one to 53.3%.
+    Re-measured on the circuit listing. The rung is the middle of the longest
+    ladder, struck at 0.100, and the belief is Beta(42, 258): mean 0.140 over
+    300 observations, so the rung sits two posterior standard deviations below
+    the belief and P(theta > 0.100) is 0.984. That is the same geometry the
+    retired listing gave with a rung at 0.44 under a Beta(150, 150), where the
+    rung sat 2.08 standard deviations below a mean of 0.500 for a probability
+    of 0.981, and it has to be re-anchored rather than carried over: the same
+    Beta(150, 150) against a rung struck at 0.100 is a probability of 1.000, at
+    which there is no shrinkage left to measure and every stake is the whole
+    bankroll.
+
+    Quoted 0.69 at 0.70: the unshrunk stake is 94.7% of bankroll, half a
+    standard deviation takes it to 80.2%, and a full one to 47.2%. The retired
+    listing gave 93.8%, 81.0% and 53.3% on its own geometry.
+
+    The middle rung rather than the lowest, and that is the same structural
+    choice `binaries_on_one_underlying` makes rather than a second one: the
+    lowest rung of this ladder is struck at 0.060, which the belief clears with
+    probability 0.996, so it carries the same no-uncertainty problem.
     """
     listed = listing()
-    contract = binaries_on_one_underlying(listed)[0]
-    posterior = (150.0, 150.0)
+    contract = binaries_on_one_underlying(listed)[1]
+    posterior = (42.0, 258.0)
     quotes = {contract.symbol: ("0.69", "0.70")}
     equity = Decimal(1_000_000)
     view = view_of({contract.symbol: contract}, quotes, equity=equity)
@@ -293,8 +309,8 @@ def test_shrinkage_reduces_the_stake_it_asks_for():
         stakes.append(_stake(row, equity))
 
     assert stakes == sorted(stakes, reverse=True)
-    assert stakes[0] == pytest.approx(0.938, abs=0.01)
-    assert stakes[-1] == pytest.approx(0.533, abs=0.01)
+    assert stakes[0] == pytest.approx(0.947, abs=0.01)
+    assert stakes[-1] == pytest.approx(0.472, abs=0.01)
 
 
 def test_shrinkage_vanishes_as_evidence_accumulates():
@@ -309,8 +325,19 @@ def test_shrinkage_vanishes_as_evidence_accumulates():
 
     With very little evidence the credible bound does not clear the offer at all
     and the strategy declines. That is the intended behaviour rather than a gap
-    in the test: at 150 battles it is being asked to buy at 0.70 something a 68%
-    bound says is worth less than that.
+    in the test: at 150 observations it is being asked to buy at 0.70 something
+    a 68% bound says is worth less than that. Measured on the same rung and the
+    same belief centre as the test above, Beta(21, 129): full Kelly stakes
+    77.3% of bankroll and one standard deviation of shrinkage declines it
+    outright.
+
+    The accumulation loop is centred on the belief rather than on one half, for
+    the reason the test above gives at length: a belief centred at 0.500 clears
+    a rung struck at 0.100 with probability 1.000 whatever the evidence, so the
+    shrunk and unshrunk stakes would both be the whole bankroll at every sample
+    size and the ratio would be 1.0 by construction. Centred at 0.140 the
+    ratios run 0.783, 0.9999, 1.0000 and 1.0000 over 400 to 25,600
+    observations.
     """
     for battles in (100, 400, 1_600, 6_400):
         one = KellyBayesian.dispersion(0.5 * battles + 25.0, 0.5 * battles + 25.0)
@@ -320,19 +347,21 @@ def test_shrinkage_vanishes_as_evidence_accumulates():
         assert one / four == pytest.approx(2.0, rel=0.15)
 
     listed = listing()
-    contract = binaries_on_one_underlying(listed)[0]
+    contract = binaries_on_one_underlying(listed)[1]
     equity = Decimal(1_000_000)
     quotes = {contract.symbol: ("0.69", "0.70")}
     view = view_of({contract.symbol: contract}, quotes, equity=equity)
 
     thin = _sized(
-        _kelly_on(contract, (75.0, 75.0), credible_z=1.0), view, contract.symbol
+        _kelly_on(contract, (21.0, 129.0), credible_z=1.0), view, contract.symbol
     )
     assert thin is None
 
     ratios = []
     for battles in (400, 1_600, 6_400, 25_600):
-        posterior = (0.5 * battles + 25.0, 0.5 * battles + 25.0)
+        # Mean 0.140 with a prior worth fifty observations, which is the same
+        # shape the retired version used at a mean of one half.
+        posterior = (0.14 * battles + 7.0, 0.86 * battles + 43.0)
         full = _sized(
             _kelly_on(contract, posterior, credible_z=0.0), view, contract.symbol
         )
@@ -449,8 +478,9 @@ def test_one_sighting_is_not_a_violation():
 
     The view lags the venue by the strategy's own latency, so the instant a
     ladder looks most dislocated is the instant it is being repriced. Measured
-    on seed 7 without the confirmation: a package went out to buy SPIKE_GT47 at
-    0.06 against a sale of SPIKE_GT48 at 0.88, and by the next wakeup both books
+    on seed 7 without the confirmation: a package went out to buy one rung of
+    the event ladder at 0.06 against a sale of the rung above it at 0.88, and
+    by the next wakeup both books
     read 0.94 bid at 1.00. The sale filled and the purchase could not.
     """
     listed = listing()
@@ -989,19 +1019,27 @@ def test_the_arbitrage_strategy_accounts_for_every_lot_it_holds(traded):
 def test_the_arbitrage_strategy_derives_more_relations_than_it_can_trade(traded):
     """A derived relation is not automatically an executable one.
 
-    Measured: 31 relations come out of this listing, 5 ladder and 26 chain. A
-    ladder package is one lot against one lot. A chain package is
-    ``(K2 - K1) / payout`` binaries against one option spread, which is 50 or
-    more lots of a binary whose touch carries a median of 30, so its smallest
-    integer package is larger than the book. The strategy has no depth in its
-    view to read that from, so it learns it from its own fills: the most a
-    symbol has ever given it at once is the only measurement it has, and a
-    relation whose per-unit leg needs more than that is refused rather than
-    attempted again.
+    Re-measured on the circuit listing: 4 relations come out of it, 2 ladder
+    and 2 chain, against 31, 5 and 26 on the 47 contract listing this replaces.
+    The drop is the listing's own argument showing through rather than a loss
+    of coverage. That listing put three ladders and thirteen options on three
+    subjects, so binaries and options met on the same underlying repeatedly;
+    this one spends its instruments on subjects and axes instead, and only
+    VANTA's individual win rate carries more than one rung and only EMBER's
+    team win rate carries both a rung and an option chain.
+
+    A ladder package is one lot against one lot. A chain package is
+    ``(K2 - K1) / payout`` binaries against one option spread, and on this
+    listing the two chain relations are struck 200 apart against a payout of 1,
+    so a package is 200 binaries against one spread: larger than the book by a
+    wide margin. The strategy has no depth in its view to read that from, so it
+    learns it from its own fills: the most a symbol has ever given it at once is
+    the only measurement it has, and a relation whose per-unit leg needs more
+    than that is refused rather than attempted again.
     """
     _market, _kelly, arbitrage = traded
     ladder = [r for r in arbitrage.relations if r.name.startswith("ladder:")]
     chain = [r for r in arbitrage.relations if r.name.startswith("chain-")]
-    assert len(ladder) == 5
-    assert len(chain) == 26
+    assert len(ladder) == 2
+    assert len(chain) == 2
     assert arbitrage.retired <= {r.name for r in arbitrage.relations}

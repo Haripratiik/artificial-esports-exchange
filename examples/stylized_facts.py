@@ -33,6 +33,19 @@ SAMPLE_EVERY = millis(250)
 SESSION = seconds(3_600)
 
 
+def pick_focus(listed) -> list[str]:
+    """Two outright futures and a spread, chosen by class rather than by name.
+
+    Named tickers were hardcoded here and went stale the moment the listing was
+    rebuilt, which turns a diagnostic into a KeyError. The diagnostics below are
+    written about outrights and the spread between them, so that is what the
+    example asks the listing for.
+    """
+    futures = [i.symbol for i in listed if i.instrument_class == "future"]
+    spreads = [i.symbol for i in listed if i.instrument_class == "spread"]
+    return futures[:2] + spreads[:1]
+
+
 def main() -> None:
     market = build(seed=11)
     market.kernel.start()
@@ -49,7 +62,7 @@ def main() -> None:
 
     print(f"done: {market.kernel.processed:,} events\n")
 
-    focus = ["SPIKE_WR_FUT", "CROW_WR_FUT", "SPIKE_CROW"]
+    focus = pick_focus(instruments())
     for symbol in focus:
         history = recorder.history[symbol]
         if len(history.trade_prices) < 100:

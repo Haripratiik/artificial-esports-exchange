@@ -44,10 +44,10 @@ const CLASS_GROUPS = [
   ['call', 'Options', 'The right to what lies past a strike.'],
   ['put', 'Options', 'The right to what lies past a strike.'],
   ['equity', 'Shares', 'Pays out every week it is alive, then expires. Worth the payments that are left.'],
-  ['volatility', 'Volatility', 'How unevenly a Brawler performs across maps and modes, not how well.'],
+  ['volatility', 'Volatility', 'How unevenly a competitor performs across the formats it plays, not how well.'],
   ['commodity', 'Commodities', 'An amount delivered in one week, not a rate. Each week trades separately.'],
-  ['spread', 'Spreads', 'One Brawler priced against another.'],
-  ['index', 'Indices', 'A weighted basket of several Brawlers.'],
+  ['spread', 'Spreads', 'One competitor priced against another.'],
+  ['index', 'Indices', 'A weighted basket of several competitors.'],
 ];
 
 const GROUP_ORDER = ['Prediction Markets', 'Futures', 'Shares', 'Commodities',
@@ -55,8 +55,8 @@ const GROUP_ORDER = ['Prediction Markets', 'Futures', 'Shares', 'Commodities',
 
 /**
  * The subject a contract is written on, which is what a person thinks they are
- * trading. Not the same thing as the underlying: `SPIKE_WR_W1` and
- * `SPIKE_WR_W4` are different underlyings, because the observation windows
+ * trading. Not the same thing as the underlying: `BASTION_SOLO_W1` and
+ * `BASTION_SOLO_W4` are different underlyings, because the observation windows
  * differ, but they are the same subject and belong on one row.
  */
 export function subjectsOf(node) {
@@ -137,8 +137,8 @@ export function markets(store) {
     return `<div class="view"><div class="onboard">
       <h2>${store.query ? 'Nothing matches that' : 'Connecting to the exchange&hellip;'}</h2>
       <p>${store.query
-        ? `No market matches &ldquo;${esc(store.query)}&rdquo;. Try a ticker, a Brawler, or a class like future or event.`
-        : 'Contracts here settle on measured Brawl Stars statistics.'}</p>
+        ? `No market matches &ldquo;${esc(store.query)}&rdquo;. Try a ticker, a competitor, or a class like future or event.`
+        : 'Contracts here settle on matches in a synthetic esport, and on the statistics those matches produce.'}</p>
     </div></div>`;
   }
 
@@ -187,22 +187,24 @@ export function markets(store) {
    * tradeable markets, and Polymarket 40 entries covering 1,625. Both list the
    * *event* and put the instrument count on the row. This screen listed one
    * card per instrument, a 1:1 ratio, which is why 28 markets felt heavier
-   * than Kalshi's hundreds -- Kalshi at 1:1 would render 574 cards.
+   * than Kalshi's hundreds. Kalshi at 1:1 would render 574 cards.
    *
-   * Grouping these 28 by subject gives 5 rows. The ratio holds as contracts
-   * are added, because new strikes and expiries land inside a subject that is
-   * already listed rather than adding a row of their own.
+   * The ratio is now the whole argument rather than a refinement. Matches
+   * carry most of the listing, and one solo match is 270 contracts on its own,
+   * so 1:1 would render a page nobody could read. Measured on the live
+   * listing: 355 markets present as 9 rows, and 316 of them are prediction
+   * markets against 8 before matches existed.
    *
    * Asset class was the old grouping and is now a field on the row. A future,
-   * a call, a put and a weekly on one Brawler are one thing to a person, and
-   * splitting them across four sections is what made 28 look like a wall. */
+   * a call, a put and a weekly on one competitor are one thing to a person,
+   * and splitting them across four sections is what made 28 look like a wall. */
   /* Asset class as a filter rather than a heading.
    *
-   * It was the grouping, which scattered one Brawler's future, calls, puts and
-   * weeklies across four separate sections -- so a person looking for "SPIKE"
-   * had to visit four places, and 28 instruments read as more than 28. As a
-   * chip it stays visible, stays countable, and narrows the list instead of
-   * fragmenting it. */
+   * It was the grouping, which scattered one competitor's future, calls, puts
+   * and weeklies across four separate sections, so a person looking for
+   * "VANTA" had to visit four places and 28 instruments read as more than 28.
+   * As a chip it stays visible, stays countable, and narrows the list instead
+   * of fragmenting it. */
   const classCounts = new Map();
   for (const symbol of symbols) {
     const title = groupOf(books[symbol].class);
@@ -300,7 +302,7 @@ export function matches(symbol, book, query) {
  * What to show where a spread would go, when there is no spread.
  *
  * A book in a call phase is crossed on purpose, so it has no spread and does
- * have an indicative price -- the number the auction would clear at right now,
+ * have an indicative price, the number the auction would clear at right now,
  * which is what a real venue publishes during one.
  */
 export function marketState(book) {
@@ -315,10 +317,10 @@ export function question(contract) {
   const p = contract?.payoff;
   if (!p) return '';
   const subject = esc(subjectName(contract?.underlying));
-  // Only a single-Brawler contract reads naturally with the metric attached.
-  // A basket or a difference already names what it measures, and forcing the
-  // metric in produced "the Assassin index's win rate" and "SPIKE vs CROW's
-  // adjusted win rate" -- grammatical wreckage on the most-read line of the
+  // Only a single-competitor contract reads naturally with the metric
+  // attached. A basket or a difference already names what it measures, and
+  // forcing the metric in produced "the duellist index's win rate" and "VANTA
+  // vs QUILL's win rate", grammatical wreckage on the most-read line of the
   // whole exchange.
   const simple = contract?.underlying?.kind === 'single';
   const what = simple ? `${subject}'s ${esc(metricName(contract.underlying))}` : subject;
@@ -340,10 +342,10 @@ export function question(contract) {
   // A volatility contract is written on a spread, so saying "where the rate
   // settles" would name the wrong moment entirely.
   if (contract?.underlying?.ref?.kind === 'dispersion') {
-    return `How unevenly ${subject} performs across maps and modes`;
+    return `How unevenly ${subject} performs across the formats it plays`;
   }
   if (contract?.underlying?.ref?.kind === 'quantity') {
-    return `How many thousand battles ${subject} plays, delivered ${esc(week(contract))}`;
+    return `How many thousand matches ${subject} plays, delivered ${esc(week(contract))}`;
   }
   if (p.kind === 'call') return `${what} above ${p.strike} at settlement`;
   if (p.kind === 'put') return `${what} below ${p.strike} at settlement`;
@@ -351,9 +353,9 @@ export function question(contract) {
 }
 
 /**
- * The Brawler a contract is written on.
+ * The competitor a contract is written on.
  *
- * The metric reference arrives under `ref`, not `metric` -- reading the wrong
+ * The metric reference arrives under `ref`, not `metric`, and reading the wrong
  * key made every question on the exchange read "Will the metric finish above
  * 0.48?", which is a contract nobody could identify. It failed silently
  * because the fallback was a plausible English phrase rather than an error.
@@ -373,11 +375,11 @@ function subjectName(underlying) {
   if (underlying.kind === 'difference') {
     return `the gap between ${subjectName(underlying.left)} and ${subjectName(underlying.right)}`;
   }
-  if (underlying.kind === 'basket') return 'the Assassin index';
+  if (underlying.kind === 'basket') return 'the duellist index';
   return 'the metric';
 }
 
-/** "adjusted win rate", from "adjusted_win_rate". */
+/** "eliminations per match", from "eliminations_per_match". */
 function metricName(underlying) {
   const raw = underlying?.ref?.metric ?? underlying?.left?.ref?.metric;
   return raw ? String(raw).replace(/_/g, ' ') : 'win rate';
@@ -607,11 +609,11 @@ function ladder(book, depth) {
  * What the send button says, and whether it does anything.
  *
  * It used to be disabled in every phase but `continuous`, under a label
- * reading "pre open -- orders will rest". Both halves were wrong at once, and
+ * reading "pre open, orders will rest". Both halves were wrong at once, and
  * they were wrong on the screen a stranger meets first: the exchange opens
  * with a call auction, so every contract is in `pre_open` on the first page
  * load. Orders in a call phase *are* accepted, they *do* rest, and they set
- * the price the market opens at -- the venue takes them, publishes an
+ * the price the market opens at: the venue takes them, publishes an
  * indicative price off them and clears them at the uncross. The one thing a
  * visitor could not do was place one.
  *
@@ -727,7 +729,7 @@ function counterparties(snapshot, symbol) {
   }
 
   // Aggregated per counterparty and side. One order that swept a book produced
-  // twenty near-identical rows -- "buy 30 at 0.06 from mm-1" over and over --
+  // twenty near-identical rows, "buy 30 at 0.06 from mm-1" over and over,
   // which is a log, not an answer. What a person wants to know is who they are
   // trading against and at what average, and that is four numbers.
   const totals = new Map();
@@ -761,7 +763,7 @@ function counterparties(snapshot, symbol) {
  * Anything with a quantity of zero was answered with "No position in this
  * contract", which threw away the only number that survives closing a trade:
  * what it made. Someone who bought, sold and came out ahead was told, on the
- * screen they traded from, that there was nothing here -- and had to go to
+ * screen they traded from, that there was nothing here, and had to go to
  * another screen to find out whether they had won or lost. The server already
  * keeps the row alive for exactly this reason (it filters on quantity *and*
  * volume), so the information was arriving and being discarded on the way to

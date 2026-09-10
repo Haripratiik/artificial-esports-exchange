@@ -1,4 +1,4 @@
-/* Artificial Brawl Stars Exchange, terminal styling.
+/* Artificial Esports Exchange, terminal styling.
  *
  * The aesthetic is a trading desk, not a fintech landing page: dense, hairline
  * ruled, monospaced wherever numbers must align, and dark because this is a
@@ -6,8 +6,8 @@
  * red are reserved *strictly* for market direction, so they never appear on a
  * button or a border and always mean the same thing when they do appear.
  *
- * Amber is the chrome. It reads as terminal phosphor and happens to sit close
- * to the game these contracts settle on, which is a coincidence worth keeping.
+ * Amber is the chrome. It reads as terminal phosphor, which is the whole of the
+ * reason: nothing on this page borrows its palette from anywhere else.
  */
 
 :root {
@@ -25,7 +25,7 @@
   --ink: #e9e7e4;
   --ink-dim: #9a9aa4;
   /* Measured, not chosen by eye. At the old #5f5f6a this was 2.7:1 against the
-   * hover surface and under 3.2:1 everywhere -- and it carries table headers,
+   * hover surface and under 3.2:1 everywhere, and it carries table headers,
    * field labels and captions, which are text people have to read. 4.53:1 on
    * the lightest surface it lands on, hue preserved so the blue cast stays. */
   --ink-faint: #848490;
@@ -52,7 +52,7 @@
 
   /* Type scale. There was not one: 71 font-size declarations carried 19
    * distinct values, including 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 13.5. The
-   * half-pixel steps are the tell -- they are nudges rather than decisions,
+   * half-pixel steps are the tell: they are nudges rather than decisions,
    * and a reader cannot perceive a 0.5px difference as hierarchy, only as
    * noise. Sixteen elements in the static shell alone sat below 12px, which
    * is the floor most guidance puts on text a person has to read.
@@ -74,16 +74,23 @@
   --display: 'Chivo', system-ui, sans-serif;
 
   /* 264px, not 232px. The rail carries a ticker, a price and a change on one
-   * line, and `SPIKE_WR_FUT` needs about 86px of that at the mono size. At 232
-   * the price column -- sized `auto`, so set by the widest number in the list
-   * -- took the difference and the tickers truncated to `ASSASSIN...`. A
+   * line, and a twelve-character ticker needs about 86px of that at the mono
+   * size. At 232 the price column, sized `auto` and therefore set by the widest
+   * number in the list, took the difference and the tickers truncated. A
    * navigation list whose names are cut off is not navigation.
    *
-   * 288px after listing ELPRIMO. `ELPRIMO_WR_FUT` is fourteen characters,
-   * about 101px at the mono size, and the change column also had to widen:
-   * where a percentage is not meaningful the move is shown in points, and
-   * "+26.38 pts" is wider than a percentage ever is, so it wrapped the row
-   * onto two lines and broke the 32px rhythm the rail exists for. */
+   * 288px once tickers grew to name their format as well as their subject.
+   * `HALCYON_OBJECTIVE_MARGIN` is twenty-four characters, about 173px at the
+   * mono size, and the change column also had to widen: where a percentage is
+   * not meaningful the move is shown in points, and "+26.38 pts" is wider than
+   * a percentage ever is, so it wrapped the row onto two lines and broke the
+   * 32px rhythm the rail exists for.
+   *
+   * It is not widened past that, because the ceiling is not the statistical
+   * listing. `SOLO7_H2H_WISP_OVER_OBELISK` is twenty-seven characters and every
+   * match lists ninety of that shape, so a rail wide enough to spell one out
+   * would cost the market panel a third of the screen for a name that is
+   * already on the row beside it. Long tickers truncate here instead. */
   --rail: 288px;
   --tick: 0.12s cubic-bezier(0.3, 0, 0.2, 1);
 }
@@ -124,7 +131,7 @@ button {
 }
 
 /* Focus. There was none at all, which made the whole terminal unusable by
- * keyboard -- you could tab through it but never see where you were. Amber
+ * keyboard, since you could tab through it but never see where you were. Amber
  * rather than the browser default so it reads as part of the chrome, and
  * :focus-visible so a mouse click does not leave a ring behind. */
 :where(a, button, input, select, [tabindex]):focus-visible {
@@ -209,7 +216,7 @@ header {
   font-family: var(--mono);
   font-weight: 600;
   /* The figure, not its caption, is what a person came to read. It was 12px
-   * against an 8.5px label -- a ratio of 1.4, which is not enough separation
+   * against an 8.5px label, a ratio of 1.4, which is not enough separation
    * to register as hierarchy, so the header read as four evenly grey blocks.
    * Equity and P&L are now the largest text in the header, ahead of the
    * brand, which is the correct order of importance on a trading screen. */
@@ -297,15 +304,15 @@ nav {
  * markets and it could only ever show about seven of them at once, in a
  * element whose whole job is navigation.
  *
- * Robinhood's web list rows carry exactly three fields -- name, price, percent
- * change -- and no sparkline, no volume, no bid/ask, no absolute change. The
+ * Robinhood's web list rows carry exactly three fields, name, price and percent
+ * change, and no sparkline, no volume, no bid/ask, no absolute change. The
  * discipline is the point: three fields on one alignment grid can be scanned a
  * hundred at a time, because the eye tracks two fixed columns instead of
  * re-reading each entry.
  *
  * The class label goes because the markets screen carries it as a filter chip
  * and a column, and the sparkline goes because at this width it cannot be the
- * word-sized mark Tufte describes -- it was a chart, and it cost 60px of row
+ * word-sized mark Tufte describes: it was a chart, and it cost 60px of row
  * to say what the change column already said. At 32px the rail shows about
  * twenty markets instead of seven. */
 .watch {
@@ -496,7 +503,7 @@ nav {
 .mrow[aria-current='true'] { background: var(--amber-sunk); border-left-color: var(--amber); }
 /* Ticker then plain language, on one line.
  *
- * A row that shows only `SPIKE_GT47` is the "mystery meat identifier" NN/g
+ * A row that shows only `VANTA_SOLO_GT140` is the "mystery meat identifier" NN/g
  * warns about in data tables: it can only be read by someone who already knows
  * the ticker, which defeats browsing. The question is what a stranger reads,
  * so it rides alongside and truncates rather than wrapping. */
@@ -538,8 +545,8 @@ nav {
   .list-head, .mrow, .subject-head { grid-template-columns: 14px minmax(0, 1fr) 92px 76px; }
   .m-vol, .lh-vol, .m-spark, .s-spark, .lh-spark, .m-kind, .lh-kind { display: none; }
   .mrow { height: 44px; }
-  /* The subject header is the primary control on this screen -- it is what
-   * opens a market group -- and 40px is under the 44px a finger needs. */
+  /* The subject header is the primary control on this screen, the thing that
+   * opens a market group, and 40px is under the 44px a finger needs. */
   .subject-head { height: 44px; }
   .s-count { display: none; }
 }
@@ -585,7 +592,7 @@ main { overflow: hidden; display: flex; flex-direction: column; }
   min-height: 0;
 }
 /* Entrances are run from JS on a view change, never from CSS. A CSS entrance
- * fires whenever the node is created -- so any panel rebuilt by a price update
+ * fires whenever the node is created, so any panel rebuilt by a price update
  * re-entered, several times a second, which is exactly what people saw as
  * flicker. The keyframe stays for the toast, which really is created once. */
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
@@ -596,8 +603,8 @@ main { overflow: hidden; display: flex; flex-direction: column; }
  * two collapsible panels, whose heading sits inside a <summary> for the
  * disclosure triangle to work. Those headings matched no rule at all and fell
  * through to the user-agent stylesheet, so "Order Book" and "Contract
- * Specification" rendered at 19.5px -- 1.5em of a 13px root, the browser
- * default -- beside eight sibling headings at 10px. Section headings that are
+ * Specification" rendered at 19.5px, 1.5em of a 13px root and the browser
+ * default, beside eight sibling headings at 10px. Section headings that are
  * either half the size of the body text or double it, on the same screen, is
  * most of why the page read as unfinished.
  *
@@ -620,7 +627,7 @@ main { overflow: hidden; display: flex; flex-direction: column; }
   gap: 10px;
   flex: none;
 }
-/* Counts live in these headings -- working orders, positions, tape length --
+/* Counts live in these headings, working orders, positions and tape length,
  * and they change while a person is looking at them. Without tabular figures
  * the heading reflows sideways every time a count crosses a digit width. */
 .panel h2 em {
@@ -663,7 +670,7 @@ tbody tr:hover { background: var(--raised); }
 
 /* 232px rather than 268px, which is the difference between four columns and
  * five at a 1,440px window. The two largest groups on this exchange hold five
- * contracts each -- the prediction markets and the commodities -- and at four
+ * contracts each, the prediction markets and the commodities, and at four
  * columns each of them stranded a single card on a row of its own beside three
  * empty cells, roughly a quarter of the visible page left as flat black. Five
  * columns seats both exactly. */
@@ -725,8 +732,8 @@ tbody tr:hover { background: var(--raised); }
   grid-template-columns: 1fr 78px 1fr;
   align-items: center;
   position: relative;
-  /* 24px, not the 21 it started at. Each row is a click target -- it fills the
-   * ticket at that price -- and WCAG 2.2 puts the floor at 24x24. Adjacent
+  /* 24px, not the 21 it started at. Each row is a click target that fills the
+   * ticket at that price, and WCAG 2.2 puts the floor at 24x24. Adjacent
    * rows touch, so the "no overlapping target" exemption does not apply. It
    * costs about three visible levels; a target you can actually hit is worth
    * more than three rows of depth you cannot. */
@@ -753,15 +760,15 @@ tbody tr:hover { background: var(--raised); }
 /* Depth bars, scaled rather than widthed.
  *
  * They were sized with an inline `width: N%`, and a percentage on an
- * absolutely positioned element resolves against the whole containing block --
- * the entire row -- while each bar only owns the half beyond the 78px price
+ * absolutely positioned element resolves against the whole containing block,
+ * the entire row, while each bar only owns the half beyond the 78px price
  * column. So the scale was wrong everywhere and overflowed past 50%: measured,
  * a 46% ask bar rendered 307px into 295px of room and pushed the row 12px past
  * the panel. A bar at full depth would have overrun by 373px.
  *
  * Each bar now spans its own half and is scaled from the centre outward, so
  * the fraction means what it says. Transform is also the property that belongs
- * in a transition -- it composites, where animating width relayouts the row on
+ * in a transition: it composites, where animating width relayouts the row on
  * every tick, twenty times a second, for every level in the book. */
 .lad-row .bar {
   position: absolute; top: 1px; bottom: 1px;
@@ -783,7 +790,7 @@ tbody tr:hover { background: var(--raised); }
 /* ── tape ───────────────────────────────────────────────────────────── */
 
 /* The tape used to flash every row on every pass, because every row was a new
- * node. It strobed, and it conveyed nothing -- a row that has been sitting
+ * node. It strobed, and it conveyed nothing: a row that has been sitting
  * there for a minute is not news. Removed rather than tuned. */
 
 /* ── ticket ─────────────────────────────────────────────────────────── */
@@ -833,7 +840,7 @@ tbody tr:hover { background: var(--raised); }
  * edge. Every equal-column row in this ticket has the same exposure. */
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .row2 > * { min-width: 0; }
-/* "optional" rather than an em-dashed aside. The label read "Stop trigger --
+/* "optional" rather than a dashed aside. The label read "Stop trigger,
  * blank for none", which is a sentence where a tag would do, and it was the
  * text that would not wrap small enough to keep the row two columns wide. */
 .opt {
@@ -963,7 +970,7 @@ tbody tr:hover { background: var(--raised); }
 
 /* Everything animated here is decoration over data that is already legible,
  * so under a reduced-motion preference it all simply stops. The tape still
- * updates, the panels still appear -- they just do not move. */
+ * updates, the panels still appear, they just do not move. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -1042,7 +1049,7 @@ table, td, th, .stat b, .card .price, .ladder { font-variant-numeric: tabular-nu
 
 /* The one animation on a trading screen that carries information: a price
  * that just moved is tinted in the direction it moved, and fades. Direction
- * colours are used here because this *is* direction -- the same meaning they
+ * colours are used here because this *is* direction, the same meaning they
  * carry everywhere else. Reduced motion collapses the duration, so the tint
  * simply does not appear rather than appearing and sticking. */
 /* The tick flash lands on the price, not on the whole row.
@@ -1052,7 +1059,7 @@ table, td, th, .stat b, .card .price, .ladder { font-variant-numeric: tabular-nu
  * flash at any given instant**, so a signal meant to say "this one just
  * changed" was lit on a third of the list continuously and said nothing. And
  * the flash follows the last tick while the row's own percentage follows the
- * whole session, so the two disagreed **45.1% of the time** -- a row washed
+ * whole session, so the two disagreed **45.1% of the time**: a row washed
  * green above a red -9.19%.
  *
  * Both readings are correct about different things, which is exactly why they

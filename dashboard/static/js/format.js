@@ -82,7 +82,7 @@ export const cls = (n) => (n > 0 ? 'up' : n < 0 ? 'down' : 'dim');
  * where it does not.
  *
  * A percentage divides by where the price started, and an option can start a
- * session worth a single tick. `SPIKE_C4600` opened at a hair above nothing
+ * session worth a single tick. `EMBER_OBJECTIVE_C4800` opened at a hair above nothing
  * and reached 96.375, which is arithmetically **+308,825%** and was rendered
  * as exactly that in the market rail. The number is correct and useless: it
  * reports that the contract went from the smallest price it can represent to a
@@ -99,9 +99,9 @@ export function move(change, base) {
   if (!Number.isFinite(c)) return { text: '-', value: 0 };
   const b = Number(base);
   // Strictly positive. A negative base inverts the sign of the ratio, so a
-  // spread falling from -5 to -10 reported **+100%** -- the right magnitude
+  // spread falling from -5 to -10 reported **+100%**: the right magnitude
   // with exactly the wrong direction, on a contract whose price is allowed to
-  // be negative by construction. Measured on `SPIKE_CROW`: -116.91% on a price
+  // be negative by construction. Measured on `HALCYON_FORMAT_SPD`: -116.91% on a price
   // of -10.13.
   const pct = Number.isFinite(b) && b > 0 ? (c / b) * 100 : null;
   if (pct === null || Math.abs(pct) >= 1000) {
@@ -133,8 +133,8 @@ export function describe(contract) {
   const u = contract.underlying || {};
   const subject = subjectOf(u);
   // A share is described by what it pays on the way, not by what is left at
-  // the end -- which is nothing, because it has all been paid out. Reading the
-  // terminal payoff would truthfully report "settles at 0 times SPIKE", and
+  // the end, which is nothing, because it has all been paid out. Reading the
+  // terminal payoff would truthfully report "settles at 0 times VANTA", and
   // anyone who read that would conclude the contract was worthless.
   const stream = contract.distribution;
   if (stream) {
@@ -209,14 +209,14 @@ export function percent(fraction, dp = 1) {
  * The same expression as `Account.collateral_for_basis`: the position will be
  * worth `quantity * value` and it paid `quantity * price` for that, so the
  * worst it can do is the distance from its price to the far edge of the
- * claim's range -- the bottom of the range for a long, the top for a short.
+ * claim's range: the bottom of the range for a long, the top for a short.
  * Clamped at zero for the venue's reason: a long opened below the least the
  * claim can settle for cannot lose anything, and a negative requirement would
  * read as a credit.
  *
  * One function for both rows on the ticket, because "Max loss" and "Reserved
- * now" are one number. They were two formulas, and the second one -- the stop
- * ticket's -- was the notional instead: a sell of ten futures stopped at
+ * now" are one number. They were two formulas, and the second one, the stop
+ * ticket's, was the notional instead: a sell of ten futures stopped at
  * 4,600 announced 46,000 reserved against the 54,000 the venue held, and a
  * spread stopped at zero announced nothing reserved against 100,000. It
  * understated every time, which is the direction that gets the next order
@@ -263,7 +263,7 @@ export function sparkline(values, { width = 200, height = 34 } = {}) {
   if (pts.length < 2) return '';
   // Padded the way the price panel pads, and for the reason a flat series
   // exposes. With `span = hi - lo || 1` every point of a series that has not
-  // moved evaluates to `height - 2` -- the floor of the box -- so a quiet
+  // moved evaluates to `height - 2`, the floor of the box, so a quiet
   // market drew a hard rule along the bottom edge under an empty rectangle,
   // which reads as a chart that failed rather than a price that held. Padding
   // the range puts a flat line through the middle, where it means "flat".

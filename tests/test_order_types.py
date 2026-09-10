@@ -481,7 +481,7 @@ def test_the_venue_reserves_for_a_stop_the_moment_it_is_parked():
     from arena.sim.time import Timestamp, seconds
     from dashboard.build_market import build
 
-    symbol = "SPIKE_WR_FUT"
+    symbol = "EMBER_OBJECTIVE_WR"
     market = build(seed=7, human_cash=4_000_000)
     market.kernel.start()
     market.kernel.advance(until=seconds(180))

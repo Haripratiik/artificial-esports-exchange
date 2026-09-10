@@ -2,7 +2,7 @@
 
     python examples/market_session.py
 
-Not a research experiment -- the agents here are deliberately trivial. It exists
+Not a research experiment: the agents here are deliberately trivial. It exists
 to show the plumbing working end to end: orders routed through the kernel with
 per-agent latency, matched by price-time priority, fills delivered privately,
 prints broadcast publicly, and every subscriber seeing the same event at a
@@ -42,7 +42,7 @@ class SimpleMaker:
 
     The simplest thing that deserves the name market maker: it earns the spread
     and it does not want to accumulate a position, so it shades its quotes to
-    encourage the trade that flattens it. Nothing here is Avellaneda-Stoikov --
+    encourage the trade that flattens it. Nothing here is Avellaneda-Stoikov;
     that arrives with the real market-maker phase.
     """
 
@@ -172,7 +172,7 @@ def main() -> None:
     )
     kernel = Kernel(seed=17, latency=latency)
 
-    exchange = ExchangeAgent(EXCHANGE, "SPIKE_WR_FUT")
+    exchange = ExchangeAgent(EXCHANGE, "VANTA_OBJECTIVE_WR")
     maker = SimpleMaker(AgentId("maker"))
     noise = [NoiseTrader(AgentId(f"noise{i}")) for i in range(8)]
     fast = Watcher(AgentId("watcher_fast"))
@@ -208,7 +208,7 @@ def main() -> None:
           f"combined mark-to-market {pnl:+,}")
     print()
 
-    print("latency probe -- identical feed, different arrival times")
+    print("latency probe: identical feed, different arrival times")
     print(f"  fast watcher  {len(fast.prints)} prints")
     print(f"  slow watcher  {len(slow.prints)} prints")
 
@@ -216,7 +216,7 @@ def main() -> None:
     # separating. At the open, its own subscription request took 100ms to reach
     # the exchange, so earlier trades were never sent to it. At the close,
     # prints dispatched before the bell were still in flight. Matching on the
-    # feed's sequence number pairs the *same* trade on both sides -- pairing by
+    # feed's sequence number pairs the *same* trade on both sides. Pairing by
     # index, or by price, would silently compare different trades.
     fast_by_seq = {seq: t for t, seq, _price in fast.prints}
     slow_by_seq = {seq: t for t, seq, _price in slow.prints}
@@ -231,7 +231,7 @@ def main() -> None:
         print(f"  lost at close   {lost_at_close} (prints still in flight at the bell)")
         print(f"  matched prints  {len(shared)}")
         print(f"  median lag      {gaps[len(gaps) // 2] / 1e6:.1f} ms")
-        print("  same prints, later arrival -- the value of speed is now measurable")
+        print("  same prints, later arrival: the value of speed is now measurable")
 
 
 if __name__ == "__main__":

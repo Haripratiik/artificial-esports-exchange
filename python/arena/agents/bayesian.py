@@ -16,7 +16,7 @@ data-generating process the contract settles on:
 
 with the prior (a0, b0) coming from the reference snapshot's own mode prior and
 shrinkage strength -- the same kappa and m already estimated from data in
-:mod:`arena.worlds.brawl.estimation`, rather than a second set of constants
+:mod:`arena.worlds.circuit.metrics`, rather than a second set of constants
 invented here.
 
 Four things follow, none of which the noise knob could give:

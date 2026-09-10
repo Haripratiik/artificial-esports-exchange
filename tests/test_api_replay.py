@@ -50,7 +50,7 @@ def test_the_same_order_at_a_different_moment_is_not_a_replay():
     store = KeyStore()
     key = store.issue("agent-1")
     now = time.time()
-    payload = {"symbol": "SPIKE_WR_FUT", "side": "buy", "quantity": 5}
+    payload = {"symbol": "EMBER_OBJECTIVE_WR", "side": "buy", "quantity": 5}
 
     first = _signed(store, key, payload=payload, at=now)
     second = _signed(store, key, payload=payload, at=now + 0.001)

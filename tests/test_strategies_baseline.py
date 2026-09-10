@@ -40,8 +40,8 @@ from dashboard.build_market import build, instruments
 # range in the market, and a binary spanning 0 to 1 in hundredths, which is the
 # narrowest. Anything parameterised as a fraction of the range has to mean the
 # same thing on both or it means nothing on either.
-FUTURE = "SPIKE_WR_FUT"
-BINARY = "SPIKE_GT47"
+FUTURE = "EMBER_OBJECTIVE_WR"
+BINARY = "EMBER_OBJECTIVE_GT500"
 CASH = 20_000_000
 
 
@@ -126,11 +126,12 @@ def test_the_skew_is_a_fraction_of_the_range_so_it_means_the_same_everywhere(lis
     """One position, one parameter, the same shading on a future and a binary.
 
     The incumbent makers' half-spread is a constant number of ticks, so mm-1's
-    five ticks is 0.00625% of the range on `SPIKE_CROW` and 5.0% of it on a
-    binary, a factor of 800 out of one number. Written as a fraction of the
-    settlement range instead, the shading at a given fraction of the position
-    limit is the same fraction of the range on every contract, which is what
-    makes a single default defensible across 47 of them.
+    five ticks is 0.00625% of the range on `HALCYON_FORMAT_SPD`, which spans
+    -10,000 to 10,000 in quarters, and 5.0% of it on a binary, a factor of 800
+    out of one number. Written as a fraction of the settlement range instead,
+    the shading at a given fraction of the position limit is the same fraction
+    of the range on every contract, which is what makes a single default
+    defensible across 50 of them.
     """
     strategy = FixedSpread()
     moved = {}
@@ -228,7 +229,7 @@ def test_a_touch_outside_the_settlement_range_is_not_a_price(listed):
     `SnapshotBook` filters that out of everything a person looks at and
     `VenueAgent.top_of_book` does not, so an agent's own book carries it:
     measured on seed 7 over the first 120 seconds, 479 of 2,256 top-of-book
-    samples, 21.2%, across 46 of the 47 listed contracts. A strategy that reads
+    samples, 21.2%, across 46 of the 47 contracts then listed. A strategy that reads
     `best_bid` and believes it bids 4,611,686,018,427,387,904 for something
     that settles under 10,000. The guard is a bounds test rather than a test
     against the sentinel, because a strategy has no business knowing what the
@@ -270,7 +271,7 @@ def test_the_spread_is_zero_when_nobody_is_informed(listed):
 def test_the_spread_widens_with_the_informed_share(listed):
     """Strictly, at every step, because that is the model's whole content.
 
-    Measured on this view, `SPIKE_WR_FUT` quoted 4,650 at 4,690: the model
+    Measured on this view, `EMBER_OBJECTIVE_WR` quoted 4,650 at 4,690: the model
     spread runs 0.00, 0.03, 1.60, 6.47, 17.42, 34.40 and 77.69 as ``mu`` goes
     0, 0.001, 0.05, 0.2, 0.5, 0.8, 0.99. The last of those is a maker that has
     concluded almost everybody it trades with knows more than it does, and

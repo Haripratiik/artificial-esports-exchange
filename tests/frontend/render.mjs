@@ -37,21 +37,21 @@ for (const [symbol, book] of Object.entries(fixture.snapshot.books)) {
  * first failed one run in three, purely because whether the bug showed up
  * depended on whether a fill happened to land during the fixture window. */
 fixture.snapshot.log = [
-  { t: 1_500_000_000, symbol: 'SPIKE_WR_FUT', type: 'ack',
+  { t: 1_500_000_000, symbol: 'EMBER_OBJECTIVE_WR', type: 'ack',
     sequence: 1, agent_id: 'you', order_id: 1, side: 'buy', quantity: 10, price: null },
-  { t: 1_600_000_000, symbol: 'SPIKE_WR_FUT', type: 'fill',
+  { t: 1_600_000_000, symbol: 'EMBER_OBJECTIVE_WR', type: 'fill',
     sequence: 2, agent_id: 'you', order_id: 1, side: 'buy', quantity: 4,
     price: '4660.25', aggressor: true, remaining: 6 },
-  { t: 1_700_000_000, symbol: 'SPIKE_GT48', type: 'reject',
+  { t: 1_700_000_000, symbol: 'VANTA_SOLO_GT140', type: 'reject',
     sequence: 3, agent_id: 'you', reason: 'insufficient_collateral', order_id: 2 },
-  { t: 1_800_000_000, symbol: 'SPIKE_WR_FUT', type: 'cancel',
+  { t: 1_800_000_000, symbol: 'EMBER_OBJECTIVE_WR', type: 'cancel',
     sequence: 4, agent_id: 'you', order_id: 1, remaining: 6 },
   ...(fixture.snapshot.log ?? []),
 ];
 
 const store = {
   view: 'markets',
-  symbol: 'SPIKE_WR_FUT',
+  symbol: 'EMBER_OBJECTIVE_WR',
   snapshot: fixture.snapshot,
   instruments: fixture.instruments,
   session: fixture.session,
@@ -99,7 +99,7 @@ for (const name of ['markets', 'trade', 'portfolio', 'research', 'lab']) {
 
 /* Content that must actually reach the page. */
 const trade = views.trade(store);
-check('trade shows the symbol', trade.includes('SPIKE_WR_FUT'));
+check('trade shows the symbol', trade.includes('EMBER_OBJECTIVE_WR'));
 check('trade renders a ladder', trade.includes('lad-row'), 'no ladder rows');
 check('trade renders a chart', trade.includes('<svg'), 'no chart svg');
 check('trade offers post-only', trade.includes('post_only'));
@@ -129,7 +129,7 @@ for (const symbol of Object.keys(fixture.snapshot.books)) {
 
 const blotter = views.portfolio(store);
 check('blotter renders event types', blotter.includes('reject') && blotter.includes('fill'));
-check('blotter shows the symbol', blotter.includes('SPIKE_GT48'));
+check('blotter shows the symbol', blotter.includes('VANTA_SOLO_GT140'));
 check('blotter shows a reject reason', blotter.includes('insufficient_collateral'));
 check('blotter formats the fill price', blotter.includes('4,660.25'),
       'price not converted from ticks');
@@ -223,17 +223,33 @@ check('revealing puts it back',
  */
 const marketsHtml = views.markets(store);
 check('questions name their subject', !marketsHtml.includes('Will the metric'),
-      'the fallback is showing instead of the Brawler');
+      'the fallback is showing instead of the competitor');
+
+/* Every group the view forms has to be named on the page, whatever it groups by.
+ *
+ * This used to read `contract.underlying.ref.subject` off each book and demand
+ * that string appear. It held while every book was a statistical contract,
+ * because `subjectOf` returns exactly that for one and the section header
+ * prints it, so the check was passing on a coincidence rather than on the
+ * claim. Match contracts group by the match instead, and a competitor's own
+ * name is on a row rather than on a header, so it shows only once that group is
+ * expanded: measured on the live listing, 426 of the books in the fixture are
+ * match contracts and every one of them failed the old reading while the page
+ * was rendering perfectly well.
+ *
+ * What the view promises is that a group is named, so that is what is asserted,
+ * and it still covers the subject reading everywhere the two coincide. */
 for (const [symbol, book] of Object.entries(fixture.snapshot.books)) {
-  const subject = book.contract?.underlying?.ref?.subject;
-  if (!subject) continue;
-  check(`${symbol} names ${subject}`, marketsHtml.includes(subject),
-        'the card does not say what it is written on');
+  const group = views.subjectOf(book);
+  if (!group || group === 'Other') continue;
+  check(`${symbol} is grouped under ${group}`, marketsHtml.includes(group),
+        'the group this book belongs to is not named on the page');
 }
 
 // Asset class still has to be visible and countable. It is a filter now rather
-// than a heading: grouping by it scattered one Brawler's future, calls, puts
-// and weeklies across four sections, so finding "SPIKE" meant visiting four
+// than a heading: grouping by it scattered one competitor's future, calls,
+// puts and weeklies across four sections, so finding one name meant visiting
+// four
 // places. As a chip it narrows the list instead of fragmenting it.
 check('asset classes are offered as filters', marketsHtml.includes('class="chips"'));
 check('prediction markets are named', marketsHtml.includes('Prediction Markets'));
@@ -282,18 +298,18 @@ check('subjects are their own regions', /data-region="subject:/.test(marketsHtml
 const futureBook = {
   class: 'future',
   contract: { payoff: { kind: 'linear', scale: 10000 },
-              underlying: { kind: 'single', ref: { subject: 'SPIKE', metric: 'adjusted_win_rate' } } },
+              underlying: { kind: 'single', ref: { subject: 'EMBER', metric: 'win_rate' } } },
 };
-check('an empty query matches everything', views.matches('SPIKE_WR_FUT', futureBook, ''));
-check('a null query matches everything', views.matches('SPIKE_WR_FUT', futureBook, null));
-check('search finds a ticker', views.matches('SPIKE_WR_FUT', futureBook, 'spike'));
-check('search finds an asset class', views.matches('SPIKE_WR_FUT', futureBook, 'future'));
-check('search finds the subject', views.matches('XYZ', futureBook, 'spike'),
+check('an empty query matches everything', views.matches('EMBER_OBJECTIVE_WR', futureBook, ''));
+check('a null query matches everything', views.matches('EMBER_OBJECTIVE_WR', futureBook, null));
+check('search finds a ticker', views.matches('EMBER_OBJECTIVE_WR', futureBook, 'ember'));
+check('search finds an asset class', views.matches('EMBER_OBJECTIVE_WR', futureBook, 'future'));
+check('search finds the subject', views.matches('XYZ', futureBook, 'ember'),
       'searching only the ticker means you must already know the ticker');
-check('search rejects a miss', !views.matches('SPIKE_WR_FUT', futureBook, 'zzzz'));
+check('search rejects a miss', !views.matches('EMBER_OBJECTIVE_WR', futureBook, 'zzzz'));
 check('search requires every word',
-      !views.matches('SPIKE_WR_FUT', futureBook, 'spike zzzz'));
-check('search is case insensitive', views.matches('SPIKE_WR_FUT', futureBook, 'SpIkE'));
+      !views.matches('EMBER_OBJECTIVE_WR', futureBook, 'ember zzzz'));
+check('search is case insensitive', views.matches('EMBER_OBJECTIVE_WR', futureBook, 'EmBeR'));
 
 // A query that matches nothing must explain itself rather than showing a void.
 const noMatch = views.markets({ ...store, query: 'zzzzz' });
@@ -304,7 +320,7 @@ check('an empty result echoes the query safely', noMatch.includes('zzzzz'));
 const filled = views.trade({
   ...store,
   snapshot: { ...store.snapshot, counterparties: [
-    { symbol: 'SPIKE_WR_FUT', side: 'buy', quantity: 20, price: '4670.25', counterparty: 'mm-1' },
+    { symbol: 'EMBER_OBJECTIVE_WR', side: 'buy', quantity: 20, price: '4670.25', counterparty: 'mm-1' },
   ] },
 });
 check('counterparties are named', filled.includes('mm-1'));
@@ -349,7 +365,7 @@ check('limit price is behind Advanced', !beforeAdvanced.includes('t-px'));
 
 // The browse list is for browsing, not for specifications.
 const cardHtml = views.markets(store);
-// A row showing only `SPIKE_GT47` is the mystery-meat identifier NN/g warns
+// A row showing only `VANTA_SOLO_GT100` is the mystery-meat identifier NN/g warns
 // about: readable only by someone who already knows the ticker. The plain
 // question rides alongside it.
 check('rows ask the question', /class="question"/.test(cardHtml));
@@ -358,11 +374,23 @@ check('rows carry no tick size', !/tick size/i.test(cardHtml));
 // Expiry left the browse row deliberately -- it is a specification, and the
 // contract header on the trade screen carries it where it is actually needed.
 check('the trade screen still shows time remaining', /left|settles/.test(views.trade(store)));
-// The collapse itself, asserted: fewer groups than instruments.
+/* The collapse itself, asserted: far fewer groups than instruments.
+ *
+ * Against the book count rather than against a constant. The constant was 12,
+ * which was a little over the subject count of a 47 contract listing, and it
+ * stopped being a statement about collapsing the moment matches began listing
+ * at runtime: the group count then depends on how many matches have opened by
+ * the time the fixture is taken, so the same check read 7 subjects on a fixture
+ * captured early and 15 on one captured after the module had advanced the
+ * clock, and only the second tripped it. Neither number says anything about
+ * whether the list collapses. The ratio does, and it is what `views.markets`
+ * argues for in its own comment: 355 markets presenting as 9 rows. */
 const subjectCount = (cardHtml.match(/data-region="subject:/g) || []).length;
 const rowCount = (cardHtml.match(/class="mrow"/g) || []).length;
+const bookCount = Object.keys(fixture.snapshot.books).length;
 check('the list collapses instruments into subjects',
-      subjectCount > 0 && subjectCount < 12, `${subjectCount} subjects, ${rowCount} rows shown`);
+      subjectCount > 0 && subjectCount * 4 <= bookCount,
+      `${subjectCount} subjects for ${bookCount} books, ${rowCount} rows shown`);
 
 /* ── accessibility, as assertions ─────────────────────────────────────────
  *

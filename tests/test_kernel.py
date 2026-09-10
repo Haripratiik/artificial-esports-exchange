@@ -51,7 +51,7 @@ def make_exchange() -> VenueAgent:
     )
     spec = ContractSpec(
         contract_id=SYM,
-        underlying=Single(MetricRef("adjusted_win_rate", "SPIKE")),
+        underlying=Single(MetricRef("win_rate", "EMBER")),
         payoff=Linear(scale=10_000.0),
         window=window,
         policy=DataPolicy(min_sample_size=1),

@@ -36,9 +36,21 @@ from arena.sim.time import Duration, Timestamp, micros, millis, seconds
 
 from dashboard.build_market import build, instruments as build_instruments
 
-SYMBOL = "SPIKE_WR_FUT"
+SYMBOL = "EMBER_OBJECTIVE_WR"
 
-
+# The first and last subject of the listing's own `SUBJECTS` tuple, on the
+# individual format, and the format is the load-bearing half of that choice.
+#
+# A win rate contract opens at the midpoint of its range, which is 5,000, and
+# the team format's neutral point is 0.500 exactly. So every team win rate
+# future opens within a few hundred points of where it settles and has almost
+# nothing to discover: measured on seed 17, BASTION_OBJECTIVE_WR opens 0.0 from
+# its settlement, EMBER_OBJECTIVE_WR 38.2 and VANTA_OBJECTIVE_WR 106.5, against
+# a tolerance of 1,000, so the test would pass or fail on which side of the
+# answer the session happened to wander. The individual format's neutral point
+# is 0.100, so its futures open 3,096 to 4,389 away from settlement and there is
+# a real distance for the market to cover.
+DISCOVERY = [("VANTA_SOLO_WR", 0.10), ("RIFT_SOLO_WR", 0.10)]
 
 
 def _maker_position(market, symbol: str = SYMBOL) -> int:
@@ -490,7 +502,7 @@ def test_every_instrument_is_quoted_and_never_crossed(market):
 
 def test_the_futures_stay_two_sided(market):
     """The instruments carrying the research should keep a real market."""
-    for symbol in ("SPIKE_WR_FUT", "CROW_WR_FUT"):
+    for symbol, _tolerance in DISCOVERY:
         book = market.venue.engine(symbol).book.snapshot()
         assert book.best_bid is not None and book.best_ask is not None
 
@@ -505,7 +517,8 @@ def test_value_is_conserved_in_a_live_market(market):
     assert market.venue.conservation_check() == 0
 
 
-@pytest.mark.parametrize("symbol,tolerance", [("SPIKE_WR_FUT", 0.10), ("CROW_WR_FUT", 0.10)])
+
+@pytest.mark.parametrize("symbol,tolerance", DISCOVERY)
 def test_price_discovers_the_settlement_value(symbol, tolerance):
     """The market must move toward what the contract will actually pay.
 
@@ -513,6 +526,14 @@ def test_price_discovers_the_settlement_value(symbol, tolerance):
     the answer, so any convergence has to be produced by the fundamental agents
     trading against the maker. Without this the market would be liquid and
     volatile but anchored to nothing.
+
+    Measured on seed 17 over the second half of a 360 second session:
+    VANTA_SOLO_WR opens 3,602.5 from its settlement of 1,397.50 and averages
+    822.76, closing 84.0% of the gap and finishing 0.0575 of its range out;
+    RIFT_SOLO_WR opens 3,095.5 from 1,904.50 and averages 947.83, closing 69.1%
+    and finishing 0.0957 out. The share of the gap closed is the assertion that
+    carries the claim, because a residual expressed as a fraction of the range
+    says nothing about how far the price travelled to get there.
     """
     from dashboard.build_market import instruments, true_values
 
@@ -545,6 +566,11 @@ def test_price_discovers_the_settlement_value(symbol, tolerance):
     assert abs(final - target) < abs(opening - target), (
         f"{symbol} moved away from settlement: opened {opening}, "
         f"ended {final}, truth {target}"
+    )
+    closed = 1.0 - abs(final - target) / abs(opening - target)
+    assert closed > 0.5, (
+        f"{symbol} closed only {closed:.1%} of the gap between its opening "
+        f"{opening} and its settlement {target}"
     )
     assert abs(final - target) / span < tolerance
 
@@ -600,16 +626,22 @@ def test_relations_are_read_out_of_the_listed_contracts():
     listed = {i.symbol: i for i in build_instruments()}
     relations = {r.name: r for r in derive_relations(listed)}
 
-    spread = relations["spread:SPIKE_CROW"]
-    assert spread.target == "SPIKE_CROW"
-    assert dict(spread.legs) == {"SPIKE_WR_FUT": 1.0, "CROW_WR_FUT": -1.0}
+    spread = relations["spread:HALCYON_FORMAT_SPD"]
+    assert spread.target == "HALCYON_FORMAT_SPD"
+    assert dict(spread.legs) == {
+        "HALCYON_SOLO_WR": 1.0,
+        "HALCYON_OBJECTIVE_WR": -1.0,
+    }
     assert spread.constant == 0.0
 
     # Put-call parity, C = P + F - K, with the strike as the constant.
-    parity = relations["parity:SPIKE_C4700"]
-    assert parity.target == "SPIKE_C4700"
-    assert dict(parity.legs) == {"SPIKE_P4700": 1.0, "SPIKE_WR_FUT": 1.0}
-    assert parity.constant == -4_700.0
+    parity = relations["parity:EMBER_OBJECTIVE_C5000"]
+    assert parity.target == "EMBER_OBJECTIVE_C5000"
+    assert dict(parity.legs) == {
+        "EMBER_OBJECTIVE_P5000": 1.0,
+        "EMBER_OBJECTIVE_WR": 1.0,
+    }
+    assert parity.constant == -5_000.0
 
 
 def test_a_relation_missing_a_leg_is_not_formed():
@@ -620,25 +652,33 @@ def test_a_relation_missing_a_leg_is_not_formed():
     code change, or the derivation is not really reading the contracts.
 
     Written by *removing* a listed leg rather than by relying on one being
-    absent. The first version leaned on PIPER having no future, which was true
-    until PIPER was listed precisely so the index would have all three of them;
-    a test whose premise is an accident of the listing stops testing anything
-    the day the listing improves.
+    absent. An earlier version leaned on one component having no future of its
+    own, which was true until that future was listed precisely so the index
+    would have every leg; a test whose premise is an accident of the listing
+    stops testing anything the day the listing improves.
+
+    The index is equal weighted over the six subjects the exchange lists, one
+    per archetype, so each leg carries a sixth and the six of them are the
+    whole basket.
     """
     from arena.agents.arbitrageur import derive_relations
 
     listed = {i.symbol: i for i in build_instruments()}
-    assert "ASSASSIN_IDX" in listed
-    piper = listed.pop("PIPER_WR_FUT")
-    assert not any(r.target == "ASSASSIN_IDX" for r in derive_relations(listed))
+    assert "CIRCUIT_SOLO_IDX" in listed
+    leg = listed.pop("RIFT_SOLO_WR")
+    assert not any(r.target == "CIRCUIT_SOLO_IDX" for r in derive_relations(listed))
 
-    listed[piper.symbol] = piper
-    index = next(r for r in derive_relations(listed) if r.target == "ASSASSIN_IDX")
-    assert dict(index.legs) == {
-        "SPIKE_WR_FUT": 0.5,
-        "CROW_WR_FUT": 0.3,
-        "PIPER_WR_FUT": 0.2,
+    listed[leg.symbol] = leg
+    index = next(r for r in derive_relations(listed) if r.target == "CIRCUIT_SOLO_IDX")
+    assert set(dict(index.legs)) == {
+        "VANTA_SOLO_WR",
+        "QUILL_SOLO_WR",
+        "BASTION_SOLO_WR",
+        "EMBER_SOLO_WR",
+        "HALCYON_SOLO_WR",
+        "RIFT_SOLO_WR",
     }
+    assert all(weight == pytest.approx(1 / 6) for _leg, weight in index.legs)
 
 
 @pytest.fixture(scope="module")

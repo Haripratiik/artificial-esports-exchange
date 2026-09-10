@@ -3,7 +3,7 @@
 The venue already has a browser front end, and a browser is the wrong shape for
 an algorithm: it holds a cookie scoped to one machine, it renders numbers for
 eyes, and there is nothing in it to import. A systematic trader needs the
-opposite -- a credential it can carry, a function per endpoint, and values it
+opposite: a credential it can carry, a function per endpoint, and values it
 can compute with. This is that.
 
 Three decisions are load-bearing, and each of them exists because of a specific
@@ -16,7 +16,7 @@ signs is byte-for-byte the string the server receives. An HTTP library is
 entitled to re-encode a query it was handed as parameters, and to re-serialise a
 body it was handed as an object, and the result is a request that is perfectly
 well formed and fails to verify. So this client builds the path and the body
-itself, hands httpx finished bytes, and then -- before sending -- compares what
+itself, hands httpx finished bytes, and then, before sending, compares what
 httpx is about to put on the wire against what it signed, refusing loudly if
 they differ. The alternative is a 401 with no way to tell whether the secret is
 wrong or the encoding is.
@@ -32,7 +32,7 @@ as a float and the shortest numeral that recovers it is
 ``3479.328892044944``: sixteen digits kept, twelve gone. So JSON numbers are parsed
 with ``parse_float=Decimal``, money-bearing strings are converted to
 ``Decimal``, and anything this client does not recognise is handed back as the
-exact string the venue sent -- which is lossless, and which you can always
+exact string the venue sent, which is lossless and which you can always
 convert yourself. There is no path through this module that produces a float,
 and ``tests/test_api_client.py`` asserts that by walking parsed responses.
 
@@ -48,7 +48,7 @@ standard library and httpx, and on nothing in ``python/arena``. That is what
 makes it distributable to someone who does not have the venue's source, and it
 is why the header names and the signing scheme are transcribed here rather than
 imported. Transcription can drift, so ``tests/test_api_client.py`` signs the
-same inputs with both implementations and asserts the bytes are identical --
+same inputs with both implementations and asserts the bytes are identical, so
 the duplication is allowed to exist because it cannot silently disagree.
 
 **Nothing here is real.** The venue is a simulation, the underlyings are public
@@ -113,7 +113,7 @@ def canonical_request(
     """The exact bytes a signature covers.
 
     Newline-separated, in this order: timestamp, method, path, body. The
-    separator matters -- concatenation would let path ``/v1/orders`` with body
+    separator matters: concatenation would let path ``/v1/orders`` with body
     ``x`` and path ``/v1/order`` with body ``sx`` produce identical bytes.
 
     ``path`` carries its query string, so a signature obtained for one filter
@@ -211,7 +211,7 @@ def _error_for(code: str, message: str, status: int, detail: Any) -> ArenaError:
     Prefix rather than an exhaustive table, so a code added to the venue after
     this client shipped still lands in the right group instead of falling
     through to the base class. A code matching nothing is still an
-    :class:`ArenaError` with its code intact -- unrecognised is not the same as
+    :class:`ArenaError` with its code intact, since unrecognised is not the same as
     unusable.
     """
     kind: type[ArenaError] = ArenaError
@@ -248,10 +248,10 @@ class Level(NamedTuple):
 
 
 # Keys whose string value is an amount of money or a price. Every name here is
-# produced by a serialiser in this repository -- `Account.to_dict` and
+# produced by a serialiser in this repository: `Account.to_dict` and
 # `Position.to_dict` in python/arena/portfolio, `Instrument.to_dict` in
 # python/arena/market/instrument.py, and the halt records in dashboard/state.py
-# -- except `price` and `stop`, which the order contract names.
+# with the exception of `price` and `stop`, which the order contract names.
 #
 # A key that is not in this set is returned as the exact string the venue sent.
 # That is deliberate: guessing that an unknown string is money and converting it
@@ -411,7 +411,7 @@ def amount(value: Decimal | int | str) -> str:
         parsed = Decimal(str(value).strip())
     except (InvalidOperation, ValueError):
         raise ValueError(
-            f"{value!r} is not a price -- digits and a decimal point only, with "
+            f"{value!r} is not a price: digits and a decimal point only, with "
             "no commas or currency symbols"
         ) from None
     return format(parsed, "f")
@@ -444,7 +444,7 @@ def _side(value: str) -> str:
     This is the only kind of validation the client does. It does not check the
     tick grid, the settlement range, or whether a symbol is listed, because
     those need the venue's state and a client that keeps its own copy of them
-    will eventually disagree with the venue about what is legal -- and the
+    will eventually disagree with the venue about what is legal, and the
     venue is right by definition.
     """
     text = str(value).strip().lower()
@@ -481,7 +481,7 @@ class ArenaClient:
     round trip to be told the obvious.
 
         >>> client = ArenaClient("http://localhost:8000")            # doctest: +SKIP
-        >>> book = client.book("SPIKE_WR_FUT", depth=5)              # doctest: +SKIP
+        >>> book = client.book("VANTA_OBJECTIVE_WR", depth=5)              # doctest: +SKIP
         >>> book["bids"][0].price                                    # doctest: +SKIP
         Decimal('4689.00')
 
@@ -510,7 +510,7 @@ class ArenaClient:
         self._prefix = urlsplit(self.base_url).path.rstrip("/")
         self._http = httpx.Client(timeout=timeout, transport=transport)
 
-    # -- plumbing ---------------------------------------------------------
+    # plumbing ------------------------------------------------------------
 
     def __enter__(self) -> ArenaClient:
         return self
@@ -571,8 +571,8 @@ class ArenaClient:
         )
 
         # The check that turns an unexplainable 401 into a sentence. httpx is
-        # free to normalise a URL it was handed -- a space becomes %20, for one
-        # -- and if it does, the bytes it sends are not the bytes we signed.
+        # free to normalise a URL it was handed, a space becomes %20 for one,
+        # and if it does, the bytes it sends are not the bytes we signed.
         sent_path = request.url.raw_path.decode("ascii")
         if sent_path != signed_path:
             raise ClientError(
@@ -620,7 +620,7 @@ class ArenaClient:
 
         if response.status_code >= 400:
             # A failure that is not in the documented envelope. Anything can
-            # produce this -- a proxy, a crash before the handler ran -- so it
+            # produce this, a proxy or a crash before the handler ran, so it
             # is reported under a client_ code that says where it came from
             # rather than being dressed up as a venue error code.
             raise ClientError(
@@ -632,7 +632,7 @@ class ArenaClient:
 
         return _normalise(payload)
 
-    # -- public market data -----------------------------------------------
+    # public market data ------------------------------------------------
 
     def exchange(self) -> Any:
         """The venue's description of itself: fees, sessions, and its state."""
@@ -672,7 +672,7 @@ class ArenaClient:
         """The recent price path, for charting or for a signal."""
         return self._request("GET", f"/v1/instruments/{symbol}/history")
 
-    # -- the account ------------------------------------------------------
+    # the account -------------------------------------------------------
 
     def account(self) -> Any:
         """Cash, collateral, realised and unrealised PnL, and equity."""
@@ -688,7 +688,7 @@ class ArenaClient:
             "GET", "/v1/account/fills", params={"limit": limit}, signed=True
         )
 
-    # -- orders -----------------------------------------------------------
+    # orders ------------------------------------------------------------
 
     def orders(self) -> Any:
         """Working orders across every symbol."""
@@ -754,10 +754,10 @@ class ArenaClient:
         """Pull every working order this account has, on every symbol."""
         return self._request("DELETE", "/v1/orders", signed=True)
 
-    # -- credentials ------------------------------------------------------
+    # credentials -------------------------------------------------------
 
     def keys(self) -> Any:
-        """The keys on this seat. Never the secrets -- those are shown once."""
+        """The keys on this seat. Never the secrets: those are shown once."""
         return self._request("GET", "/v1/keys", signed=True)
 
     def create_key(self, label: str = "") -> Any:
@@ -773,7 +773,7 @@ class ArenaClient:
         """Retire a key. The venue keeps the id so it can never be reissued."""
         return self._request("DELETE", f"/v1/keys/{key_id}", signed=True)
 
-    # -- streaming --------------------------------------------------------
+    # streaming ---------------------------------------------------------
 
     def stream_url(self) -> str:
         """The websocket URL for this venue.
@@ -797,7 +797,7 @@ class ArenaClient:
         transports.
 
         This is the one shape in this client that has not been checked against
-        a running server -- the socket handler is being written in parallel with
+        a running server, since the socket handler is being written in parallel with
         it. If the venue disagrees, the disagreement is in the field names of
         this frame, not in the signature, which is computed the same way here as
         for every other request.

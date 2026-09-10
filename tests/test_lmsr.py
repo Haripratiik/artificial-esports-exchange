@@ -219,7 +219,7 @@ from arena.exchange.types import (  # noqa: E402
 from arena.market.instrument import Instrument  # noqa: E402
 from arena.market.lmsr_venue import LMSR_MAKER_ID, LmsrVenue  # noqa: E402
 from arena.portfolio.money import Money, from_money, to_money  # noqa: E402
-from arena.worlds.brawl.metrics import metric_ref  # noqa: E402
+from arena.worlds.circuit.metrics import metric_ref  # noqa: E402
 
 UTC = timezone.utc
 START = datetime(2026, 8, 31, tzinfo=UTC)
@@ -229,7 +229,7 @@ TRADER = AgentId("trader-1")
 def _spec(payoff, tick: str = "0.01") -> ContractSpec:
     return ContractSpec(
         contract_id="B",
-        underlying=Single(metric_ref("adjusted_win_rate", "SUBJECT")),
+        underlying=Single(metric_ref("win_rate", "SUBJECT")),
         payoff=payoff,
         window=ObservationWindow(START, START + timedelta(days=28)),
         policy=DataPolicy(

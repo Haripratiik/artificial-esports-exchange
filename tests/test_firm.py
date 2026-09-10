@@ -110,8 +110,8 @@ class Spread:
     and a package trader is precisely who that is aimed at: an order with no
     limit is collateralised against the far end of the contract's range, so an
     unpriced vertical is charged as though it bought at the top and sold at the
-    bottom, which on this catalogue is 32,400 of collateral for six lots that
-    can lose 150.
+    bottom, which on this catalogue is 61,200 of collateral for six lots that
+    can lose 1,200.
     """
 
     packaged = True
@@ -246,25 +246,30 @@ def _wake(firm, view, symbols=()):
 # --------------------------------------------------------------------------
 
 
-def test_the_catalogue_is_ten_netting_groups(listed):
-    """47 instruments, 10 groups, keyed the way the venue keys them.
+def test_the_catalogue_is_twenty_two_netting_groups(listed):
+    """50 instruments, 22 groups, keyed the way the venue keys them.
 
-    The whole design rests on this: a budget per instrument would be 47
+    The whole design rests on this: a budget per instrument would be 50
     budgets that do not correspond to anything capital is released within, and
     a budget for the account would be one number that cannot be attributed.
-    Measured on the live catalogue, the group sizes are 20 SPIKE win rate, 9
-    ELPRIMO, 8 CROW, 4 SPIKE battle volume, and six groups of one.
+
+    Re-measured on the circuit listing, the group sizes are 7 on QUILL's
+    individual win rate, 6 on BASTION's, 6 on EMBER's team win rate, 5 on
+    RIFT's match volume, 4 on VANTA's individual win rate, five pairs and
+    twelve singles. The previous listing put 20 of its 47 contracts in one
+    group and this one puts 7 of 50, which is the same measurement the listing
+    itself is argued from.
     """
     groups: dict[str, list[str]] = {}
     for symbol, instrument in listed.items():
         groups.setdefault(group_key(instrument), []).append(symbol)
-    assert len(listed) == 47
-    assert len(groups) == 10
+    assert len(listed) == 50
+    assert len(groups) == 22
     assert sorted((len(v) for v in groups.values()), reverse=True) == [
-        20, 9, 8, 4, 1, 1, 1, 1, 1, 1
+        7, 6, 6, 5, 4, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
     ]
     labels = {group_label(listed[v[0]].spec.underlying) for v in groups.values()}
-    assert "adjusted_win_rate:SPIKE" in labels
+    assert "win_rate:EMBER" in labels
     assert {"difference", "basket"} <= labels
 
 
@@ -275,36 +280,40 @@ def test_a_group_is_the_set_worst_case_will_accept(listed):
     because netting them would need a correlation. So the grouping is not a
     convention this module chose, it is the only one `worst_case` answers for.
     """
-    spike = listed["SPIKE_WR_FUT"].spec
-    crow = listed["CROW_WR_FUT"].spec
-    assert worst_case([(spike, 4, D(4670)), (spike, -4, D(4670))]) == 0
+    ember = listed["EMBER_OBJECTIVE_WR"].spec
+    rift = listed["RIFT_OBJECTIVE_WR"].spec
+    assert worst_case([(ember, 4, D(5038)), (ember, -4, D(5038))]) == 0
     with pytest.raises(ValueError, match="not written on the same underlying"):
-        worst_case([(spike, 4, D(4670)), (crow, -4, D(4670))])
+        worst_case([(ember, 4, D(5038)), (rift, -4, D(5038))])
 
 
 def test_metric_sensitivity_is_read_off_the_payoff(listed):
     """Linear gives the scale, a call gives it only above the strike, a binary none.
 
     Exact rather than bumped. A difference quotient across the strike of
-    SPIKE_C4700 would report a slope of 10,000 at a level where the option is
-    worth nothing and moves not at all.
+    EMBER_OBJECTIVE_C5000 would report a slope of 10,000 at a level where the
+    option is worth nothing and moves not at all.
+
+    The levels straddle 0.50, which is where this chain is struck: at 0.51 the
+    call is in the money and the put is not, at 0.49 the reverse, and at 0.50
+    itself the kink is assigned to the flat branch.
     """
-    future = listed["SPIKE_WR_FUT"].spec
-    call = listed["SPIKE_C4700"].spec
-    put = listed["SPIKE_P4700"].spec
-    binary = listed["SPIKE_GT47"].spec
+    future = listed["EMBER_OBJECTIVE_WR"].spec
+    call = listed["EMBER_OBJECTIVE_C5000"].spec
+    put = listed["EMBER_OBJECTIVE_P5000"].spec
+    binary = listed["EMBER_OBJECTIVE_GT500"].spec
     assert isinstance(future.payoff, Linear)
     assert isinstance(call.payoff, Call)
     assert isinstance(put.payoff, Put)
     assert isinstance(binary.payoff, Binary)
 
     assert metric_sensitivity(future, 3, 0.40) == 30_000.0
-    assert metric_sensitivity(future, 3, 0.50) == 30_000.0
-    assert metric_sensitivity(call, 3, 0.48) == 30_000.0
-    assert metric_sensitivity(call, 3, 0.46) == 0.0
-    assert metric_sensitivity(put, 3, 0.46) == -30_000.0
-    assert metric_sensitivity(put, 3, 0.48) == 0.0
-    assert metric_sensitivity(binary, 3, 0.48) == 0.0
+    assert metric_sensitivity(future, 3, 0.55) == 30_000.0
+    assert metric_sensitivity(call, 3, 0.51) == 30_000.0
+    assert metric_sensitivity(call, 3, 0.49) == 0.0
+    assert metric_sensitivity(put, 3, 0.49) == -30_000.0
+    assert metric_sensitivity(put, 3, 0.51) == 0.0
+    assert metric_sensitivity(binary, 3, 0.51) == 0.0
 
 
 # --------------------------------------------------------------------------
@@ -320,29 +329,45 @@ def test_a_group_budget_is_never_exceeded(listed):
     clip is the budget's own arithmetic rather than an approximation that
     happens to be conservative.
     """
-    firm = Firm(budget=D(1_000_000), strategies={"mm": Quoter(["SPIKE_WR_FUT"])})
+    firm = Firm(budget=D(1_000_000), strategies={"mm": Quoter(["EMBER_OBJECTIVE_WR"])})
     view = _view(listed)
-    quotes, _ = _wake(firm, view, ["SPIKE_WR_FUT"])
-    bid = quotes["SPIKE_WR_FUT"].bid
+    quotes, _ = _wake(firm, view, ["EMBER_OBJECTIVE_WR"])
+    bid = quotes["EMBER_OBJECTIVE_WR"].bid
     assert bid is not None and 0 < bid.size < 1_000
 
-    spec = listed["SPIKE_WR_FUT"].spec
-    budget = firm.budgets()[firm.group_of("SPIKE_WR_FUT")]
+    spec = listed["EMBER_OBJECTIVE_WR"].spec
+    budget = firm.budgets()[firm.group_of("EMBER_OBJECTIVE_WR")]
     assert worst_case([(spec, bid.size, bid.price)]) <= budget
     assert worst_case([(spec, bid.size + 1, bid.price)]) > budget
 
 
 def test_the_budgets_sum_inside_the_reserve(listed):
-    """`sum(budgets) <= cash * (1 - reserve)`, which is the reserve's whole claim."""
+    """`sum(budgets) <= cash * (1 - reserve)`, to inside one minor unit.
+
+    The equality used to be exact and this listing is what stopped it being so.
+    `Firm._allocate` divides the deployable capital by the group count through
+    a float before it reaches Decimal, and the previous catalogue had 10
+    netting groups, where a tenth is exact in binary. This one has 22, where a
+    twenty-second is not: measured on 750,000 of deployable capital across 22
+    groups the sum comes back at 750,000.000000000024, which is 2.4e-11 above
+    the reserve line.
+
+    Money here is integer minor units at a scale of a million, so that excess
+    is 2.4e-5 of one minor unit and cannot be posted, collected or conserved;
+    `to_money` refuses it outright rather than rounding. It is pinned two-sided
+    rather than waved through, so if the allocator ever drifts by an amount
+    that could actually move, this says so.
+    """
     firm = Firm(
         budget=D(1_000_000),
-        strategies={"mm": Quoter(["SPIKE_WR_FUT"])},
+        strategies={"mm": Quoter(["EMBER_OBJECTIVE_WR"])},
         reserve=0.25,
     )
     firm.symbols(_view(listed))
     budgets = firm.budgets()
-    assert len(budgets) == 10
-    assert sum(budgets.values()) <= D(1_000_000) * D("0.75")
+    assert len(budgets) == 22
+    excess = sum(budgets.values()) - D(1_000_000) * D("0.75")
+    assert D(0) <= excess < D("0.000001"), excess
     assert sum(budgets.values()) == pytest.approx(D(750_000), abs=1)
 
 
@@ -352,15 +377,15 @@ def test_two_strategies_in_one_group_compete_for_one_budget(listed):
     Both takers ask for five hundred lots. Inside one group the two admitted
     sizes together have to fit one budget, so the second is clipped by what the
     first took; across two groups each gets its own budget and neither sees the
-    other. Measured on a budget of 1,000,000 with a reserve of 0.10: the paired
-    SPIKE legs come back at 20 and 0 lots against 20 and 20 when the second leg
-    is moved to CROW.
+    other. Re-measured on a budget of 1,000,000 with a reserve of 0.10, now
+    split across 22 groups rather than 10: the paired EMBER legs come back at 4
+    and 0 lots against 4 and 4 when the second leg is moved to RIFT.
     """
     together = Firm(
         budget=D(1_000_000),
         strategies={
-            "a": Lifter("SPIKE_WR_FUT", 500),
-            "b": Lifter("SPIKE_C4700", 500),
+            "a": Lifter("EMBER_OBJECTIVE_WR", 500),
+            "b": Lifter("EMBER_OBJECTIVE_C5000", 500),
         },
     )
     view = _view(listed)
@@ -370,25 +395,25 @@ def test_two_strategies_in_one_group_compete_for_one_budget(listed):
     apart = Firm(
         budget=D(1_000_000),
         strategies={
-            "a": Lifter("SPIKE_WR_FUT", 500),
-            "b": Lifter("CROW_WR_FUT", 500),
+            "a": Lifter("EMBER_OBJECTIVE_WR", 500),
+            "b": Lifter("RIFT_OBJECTIVE_WR", 500),
         },
     )
     _, takes = _wake(apart, _view(listed))
     split = {t.symbol: t.size for t in takes}
 
-    assert split["SPIKE_WR_FUT"] == split["CROW_WR_FUT"] > 0
-    assert shared.get("SPIKE_WR_FUT", 0) == split["SPIKE_WR_FUT"]
-    assert shared.get("SPIKE_C4700", 0) < split["CROW_WR_FUT"]
+    assert split["EMBER_OBJECTIVE_WR"] == split["RIFT_OBJECTIVE_WR"] > 0
+    assert shared.get("EMBER_OBJECTIVE_WR", 0) == split["EMBER_OBJECTIVE_WR"]
+    assert shared.get("EMBER_OBJECTIVE_C5000", 0) < split["RIFT_OBJECTIVE_WR"]
 
-    spike = together.group_of("SPIKE_WR_FUT")
-    assert together.group_of("SPIKE_C4700") == spike
-    assert apart.group_of("CROW_WR_FUT") != spike
+    ember = together.group_of("EMBER_OBJECTIVE_WR")
+    assert together.group_of("EMBER_OBJECTIVE_C5000") == ember
+    assert apart.group_of("RIFT_OBJECTIVE_WR") != ember
     holdings = [
         (listed[symbol].spec, size, listed[symbol].value_bounds[1] / 2)
         for symbol, size in shared.items()
     ]
-    assert worst_case(holdings) <= together.budgets()[spike]
+    assert worst_case(holdings) <= together.budgets()[ember]
 
 
 def test_clipping_a_quote_changes_its_size_and_nothing_else(listed):
@@ -402,14 +427,14 @@ def test_clipping_a_quote_changes_its_size_and_nothing_else(listed):
     """
     firm = Firm(
         budget=D(1_000_000),
-        strategies={"mm": Quoter(["SPIKE_WR_FUT"], post_only=True)},
+        strategies={"mm": Quoter(["EMBER_OBJECTIVE_WR"], post_only=True)},
     )
-    quotes, _ = _wake(firm, _view(listed), ["SPIKE_WR_FUT"])
-    bid = quotes["SPIKE_WR_FUT"].bid
+    quotes, _ = _wake(firm, _view(listed), ["EMBER_OBJECTIVE_WR"])
+    bid = quotes["EMBER_OBJECTIVE_WR"].bid
     assert bid is not None
     assert bid.size < 1_000, "the budget has to bite, or this proves nothing"
     assert bid.post_only is True
-    assert quotes["SPIKE_WR_FUT"].ask.post_only is True
+    assert quotes["EMBER_OBJECTIVE_WR"].ask.post_only is True
 
 
 def test_an_order_that_lowers_the_worst_case_is_never_refused(listed):
@@ -425,12 +450,12 @@ def test_an_order_that_lowers_the_worst_case_is_never_refused(listed):
     long_lots = 400
     firm = Firm(
         budget=D(20_000),
-        strategies={"out": Lifter("SPIKE_WR_FUT", long_lots, Side.SELL)},
+        strategies={"out": Lifter("EMBER_OBJECTIVE_WR", long_lots, Side.SELL)},
     )
-    view = _view(listed, positions={"SPIKE_WR_FUT": long_lots})
+    view = _view(listed, positions={"EMBER_OBJECTIVE_WR": long_lots})
     _, takes = _wake(firm, view)
     assert [(t.symbol, t.side, t.size) for t in takes] == [
-        ("SPIKE_WR_FUT", Side.SELL, long_lots)
+        ("EMBER_OBJECTIVE_WR", Side.SELL, long_lots)
     ]
 
 
@@ -484,7 +509,7 @@ def test_the_concentration_limit_binds_once_capital_has_fallen(listed):
     """
     firm = Firm(
         budget=D(1_000_000),
-        strategies={"mm": Quoter(["SPIKE_WR_FUT"])},
+        strategies={"mm": Quoter(["EMBER_OBJECTIVE_WR"])},
         concentration=0.03,
         # Wide enough that the cushion above the floor is not the tightest cap
         # here. Two limits that both bind prove nothing about either.
@@ -492,12 +517,13 @@ def test_the_concentration_limit_binds_once_capital_has_fallen(listed):
         cost_of_capital=False,
     )
     calm = _view(listed)
-    _wake(firm, calm, ["SPIKE_WR_FUT"])
+    _wake(firm, calm, ["EMBER_OBJECTIVE_WR"])
     assert "concentration" not in firm.report().binding
 
-    marked = _drawn_down(listed, firm, "SPIKE_WR_FUT", 60, 5_000, 500, close=30)
-    _wake(firm, marked, ["SPIKE_WR_FUT"])
-    binding = firm.report().groups["adjusted_win_rate:SPIKE"].binding
+    marked = _drawn_down(listed, firm, "EMBER_OBJECTIVE_WR", 60, 5_000, 500, close=30)
+    _wake(firm, marked, ["EMBER_OBJECTIVE_WR"])
+    label = firm.label_of(firm.group_of("EMBER_OBJECTIVE_WR"))
+    binding = firm.report().groups[label].binding
     assert binding.get("concentration", 0) > 0, binding
 
 
@@ -512,20 +538,21 @@ def test_the_drawdown_limit_binds_below_the_high_water_mark(listed):
     """
     firm = Firm(
         budget=D(1_000_000),
-        strategies={"mm": Quoter(["SPIKE_WR_FUT"])},
+        strategies={"mm": Quoter(["EMBER_OBJECTIVE_WR"])},
         max_drawdown=0.10,
         drawdown_multiple=1.0,
         cost_of_capital=False,
     )
     calm = _view(listed)
-    _wake(firm, calm, ["SPIKE_WR_FUT"])
+    _wake(firm, calm, ["EMBER_OBJECTIVE_WR"])
     assert "drawdown" not in firm.report().binding
 
-    marked = _drawn_down(listed, firm, "SPIKE_WR_FUT", 60, 5_000, 500)
-    _wake(firm, marked, ["SPIKE_WR_FUT"])
+    marked = _drawn_down(listed, firm, "EMBER_OBJECTIVE_WR", 60, 5_000, 500)
+    _wake(firm, marked, ["EMBER_OBJECTIVE_WR"])
     report = firm.report()
     assert report.equity < report.high_water_mark
-    assert report.groups["adjusted_win_rate:SPIKE"].binding.get("drawdown", 0) > 0
+    label = firm.label_of(firm.group_of("EMBER_OBJECTIVE_WR"))
+    assert report.groups[label].binding.get("drawdown", 0) > 0
     assert report.floor == report.high_water_mark * D("0.90")
 
 
@@ -539,42 +566,52 @@ def test_the_drawdown_limit_stops_new_risk_at_the_floor(listed):
     """
     firm = Firm(
         budget=D(1_000_000),
-        strategies={"mm": Quoter(["SPIKE_WR_FUT"])},
+        strategies={"mm": Quoter(["EMBER_OBJECTIVE_WR"])},
         max_drawdown=0.01,
         drawdown_multiple=1.0,
         cost_of_capital=False,
     )
-    marked = _drawn_down(listed, firm, "SPIKE_WR_FUT", 150, 9_000, 100)
-    quotes, takes = _wake(firm, marked, ["SPIKE_WR_FUT"])
-    assert quotes["SPIKE_WR_FUT"].bid is None
+    marked = _drawn_down(listed, firm, "EMBER_OBJECTIVE_WR", 150, 9_000, 100)
+    quotes, takes = _wake(firm, marked, ["EMBER_OBJECTIVE_WR"])
+    assert quotes["EMBER_OBJECTIVE_WR"].bid is None
     assert takes == ()
-    assert firm.committed()[firm.group_of("SPIKE_WR_FUT")] > 0
+    assert firm.committed()[firm.group_of("EMBER_OBJECTIVE_WR")] > 0
 
 
 def test_the_metric_exposure_limit_binds_in_the_units_the_payoffs_declare(listed):
     """`sum |dV/dtheta_g|` and `dV/dtheta_g`, computed rather than estimated.
 
     There is no default for either, and there should not be: a win-rate future
-    here has a slope of 10,000 per unit of metric and a battle-volume contract
-    500, so any figure this module chose would be a constant nobody measured.
-    With a net cap of 50,000 the firm stops at five lots of SPIKE_WR_FUT, which
-    is 50,000 exactly, and refuses the sixth. The same firm without the cap
-    stops at 9, where its 90,000 group budget runs out against the 10,000 a lot
-    an unpriced market buy is collateralised at, so the metric limit is
-    genuinely the thing deciding and not the budget wearing another name.
+    here has a slope of 10,000 per unit of metric and a match-volume commodity
+    1, so any figure this module chose would be a constant nobody measured.
+    With a net cap of 50,000 the firm stops at five lots of
+    EMBER_OBJECTIVE_WR, which is 50,000 exactly, and refuses the sixth. The
+    same firm without the cap stops at 10, where its 102,272 group budget runs
+    out against the 10,000 a lot an unpriced market buy is collateralised at,
+    so the metric limit is genuinely the thing deciding and not the budget
+    wearing another name.
+
+    The capital is 2,500,000 rather than the 1,000,000 the rest of this file
+    uses, and that is the point rather than an inflation. The circuit listing
+    is 22 netting groups against the previous 10, so a flat split of 1,000,000
+    leaves 40,909 a group and stops this taker at 4 lots on the budget alone.
+    A limit tested in a state where a different limit binds first is the inert
+    control this file exists to avoid.
     """
     firm = Firm(
-        budget=D(1_000_000),
-        strategies={"a": Lifter("SPIKE_WR_FUT", 40)},
+        budget=D(2_500_000),
+        strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 40)},
         net_metric_limit=50_000.0,
     )
     _, takes = _wake(firm, _view(listed))
-    assert [(t.symbol, t.size) for t in takes] == [("SPIKE_WR_FUT", 5)]
+    assert [(t.symbol, t.size) for t in takes] == [("EMBER_OBJECTIVE_WR", 5)]
     assert firm.report().binding.get("net-metric", 0) > 0
 
-    unlimited = Firm(budget=D(1_000_000), strategies={"a": Lifter("SPIKE_WR_FUT", 40)})
+    unlimited = Firm(
+        budget=D(2_500_000), strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 40)}
+    )
     _, takes = _wake(unlimited, _view(listed))
-    assert takes[0].size == 9
+    assert takes[0].size == 10
     assert unlimited.report().binding == {"budget": 1}
 
 
@@ -590,31 +627,34 @@ def test_the_reserve_is_charged_on_the_gross_the_venue_actually_posts(listed):
     def spread(size):
         firm = Firm(
             budget=D(60_000),
-            strategies={"rv": Spread("SPIKE_C4600", "SPIKE_C4650", size)},
+            strategies={"rv": Spread("EMBER_OBJECTIVE_C4800", "EMBER_OBJECTIVE_C5000", size)},
             reserve=0.10,
             concentration=1.0,
         )
         _, takes = _wake(firm, _view(listed))
+        # The two prices `_view` hands the strategy: the midpoint of each
+        # leg's own range, 2,600 on a call whose value tops out at 5,200 and
+        # 2,500 on one that tops out at 5,000.
         holdings = [
-            (listed["SPIKE_C4600"].spec, size, D(2_700)),
-            (listed["SPIKE_C4650"].spec, -size, D(2_675)),
+            (listed["EMBER_OBJECTIVE_C4800"].spec, size, D(2_600)),
+            (listed["EMBER_OBJECTIVE_C5000"].spec, -size, D(2_500)),
         ]
         return firm, takes, netting_benefit(holdings)
 
     deployable = D(60_000) * D("0.90")
     _firm, takes, (gross, net) = spread(10)
     assert len(takes) == 2
-    assert (gross, net) == (D(53_750), D(250))
+    assert (gross, net) == (D(51_000), D(1_000))
     assert gross <= deployable
 
     # One more lot, and nothing about the risk has changed: the net requirement
-    # goes from 250 to 275 against a group budget of 5,400. What refuses it is
-    # the gross figure crossing 54,000, which is the number the venue would
+    # goes from 1,000 to 1,100 against a group budget of 2,454. What refuses it
+    # is the gross figure crossing 54,000, which is the number the venue would
     # actually post, and the package goes out whole or not at all.
     firm, takes, (gross, net) = spread(11)
     assert takes == ()
-    assert net == D(275) < firm.budgets()[firm.group_of("SPIKE_C4600")]
-    assert gross == D("59125") > deployable
+    assert net == D(1_100) < firm.budgets()[firm.group_of("EMBER_OBJECTIVE_C4800")]
+    assert gross == D(56_100) > deployable
 
 
 # --------------------------------------------------------------------------
@@ -631,7 +671,7 @@ def test_a_package_that_does_not_fit_whole_is_not_sent_at_all(listed):
     """
     firm = Firm(
         budget=D(4_000),
-        strategies={"rv": Spread("SPIKE_C4600", "SPIKE_C4650", 5_000)},
+        strategies={"rv": Spread("EMBER_OBJECTIVE_C4800", "EMBER_OBJECTIVE_C5000", 5_000)},
     )
     _, takes = _wake(firm, _view(listed))
     assert takes == ()
@@ -653,16 +693,16 @@ def test_a_half_legged_package_is_flattened_immediately(listed):
     which is what a halted symbol and an opening call both look like, and
     unwinding against one of those would be inventing an execution failure.
     """
-    strategy = Spread("SPIKE_C4600", "SPIKE_C4650", 20, once=True)
+    strategy = Spread("EMBER_OBJECTIVE_C4800", "EMBER_OBJECTIVE_C5000", 20, once=True)
     firm = Firm(budget=D(1_000_000), strategies={"rv": strategy})
     _, takes = _wake(firm, _view(listed, now=0.0))
-    assert sorted(t.symbol for t in takes) == ["SPIKE_C4600", "SPIKE_C4650"]
+    assert sorted(t.symbol for t in takes) == ["EMBER_OBJECTIVE_C4800", "EMBER_OBJECTIVE_C5000"]
 
     quiet = _view(
         listed,
         now=0.3,
-        cash=D(1_000_000) - D(20) * D(2_500),
-        positions={"SPIKE_C4600": 20},
+        cash=D(1_000_000) - D(20) * D(2_600),
+        positions={"EMBER_OBJECTIVE_C4800": 20},
     )
     _, takes = _wake(firm, quiet)
     assert takes == ()
@@ -670,13 +710,13 @@ def test_a_half_legged_package_is_flattened_immediately(listed):
     half = _view(
         listed,
         now=0.6,
-        cash=D(1_000_000) - D(20) * D(2_500),
-        positions={"SPIKE_C4600": 20},
-        prices={"SPIKE_C4650": D(2_600)},
+        cash=D(1_000_000) - D(20) * D(2_600),
+        positions={"EMBER_OBJECTIVE_C4800": 20},
+        prices={"EMBER_OBJECTIVE_C5000": D(2_400)},
     )
     _, takes = _wake(firm, half)
     assert [(t.symbol, t.side, t.size) for t in takes] == [
-        ("SPIKE_C4600", Side.SELL, 20)
+        ("EMBER_OBJECTIVE_C4800", Side.SELL, 20)
     ]
     assert firm.report().strategies["rv"].refused["half-legged"] == 1
 
@@ -687,14 +727,14 @@ def test_a_package_that_fills_whole_is_left_alone(listed):
     Without this the flatten test would pass on a firm that unwinds every
     package it ever sends, which is a different and much worse control.
     """
-    strategy = Spread("SPIKE_C4600", "SPIKE_C4650", 20, once=True)
+    strategy = Spread("EMBER_OBJECTIVE_C4800", "EMBER_OBJECTIVE_C5000", 20, once=True)
     firm = Firm(budget=D(1_000_000), strategies={"rv": strategy})
     _wake(firm, _view(listed, now=0.0))
     whole = _view(
         listed,
         now=0.3,
         cash=D(1_000_000),
-        positions={"SPIKE_C4600": 20, "SPIKE_C4650": -20},
+        positions={"EMBER_OBJECTIVE_C4800": 20, "EMBER_OBJECTIVE_C5000": -20},
     )
     _, takes = _wake(firm, whole)
     assert takes == ()
@@ -704,23 +744,23 @@ def test_a_package_that_fills_whole_is_left_alone(listed):
 def test_netting_releases_capital_on_the_packages_these_strategies_produce(listed):
     """Gross against net on the vertical this firm actually trades.
 
-    Twenty spreads between 4,600 and 4,650 can lose at most fifty points a lot,
-    so the netted requirement is 1,000 against a gross of 108,000: netting
-    would release 107,000, which is 99.1% of what the venue charges today. The
-    gross figure is dominated by the short leg, which is charged the whole
-    distance from its price to the top of its range whatever it is held
-    against. That is the reason the report carries both numbers rather than
-    one.
+    Twenty spreads between 4,800 and 5,000 can lose at most two hundred points
+    a lot, so at the settlement prices of the two legs the netted requirement
+    is 4,000 against a gross of 104,000: netting would release 100,000, which
+    is 96.2% of what the venue charges today. The gross figure is dominated by
+    the short leg, which is charged the whole distance from its price to the
+    top of its range whatever it is held against. That is the reason the report
+    carries both numbers rather than one.
     """
     holdings = [
-        (listed["SPIKE_C4600"].spec, 20, D("70")),
-        (listed["SPIKE_C4650"].spec, -20, D("20")),
+        (listed["EMBER_OBJECTIVE_C4800"].spec, 20, D("238.25")),
+        (listed["EMBER_OBJECTIVE_C5000"].spec, -20, D("38.25")),
     ]
     gross, net = netting_benefit(holdings)
-    assert net == D(1_000)
-    assert gross == D(108_000)
-    assert gross - net == D(107_000)
-    assert (gross - net) / gross > D("0.99")
+    assert net == D(4_000)
+    assert gross == D(104_000)
+    assert gross - net == D(100_000)
+    assert (gross - net) / gross > D("0.96")
 
 
 # --------------------------------------------------------------------------
@@ -752,23 +792,23 @@ def test_the_firm_recovers_the_basis_it_is_never_told(listed):
     open, an add at a different price, a partial close that realises, and a
     flip through zero.
     """
-    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("SPIKE_WR_FUT", 1)})
+    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 1)})
     book = Book(listed)
     fills = [(10, 4_600), (10, 4_800), (-15, 4_900), (-10, 4_500)]
     _wake(firm, _view(listed, now=0.0, book=book))
     for step, (lots, price) in enumerate(fills, start=1):
-        book.fill("SPIKE_WR_FUT", lots, price)
+        book.fill("EMBER_OBJECTIVE_WR", lots, price)
         _wake(firm, _view(listed, now=step * 0.3, book=book,
-                          prices={"SPIKE_WR_FUT": D(price)}))
-        held = book.account.positions["SPIKE_WR_FUT"]
+                          prices={"EMBER_OBJECTIVE_WR": D(price)}))
+        held = book.account.positions["EMBER_OBJECTIVE_WR"]
         assert firm.basis() == {
-            "SPIKE_WR_FUT": from_money(held.cost_basis)
+            "EMBER_OBJECTIVE_WR": from_money(held.cost_basis)
         }, (step, lots, price)
 
     # And the collateral computed from it is the venue's own figure, not
     # merely a self-consistent one.
-    assert firm.committed()[firm.group_of("SPIKE_WR_FUT")] == worst_case(
-        [(listed["SPIKE_WR_FUT"].spec, held.quantity, from_money(held.cost_basis)
+    assert firm.committed()[firm.group_of("EMBER_OBJECTIVE_WR")] == worst_case(
+        [(listed["EMBER_OBJECTIVE_WR"].spec, held.quantity, from_money(held.cost_basis)
           / D(held.quantity))]
     )
     assert book.posted > 0
@@ -785,8 +825,8 @@ def test_attribution_across_strategies_sums_to_the_firm_exactly(listed):
     firm = Firm(
         budget=D(1_000_000),
         strategies={
-            "a": Lifter("SPIKE_WR_FUT", 10),
-            "b": Lifter("CROW_WR_FUT", 10, Side.SELL),
+            "a": Lifter("EMBER_OBJECTIVE_WR", 10),
+            "b": Lifter("RIFT_OBJECTIVE_WR", 10, Side.SELL),
         },
     )
     cash = D(1_000_000)
@@ -794,10 +834,10 @@ def test_attribution_across_strategies_sums_to_the_firm_exactly(listed):
     prices: dict[str, D] = {}
     for step, (symbol, lots, price) in enumerate(
         [
-            ("SPIKE_WR_FUT", 10, D(4_600)),
-            ("CROW_WR_FUT", -10, D(4_700)),
-            ("SPIKE_WR_FUT", 10, D(4_800)),
-            ("SPIKE_WR_FUT", -15, D(4_900)),
+            ("EMBER_OBJECTIVE_WR", 10, D(4_600)),
+            ("RIFT_OBJECTIVE_WR", -10, D(4_700)),
+            ("EMBER_OBJECTIVE_WR", 10, D(4_800)),
+            ("EMBER_OBJECTIVE_WR", -15, D(4_900)),
         ]
     ):
         _wake(firm, _view(listed, now=step * 0.3, cash=cash, positions=dict(positions),
@@ -827,12 +867,12 @@ def test_collateral_seconds_are_the_efficiency_metric(listed):
     can say that here without smuggling in the estimate this venue does
     without.
     """
-    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("SPIKE_WR_FUT", 10)})
+    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 10)})
     book = Book(listed)
     _wake(firm, _view(listed, now=0.0, book=book))
-    book.fill("SPIKE_WR_FUT", 10, 4_600)
-    _wake(firm, _view(listed, now=10.0, book=book, prices={"SPIKE_WR_FUT": D(4_600)}))
-    _wake(firm, _view(listed, now=20.0, book=book, prices={"SPIKE_WR_FUT": D(4_700)}))
+    book.fill("EMBER_OBJECTIVE_WR", 10, 4_600)
+    _wake(firm, _view(listed, now=10.0, book=book, prices={"EMBER_OBJECTIVE_WR": D(4_600)}))
+    _wake(firm, _view(listed, now=20.0, book=book, prices={"EMBER_OBJECTIVE_WR": D(4_700)}))
     report = firm.report()
     strategy = report.strategies["a"]
     assert strategy.collateral_seconds > 0
@@ -840,7 +880,7 @@ def test_collateral_seconds_are_the_efficiency_metric(listed):
     assert strategy.pnl_per_collateral_second == pytest.approx(
         float(strategy.pnl) / strategy.collateral_seconds
     )
-    group = report.groups["adjusted_win_rate:SPIKE"]
+    group = report.groups[firm.label_of(firm.group_of("EMBER_OBJECTIVE_WR"))]
     # Ten lots long at 4,600 is 46,000 of collateral, held for the ten
     # seconds between the second observation and the third.
     assert group.collateral_seconds == pytest.approx(460_000.0)
@@ -853,7 +893,7 @@ def test_an_unmeasured_strategy_is_never_priced_out(listed):
     limit, so the measured edge does not exist below the evidence bar and an
     intent is never refused for a record the firm has not got.
     """
-    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("SPIKE_WR_FUT", 5)})
+    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 5)})
     _wake(firm, _view(listed))
     assert firm.report().strategies["a"].edge_per_collateral is None
     assert "cost-of-capital" not in firm.report().binding
@@ -877,22 +917,23 @@ def test_the_shadow_price_is_zero_until_a_budget_binds(listed):
     cross is worth depends on a view the firm cannot see, and it is why the
     shadow price is a lower bound rather than a valuation.
     """
-    quoter = Quoter(["SPIKE_WR_FUT"], half_spread=D(20), size=1_000)
+    quoter = Quoter(["EMBER_OBJECTIVE_WR"], half_spread=D(20), size=1_000)
     small = Firm(budget=D(20_000), strategies={"a": quoter})
-    _wake(small, _view(listed, now=0.0), ["SPIKE_WR_FUT"])
-    _wake(small, _view(listed, now=0.3), ["SPIKE_WR_FUT"])
-    spike = small.group_of("SPIKE_WR_FUT")
-    assert small.shadow_prices()[spike] > 0
-    assert small.group_of("CROW_WR_FUT") not in small.shadow_prices()
+    _wake(small, _view(listed, now=0.0), ["EMBER_OBJECTIVE_WR"])
+    _wake(small, _view(listed, now=0.3), ["EMBER_OBJECTIVE_WR"])
+    ember = small.group_of("EMBER_OBJECTIVE_WR")
+    assert small.shadow_prices()[ember] > 0
+    assert small.group_of("RIFT_OBJECTIVE_WR") not in small.shadow_prices()
 
     roomy = Firm(
         budget=D(1_000_000),
-        strategies={"a": Quoter(["SPIKE_WR_FUT"], half_spread=D(20), size=1)},
+        strategies={"a": Quoter(["EMBER_OBJECTIVE_WR"], half_spread=D(20), size=1)},
     )
-    _wake(roomy, _view(listed, now=0.0), ["SPIKE_WR_FUT"])
-    _wake(roomy, _view(listed, now=0.3), ["SPIKE_WR_FUT"])
+    _wake(roomy, _view(listed, now=0.0), ["EMBER_OBJECTIVE_WR"])
+    _wake(roomy, _view(listed, now=0.3), ["EMBER_OBJECTIVE_WR"])
     assert roomy.shadow_prices() == {}
-    assert roomy.report().groups["adjusted_win_rate:SPIKE"].shadow_price == 0.0
+    roomy_label = roomy.label_of(roomy.group_of("EMBER_OBJECTIVE_WR"))
+    assert roomy.report().groups[roomy_label].shadow_price == 0.0
 
 
 def test_a_strategy_below_the_shadow_price_is_charged_and_stops(listed):
@@ -905,31 +946,40 @@ def test_a_strategy_below_the_shadow_price_is_charged_and_stops(listed):
     the venue-native replacement for a Sharpe ranking, and it is an allocation
     decision rather than a stop: the position it already holds is left alone,
     still funded and still bounded by the collateral posted.
+
+    The capital is 2,000,000 because the limit has to be the thing that binds.
+    At 1,000,000 across the circuit listing's 22 netting groups a group gets
+    40,909, an unpriced market buy is collateralised at 10,000 a lot, and the
+    budget refuses six of the twelve wakes: measured, seven fills and an edge
+    of `None`, so there was no record for a cost of capital to be charged
+    against and the refusals all read `budget`. At 2,000,000 the taker gets
+    eight fills, an edge of -0.255 per unit of collateral, and five refusals,
+    every one of them `cost-of-capital`.
     """
-    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("SPIKE_WR_FUT", 1)})
+    firm = Firm(budget=D(2_000_000), strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 1)})
     book = Book(listed)
     for step in range(12):
         price = D(5_000) - D(100) * step
         _wake(
             firm,
-            _view(listed, now=step * 0.3, book=book, prices={"SPIKE_WR_FUT": price}),
+            _view(listed, now=step * 0.3, book=book, prices={"EMBER_OBJECTIVE_WR": price}),
         )
-        book.fill("SPIKE_WR_FUT", 1, price)
+        book.fill("EMBER_OBJECTIVE_WR", 1, price)
 
     strategy = firm.report().strategies["a"]
     assert strategy.fills >= 8
     assert strategy.edge_per_collateral is not None
     assert strategy.edge_per_collateral < 0
     _, takes = _wake(
-        firm, _view(listed, now=9.0, book=book, prices={"SPIKE_WR_FUT": D(3_800)})
+        firm, _view(listed, now=9.0, book=book, prices={"EMBER_OBJECTIVE_WR": D(3_800)})
     )
     assert takes == ()
     assert firm.report().strategies["a"].refused["cost-of-capital"] > 0
-    assert firm.committed()[firm.group_of("SPIKE_WR_FUT")] > 0
+    assert firm.committed()[firm.group_of("EMBER_OBJECTIVE_WR")] > 0
 
     unpriced = Firm(
-        budget=D(1_000_000),
-        strategies={"a": Lifter("SPIKE_WR_FUT", 1)},
+        budget=D(2_000_000),
+        strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 1)},
         cost_of_capital=False,
     )
     book = Book(listed)
@@ -937,11 +987,11 @@ def test_a_strategy_below_the_shadow_price_is_charged_and_stops(listed):
         price = D(5_000) - D(100) * step
         _wake(
             unpriced,
-            _view(listed, now=step * 0.3, book=book, prices={"SPIKE_WR_FUT": price}),
+            _view(listed, now=step * 0.3, book=book, prices={"EMBER_OBJECTIVE_WR": price}),
         )
-        book.fill("SPIKE_WR_FUT", 1, price)
+        book.fill("EMBER_OBJECTIVE_WR", 1, price)
     _, takes = _wake(
-        unpriced, _view(listed, now=9.0, book=book, prices={"SPIKE_WR_FUT": D(3_800)})
+        unpriced, _view(listed, now=9.0, book=book, prices={"EMBER_OBJECTIVE_WR": D(3_800)})
     )
     assert [t.size for t in takes] == [1]
 
@@ -959,60 +1009,68 @@ def test_the_first_split_is_equal_and_the_rebalance_is_measured(listed):
     After a session in which one group earned and the others did not, the
     rebalance puts the capital where the P&L per collateral-second was.
     """
-    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("SPIKE_WR_FUT", 10)})
+    firm = Firm(budget=D(1_000_000), strategies={"a": Lifter("EMBER_OBJECTIVE_WR", 10)})
     book = Book(listed)
     _wake(firm, _view(listed, now=0.0, book=book))
     first = firm.budgets()
     assert len(set(first.values())) == 1
 
-    book.fill("SPIKE_WR_FUT", 10, 4_600)
-    _wake(firm, _view(listed, now=5.0, book=book, prices={"SPIKE_WR_FUT": D(4_600)}))
-    _wake(firm, _view(listed, now=10.0, book=book, prices={"SPIKE_WR_FUT": D(5_000)}))
+    book.fill("EMBER_OBJECTIVE_WR", 10, 4_600)
+    _wake(firm, _view(listed, now=5.0, book=book, prices={"EMBER_OBJECTIVE_WR": D(4_600)}))
+    _wake(firm, _view(listed, now=10.0, book=book, prices={"EMBER_OBJECTIVE_WR": D(5_000)}))
     after = firm.rebalance()
-    spike = firm.group_of("SPIKE_WR_FUT")
-    assert after[spike] > first[spike]
+    ember = firm.group_of("EMBER_OBJECTIVE_WR")
+    assert after[ember] > first[ember]
     assert sum(after.values()) <= firm.budget * D("0.90")
-    assert after[spike] <= firm.budget * D("0.90") * D("0.40")
+    assert after[ember] <= firm.budget * D("0.90") * D("0.40")
 
 
 def test_budgeting_by_collateral_is_not_budgeting_by_notional(listed):
     """The same capital, split two ways, and the two disagree by a lot.
 
     Notional is what a contract is worth; collateral is what holding it can
-    cost. On this catalogue a call struck at 4,750 is worth 3 and can lose 3,
-    while the future it is written on is worth 4,670 and can lose 4,670 long or
-    5,330 short. A notional budget spends almost nothing on the option and
-    almost everything on the future; a collateral budget prices them by what
-    they actually consume, which is what the venue charges and what runs out.
+    cost. On this catalogue the call struck at 5,000 marks at 40 and can lose
+    40, while the future it is written on marks at 5,038 and can lose 5,038
+    long or 4,962 short. A notional budget spends almost nothing on the option
+    and almost everything on the future; a collateral budget prices them by
+    what they actually consume, which is what the venue charges and what runs
+    out.
+
+    The three prices are where this chain sits: the team win rate settles at
+    5,038.25, its 5,000 call at 38.25 and its 5,000 put at nothing, so 5,038,
+    40 and 10 are that chain rounded to prices a book would show.
     """
     lots = 100
-    rows = [("SPIKE_WR_FUT", D(4_670)), ("SPIKE_C4750", D(3)), ("SPIKE_P4600", D(11))]
+    rows = [
+        ("EMBER_OBJECTIVE_WR", D(5_038)),
+        ("EMBER_OBJECTIVE_C5000", D(40)),
+        ("EMBER_OBJECTIVE_P5000", D(10)),
+    ]
     notional = {s: p * lots for s, p in rows}
     collateral = {
         s: listed[s].spec.collateral_for(lots, p) for s, p in rows
     }
-    assert notional["SPIKE_WR_FUT"] == D(467_000)
-    assert collateral["SPIKE_WR_FUT"] == D(467_000)
-    assert notional["SPIKE_C4750"] == D(300)
-    assert collateral["SPIKE_C4750"] == D(300)
+    assert notional["EMBER_OBJECTIVE_WR"] == D(503_800)
+    assert collateral["EMBER_OBJECTIVE_WR"] == D(503_800)
+    assert notional["EMBER_OBJECTIVE_C5000"] == D(4_000)
+    assert collateral["EMBER_OBJECTIVE_C5000"] == D(4_000)
 
     short = {s: listed[s].spec.collateral_for(-lots, p) for s, p in rows}
-    assert short["SPIKE_WR_FUT"] == D(533_000)
-    assert short["SPIKE_C4750"] == D(524_700)
-    # The whole disagreement, in one number. A hundred short SPIKE_C4750 is
-    # 300 of notional and 524,700 of collateral, a factor of 1,749, because a
-    # short call is charged the distance from its price to the top of its
-    # range. The short put is a factor of 417 and the future 1.14. So a
-    # notional budget would fund 1,749 times the short call position the
-    # capital can actually pay for, and would size the future almost right:
-    # the two rules disagree least on exactly the instrument where collateral
-    # is easiest to guess, and most where it is not.
-    assert short["SPIKE_C4750"] / notional["SPIKE_C4750"] == D(1_749)
-    assert short["SPIKE_P4600"] / notional["SPIKE_P4600"] == pytest.approx(
-        D("417.18"), abs=D("0.01")
-    )
-    assert short["SPIKE_WR_FUT"] / notional["SPIKE_WR_FUT"] == pytest.approx(
-        D("1.1413"), abs=D("0.0001")
+    assert short["EMBER_OBJECTIVE_WR"] == D(496_200)
+    assert short["EMBER_OBJECTIVE_C5000"] == D(496_000)
+    # The whole disagreement, in one number. A hundred short
+    # EMBER_OBJECTIVE_C5000 is 4,000 of notional and 496,000 of collateral, a
+    # factor of 124, because a short call is charged the distance from its
+    # price to the top of its range. The short put, which marks at 10 against a
+    # range of 5,000, is a factor of 499, and the future is 0.98. So a notional
+    # budget would fund 124 times the short call position the capital can
+    # actually pay for, and would size the future almost right: the two rules
+    # disagree least on exactly the instrument where collateral is easiest to
+    # guess, and most where it is not.
+    assert short["EMBER_OBJECTIVE_C5000"] / notional["EMBER_OBJECTIVE_C5000"] == D(124)
+    assert short["EMBER_OBJECTIVE_P5000"] / notional["EMBER_OBJECTIVE_P5000"] == D(499)
+    assert short["EMBER_OBJECTIVE_WR"] / notional["EMBER_OBJECTIVE_WR"] == pytest.approx(
+        D("0.9849"), abs=D("0.0001")
     )
 
 
@@ -1056,9 +1114,9 @@ def test_a_firm_runs_on_the_live_market_and_conserves_exactly():
     firm = Firm(
         budget=cash,
         strategies={
-            "mm": Quoter(["SPIKE_WR_FUT", "CROW_WR_FUT"], half_spread=D(12), size=4),
-            "rv": Lifter("SPIKE_WR_FUT", 2),
-            "sp": Spread("SPIKE_C4600", "SPIKE_C4650", 6),
+            "mm": Quoter(["EMBER_OBJECTIVE_WR", "RIFT_OBJECTIVE_WR"], half_spread=D(12), size=4),
+            "rv": Lifter("EMBER_OBJECTIVE_WR", 2),
+            "sp": Spread("EMBER_OBJECTIVE_C4800", "EMBER_OBJECTIVE_C5000", 6),
         },
     )
     agent_id = AgentId("firm-1")

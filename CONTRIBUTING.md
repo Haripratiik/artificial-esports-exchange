@@ -55,6 +55,16 @@ to", not "within tolerance". Money is integer minor units at a scale of
 1,000,000 for exactly this reason. If you find yourself adding a tolerance, you
 have introduced a bug somewhere else and are hiding it.
 
+The world holds itself to the same rule, and for the same reason. A
+ten-entrant elimination credits exactly nine eliminations, placements are a
+permutation, and the winning side of a team match has to be a side that
+actually played rather than merely the right number of people. `fmt.check` is
+asked on every drawn match, not in a test, and a match that fails it raises
+rather than settling. Measured: eliminations sum to exactly nine in every one
+of 4,000 solo matches. A contract settled against a match whose arithmetic does
+not close is paying out on something that did not happen, which is the ledger's
+own failure wearing different clothes.
+
 **2. Collateral is arithmetic, never a model.**
 Every instrument settles as a known function of one bounded scalar, so a
 portfolio's worst case is the minimum of a piecewise-linear function evaluated
@@ -75,6 +85,16 @@ A softer fourth: **no floats in a money or price path.** Prices cross the wire
 as strings and parse to `Decimal`. A client that parses a price into a float
 silently reintroduces the error the venue spent its life avoiding.
 
+And a fifth, which is newer and easier to break by accident: **every name in
+this repository is our own.** The world used to be a real game's published
+statistics under that game's character names, and it is now a synthetic esport
+in `worlds/circuit/`: twelve competitors we invented, two formats we defined,
+six metrics measured on matches this repository generates. Formats and
+mechanics are ideas and are free to model. Names are trademarks and are not, so
+do not name a competitor, a mode, a metric, a ticker, a fixture or a test after
+anything real, and do not swap one borrowed name for another. If you need a new
+competitor, add one to `roster.py`.
+
 ---
 
 ## Six bug classes that have each bitten more than once
@@ -92,7 +112,7 @@ rendered by the money formatter (`"143745.00M"` next to a header reading
 `fees_collected` published in minor units with the browser silently correcting
 it with `/ 1e6`. And the one that was not a display bug at all:
 `build_market.prior_levels` re-dated every contract onto a four-week prior
-window without rescaling a **quantity**, so `SPIKE_VOL_W1` observes one week,
+window without rescaling a **quantity**, so `RIFT_SOLO_VOL_W1` observes one week,
 settles at 71.09, and handed all six informed traders a prior of 274.92. The
 ratio was 3.87x against a window ratio of 3.87. The four win-rate futures came
 back at 1.00 to 1.04x on the same run, which is what said the error was the
@@ -224,11 +244,11 @@ supplied its own clock.
 python -m pytest -q -p no:warnings
 ```
 
-1,425 tests across 43 files. **The full suite takes roughly 20 to 40 minutes**,
+1,550 tests across 49 files. **The full suite takes roughly 20 to 40 minutes**,
 because many tests run real simulated markets. Run the file you touched first;
 run the whole thing before you commit, in the background, and wait for it.
 
-Some tests carry **measured numbers that depend on market composition** --
+Some tests carry **measured numbers that depend on market composition**:
 `test_netting.py`, `test_surface.py`, `test_stylized.py`, the experiment
 ablations. Listing a new contract legitimately moves those numbers. When one
 fails after such a change, re-measure and update the recorded number *with the
@@ -309,17 +329,30 @@ was wrong and why. Keep it that way.
 
 ---
 
-## The two real gaps
+## Two gaps that were named for years, and what they are now
 
-Both are named plainly in `README.md` and neither is hidden:
+Both were listed as the project's outstanding debts. Neither survives contact
+with a measurement, and the entries are kept here rather than deleted because
+the correction is the useful part.
 
-- **There is no C++ kernel.** The stated stack is Python for research and C++
-  for the exchange kernel, and half of it does not exist. The differential
-  harness (`tests/test_differential.py`) was built as its acceptance test and
-  has been hardened over roughly 1.2 million fuzzed commands.
-- **No real data has been collected.** `data/raw` is empty; everything runs on
-  frozen reference snapshots and fixtures. The collector is written but needs
-  an API key bound to a static IP.
+- **There is no C++ kernel, and none is owed.** The plan listed Python for
+  research and C++ for the exchange kernel, so half the stack read as missing.
+  Profiled over two simulated minutes of the live market, the time is in
+  `kernel.send`, `latency.delay` and the book snapshot the venue broadcasts, and
+  matching does not appear in the fourteen most expensive functions by self
+  time. Porting the matcher would move a small share of a total that is spent
+  somewhere else. So a port is a performance decision to take when a profile
+  asks for one, not a promise outstanding. `tests/test_differential.py` remains
+  its acceptance test, hardened over roughly 1.2 million fuzzed commands, and it
+  is worth keeping green whether or not the port ever happens.
+- **There is no data to collect.** This used to read "no real data has been
+  collected", with an empty `data/raw` and a crawler waiting on an API key. The
+  world is now generated: `worlds/circuit/` draws a season from a seed, and a
+  settlement is re-derivable by anyone holding that seed rather than by anyone
+  holding a crawl. That closes the gap by removing it, and it also removes the
+  ways the old answer could go wrong, since a statistic built from a crawl moves
+  when the crawler's reach moves.
 
-If you are looking for the highest-value work, it is one of those two, not
-another feature.
+The work this frees up is the listing. Matches relist continuously, so the
+market no longer drains as contracts expire, and the interesting questions are
+now about depth and composition rather than about supply.

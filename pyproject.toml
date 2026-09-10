@@ -1,7 +1,7 @@
 [project]
-name = "artificial-brawlstars-exchange"
+name = "artificial-esports-exchange"
 version = "0.0.1"
-description = "A deterministic multi-agent electronic market simulator for studying market microstructure, information aggregation, and event-linked derivatives."
+description = "A deterministic multi-agent electronic market simulator whose fundamentals are a synthetic esport, for studying market microstructure, information aggregation, and event-linked derivatives."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -12,7 +12,10 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]
-collect = [
+# What the REST client in `clients/python` needs. The world is generated rather
+# than crawled, so nothing here talks to anybody else's service; this is the
+# exchange's own API being called over HTTP.
+client = [
   "httpx>=0.27",
 ]
 dashboard = [
@@ -32,6 +35,9 @@ dev = [
   "hypothesis>=6.100",
   "ruff>=0.5",
   "mypy>=1.10",
+  # The client tests drive the library against `httpx.MockTransport`, so the
+  # suite needs httpx even when the `client` extra is not installed.
+  "httpx>=0.27",
 ]
 
 [build-system]
@@ -63,7 +69,7 @@ markers = [
 [tool.ruff]
 line-length = 96
 target-version = "py312"
-src = ["python", "collectors", "tools"]
+src = ["python", "clients/python", "tools"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]

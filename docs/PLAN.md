@@ -1,78 +1,73 @@
-# Artificial Brawl Stars Exchange: Attack Plan
+# Artificial Esports Exchange: Attack Plan
 
-**Status:** planning, revised after the August 2026 feasibility research pass
-**Stack:** Python (research, agents, data, experiments, modeling) · C++ (exchange kernel, performance-critical simulation)
+**Status:** planning document, kept as a record. Parts I and IV describe decisions that have
+since been overtaken, and where they have been the entry says so rather than being deleted.
+**Stack:** Python throughout. See finding 3 below for what happened to the C++ half.
 
 ---
 
 ## Part I: What the research changed
 
-The kickoff spec is sound. Five findings change *how* we sequence it.
+The kickoff spec is sound. These findings changed *how* it was sequenced, and two of them were
+later overturned by measurement, which is recorded here rather than tidied away.
 
-### 1. There is no aggregate-statistics endpoint. The data layer is the critical path.
+### 1. ~~The data layer is the critical path.~~ Overturned: the world is generated.
 
-The official Supercell API exposes players, clubs, brawlers, rankings, event rotation, and
-**battle logs capped at the last 25 battles per player**. There is no "win rate by brawler by
-map" endpoint anywhere. Every meta statistic in this project has to be *manufactured*:
+The plan opened with a data-collection track, on the reasoning that the underlying had to be
+crawled from somebody else's service, that nothing else in the project accrued value with
+wall-clock time, and that the crawl therefore had to start on day one and never be blocked.
 
-```
-rankings  ->  player tags  ->  battlelog (25 each)  ->  dedupe  ->  stratified aggregates
-```
+That whole track is gone. The exchange now settles on a synthetic esport this repository
+generates: `worlds/circuit/` draws a season from a seed, plays each match as a pure function of
+that seed and its own number, and the oracle replays the matches a window names. The decision
+was an intellectual-property one in the first instance, since the previous underlying was
+another party's published statistics under names that are their trademarks, and formats and
+mechanics are ideas that anyone may model where names are not. But it paid for itself twice
+over on the research grounds this document already cared about:
 
-Two operational constraints on top:
+- **The critical path disappeared.** There is nothing to wait for and nothing to leave running.
+- **A crawl can never be representative, and a generated season does not have to be.** A
+  statistic built from a crawl moves when the crawler's reach moves, which is why the old metric
+  needed standardization onto pinned weights to stop contracts pricing the crawler. A generated
+  season is a census of itself.
+- **Settlement is re-derivable from a seed** rather than from a corpus somebody has to hold and
+  keep, which is a much stronger form of the reproducibility this project already claimed.
 
-- **API keys are IP-locked.** A key is bound to the IP addresses declared when it was created,
-  so on a home connection it breaks whenever the address changes. **Solved, and at no cost:**
-  RoyaleAPI operate a free community proxy (`bsproxy.royaleapi.dev`), so the key allow-lists
-  *their* fixed address instead of yours. Supercell then only ever sees the proxy, and the
-  collector's own IP stops mattering. No VPS, no static IP, no key-regeneration hack.
-- **Rate limit is roughly 10 requests/second per key**, throttled with HTTP 429.
+What is lost is external validity, and that is a real cost rather than a technicality. See the
+note on Phase 8.
 
-The rate limit is the good news: ~10 req/s is ~860k requests/day. At 25 battles per battlelog
-response, even with heavy overlap between polls, a single well-behaved collector can plausibly
-accumulate on the order of 10^5–10^6 *deduplicated* battles per day.
+### 2. ~~A third-party statistics site is a bootstrap reference.~~ No longer applicable.
 
-**Consequence: the collector's value is proportional to wall-clock time, and nothing else in
-the project is.** It must start on day one and then be left alone. Everything else must be
-built so it is *never blocked* waiting for it.
+The plan used an outside site's published aggregates to sanity-check our own and to shape
+priors. With the world generated, there is nothing outside to check against and no prior to
+borrow: the metrics are defined in `worlds/circuit/metrics.py` and computed from match records
+this repository produced.
 
-### 2. Brawl Time Ninja is a bootstrap reference, not an ingestion source.
+The one point worth keeping from that finding outlives its source. A rate is only well defined
+*relative to a stated population*, and the settlement schema still forces a contract to name
+one. The circuit world enforces the same thing in a sharper form: a per-match average has to
+name its format, because a win rate sits at a neutral 0.100 in the ten-way elimination and 0.500
+in the three-a-side, and the oracle refuses to answer a contract that pools them.
 
-- Its repository now states development moved to a private repo, the methodology is no longer
-  readable, and there is no license to rely on.
-- The site returns HTTP 403 to automated fetchers.
-- Its own documentation says statistics come from *its visitors*, "who are usually better than
-  the average", the sample is explicitly **not** representative of the player base.
-- Its "adjusted win rate" is documented as the share of battles a brawler "wins or ranks high"
-  (which generalizes across Showdown-style modes), with a **Bayesian average** interpolation for
-  low-pick brawlers.
+### 3. ~~Match-outcome binaries are the highest-risk family. Defer them indefinitely.~~ Inverted.
 
-Use it the way the spec already suggests: occasional *manual* CSV export to sanity-check our own
-aggregates and to shape priors. Never automated ingestion, never redistribution.
+This entry argued that match-outcome binaries carried the most external risk and the least data,
+and should be deferred indefinitely in favour of statistical contracts.
 
-The visitor-bias point is worth keeping: it means "adjusted win rate" is only well defined
-*relative to a stated population*. Our contracts must name the population explicitly, which the
-settlement schema already forces.
+Both halves have reversed. The matches are ours, so there is no external risk in listing them,
+and they are generated, so they are the one family that is never short of data. They are now the
+larger half of the exchange: a ten-entrant solo match lists 270 contracts and a three-a-side
+lists 38, and 316 of the board's 355 markets are prediction markets where 8 were before. They
+also fixed the problem the statistical contracts could not, which is that nothing resolved
+inside a session, so a trader had no terminal event to be scored against.
 
-### 3. The Fan Content Policy has teeth on exactly one of our instrument families.
-
-The policy requires this **exact** notice:
-
-> This material is unofficial and is not endorsed by Supercell. For more information see
-> Supercell's Fan Content Policy: www.supercell.com/fan-content-policy.
-
-and lists **gambling** among prohibited content, alongside a non-commercial requirement and a
-ban on implying endorsement.
-
-This does not threaten the project, simulated capital, no cash-out, research framing, but it
-does re-rank the instruments. **Esports match-outcome binaries are the single highest-risk
-family** (they look exactly like sports betting to a casual reader), and they are also the ones
-with the smallest sample and the weakest connection to the battle dataset. Defer them
-indefinitely. Brawler-statistic contracts carry the research and carry less risk.
+Nothing about this makes the exchange a betting product. The capital is imaginary, there is no
+cash-out, every counterparty is simulated, and the outcomes are drawn from a seed rather than
+observed anywhere.
 
 ### 4. The market-making adaptation the spec flagged as an open problem now has a published answer.
 
-The spec notes Avellaneda–Stoikov "will need adaptation because Artificial Brawl Stars Exchange contracts have
+The spec notes Avellaneda–Stoikov "will need adaptation because this exchange's contracts have
 bounded / settling payoffs." *Optimal Market Making in Prediction Markets* (arXiv 2607.17991,
 July 2026) does precisely that adaptation:
 
@@ -116,21 +111,20 @@ The single most useful consequence of the above:
 > data-generating process.**
 
 Instead of hand-tuning "agent A gets Gaussian noise with σ=0.03", give agent *j* a sample of
-`n_j` battles from the true stratum-level DGP. Then:
+`n_j` matches from the world's own generating process. Then:
 
 - its posterior over the win rate is an exact Beta/Normal update, no arbitrary noise model;
-- information quality has a **unit**: one battle observed;
-- "how much is faster/better information worth?" becomes a measurable dollar-per-battle number;
+- information quality has a **unit**: one match observed;
+- "how much is faster/better information worth?" becomes a measurable dollar-per-match number;
 - ground truth `p*` is known exactly, so Brier score, calibration, and *resolution* can be
   decomposed properly rather than estimated from one realization;
-- it maps directly onto Kyle-style informed-vs-noise structure, and onto the real collector
-  (an agent's `n_j` is literally "how much of the crawl has this fund seen").
+- it maps directly onto Kyle-style informed-vs-noise structure, and an agent's `n_j` is
+  literally how much of the season that trader has watched.
 
 This is why the synthetic world is not a shortcut. For the core information-aggregation
 question it is **strictly better instrumentation** than real data, because real data gives you
-one realization and no `p*`. Real historical replay then serves as the external-validity test,
-which is exactly the right division of labour, and conveniently it is also the part that has
-to wait for the collector anyway.
+one realization and no `p*`. The world is now synthetic all the way down, which sharpens the
+instrument and gives up the external-validity comparison entirely; see Phase 8.
 
 A second structural property worth exploiting, specific to these contracts:
 
@@ -138,6 +132,11 @@ A second structural property worth exploiting, specific to these contracts:
 > `[T₀, T₁]` decomposes at time *t* into an already-realized part and a still-unknown part:
 > `W_T = (n_seen/n_total)·W_seen + (n_left/n_total)·W_future`.
 > The conditional variance shrinks *deterministically* as the window fills.
+
+A live match is the same property at a much shorter horizon and with the resolution visible.
+Each elimination removes an outcome from the set, so the still-unknown part shrinks in steps
+anyone can watch, and the contract on the competitor who just went out does not decay toward
+zero, it settles at zero.
 
 Equities do not do this. It gives the market maker an analytic σ(t), gives options a predictable
 IV decay whose violations are informative, and gives a clean convergence trade near expiry. It
@@ -148,16 +147,18 @@ is a genuinely distinctive feature of the asset class this project invents.
 ## Part III: Two tracks
 
 ```
-TRACK A  (data)     day 1 ─────────────────────────────────────────────>  accrues forever
-                    low effort, high latency, unblocks real replay only
+TRACK A  (data)     retired. See Part I, finding 1.
 
 TRACK B  (engine)   day 1 ──> contracts ──> exchange ──> agents ──> experiments
-                    all effort, zero dependency on Track A
+                    all effort, and now the only track
 ```
 
-They meet at a single seam: a `World` protocol that yields (a) timestamped observations and
-(b) settlement truth. `SyntheticWorld` and `BrawlReplayWorld` both implement it. The exchange,
-the agents, and the experiment harness never know which one is underneath.
+The seam the two tracks were to meet at is still there and still earns its place, because it is
+what lets a second world be added without touching the exchange: a `World` protocol yielding
+(a) timestamped observations and (b) settlement truth, with the exchange, the agents and the
+experiment harness never knowing which one is underneath. One world implements it today. The
+engine never imports from `worlds/`, and that is enforced by the import graph rather than by
+convention, so the seam is a fact about the code rather than an intention.
 
 ---
 
@@ -165,21 +166,18 @@ the agents, and the experiment harness never know which one is underneath.
 
 Each phase has an exit test. Do not start the next phase until it passes.
 
-### Phase 0: Start the clock (days): **DONE, pending an API key**
-Track A only, then leave it running.
-- Register an API key allow-listing the proxy address, not your own. No hosting decision needed.
-- Collector: rankings → player tags → battlelogs → append-only gzip JSONL, battles verbatim.
-- Snowball expansion through participant tags; SQLite frontier + dedupe index; restart-safe.
-- **Exit:** collector has run unattended for 72h and the deduplicated battle count is growing.
-
-Setup is in [collector.md](collector.md), about ten minutes, zero cost. A laptop is a fine
-host; an always-on machine is strictly better only because it collects while you sleep.
+### Phase 0: ~~Start the clock~~ **RETIRED**
+Track A was a crawler, a frontier and an append-only store, built to accrue a corpus while the
+engine was written. It is gone with the world it fed, and its exit test with it. What replaced
+it is not a faster crawler: `worlds/circuit/` generates the season, so the phase that had to
+start on day one and run forever now takes a seed.
 
 ### Phase 1: The economy (Python): **DONE**
 Contracts and settlement before any exchange, per the spec's Milestone 0.
 Implemented in detail in [ECONOMY.md](ECONOMY.md), including the open judgment calls.
-- Canonical metric definition, written down and frozen (stratified/standardized win rate with
-  pinned reference weights; explicit population; Bayesian shrinkage for low samples).
+- Canonical metric definitions, written down in code rather than in prose: six metrics over a
+  window, each naming its format, each bounded by construction, each a pure function of the
+  match record.
 - Contract spec model, content-addressed by digest; underlying algebra (single / difference /
   basket) so futures, spreads, and indices come from one mechanism.
 - Deterministic settlement engine: min sample size, missing-data policy, provenance, tick
@@ -198,13 +196,19 @@ Deliberately in Python first.
 
 ### Phase 3: Minimal artificial market
 - ~hundreds of noise agents, one fundamental agent, one inventory-skew market maker.
-- One instrument: a linear brawler-performance future.
+- One instrument: a linear competitor-performance future.
 - **Exit:** a full session produces plausible order flow, trades, inventory, and PnL that
   survives eyeballing.
 
-### Phase 4: C++ kernel, differential-tested against Phase 2
-This is where the C++ half lands, and the ordering is the point: the Python engine becomes the
-**correctness oracle**, so the C++ port is validated rather than merely written.
+### Phase 4: ~~C++ kernel~~ **NOT SCHEDULED, and the profile is why**
+This was to be where the C++ half landed, with the Python engine as the **correctness oracle**
+so the port would be validated rather than merely written. The ordering was right and the
+premise was not. Profiled over two simulated minutes of the live market, the time is in
+`kernel.send`, `latency.delay` and the book snapshot the venue broadcasts; matching does not
+appear in the fourteen most expensive functions by self time. Porting the matcher would move a
+small share of a total spent on message plumbing. The differential harness was built anyway and
+is worth keeping green, so if a profile ever asks for the port the specification is already
+there. What follows is what the port would have been.
 - C++20 core, `scikit-build-core` + CMake, **nanobind** bindings (vs pybind11: ~4× faster
   compiles, ~5× smaller binaries, ~10× lower call overhead, and one `ndarray` type that works
   across NumPy/JAX/PyTorch, which matters given the JAX ambitions later).
@@ -214,10 +218,10 @@ This is where the C++ half lands, and the ordering is the point: the Python engi
 - **Exit:** engines agree on randomized order streams; C++ is meaningfully faster on a
   throughput benchmark.
 
-### Phase 5: Synthetic world + heterogeneous information
-- `World` protocol; `SyntheticWorld` with a stratum-level DGP calibrated to whatever real data
-  exists by then.
-- Agent information = `n_j` sampled battles. No-lookahead information interface.
+### Phase 5: Synthetic world + heterogeneous information: **DONE**
+- `World` protocol, with the circuit world behind it and the engine importing nothing from
+  `worlds/`.
+- Agent information = `n_j` sampled matches. No-lookahead information interface.
 - **Exit:** an agent's forecast error scales as `1/√n_j` as theory demands.
 
 ### Phase 6: Experiment 1, done properly
@@ -230,7 +234,7 @@ This is where the C++ half lands, and the ordering is the point: the Python engi
 Spreads, class indices, cross-market arbitrage, stat-arb; then latency tiers, maker/taker fees,
 queue position, adverse-selection diagnostics.
 
-Eight instrument classes now, all derived from the contract rather than declared:
+Eight instrument classes at that point, all derived from the contract rather than declared:
 `future`, `event`, `call`, `put`, `spread`, `index`, `commodity`, `equity`. The last two
 are the ones that needed new machinery rather than a new combination.
 
@@ -247,13 +251,13 @@ claim that never settles has none. `docs/GAPS.md` carries the reasoning.
 
 Both of the things left open here are now closed. The option surface was internally
 inconsistent for two reasons, and the larger one was not the market maker: every agent
-held a separate view of the same Brawler for every contract written on it, so its own
+held a separate view of the same competitor for every contract written on it, so its own
 option ladder was neither monotone nor convex and it traded on the difference. The maker
 now quotes each chain off one distribution, the agents hold one view per underlying, and
 the arbitrageur enforces vertical and butterfly bounds as well as identities. A share is
 related to the four weekly futures it pays, exactly, because the legs are listed.
 
-The exchange also runs its own machinery now -- maker-taker fees, an opening call auction,
+The exchange also runs its own machinery now: maker-taker fees, an opening call auction,
 a limit-state circuit breaker, three market makers, and the scoring-rule venue reachable
 from the Lab. Turning it on found four bugs in tested code and cost 4.00 percentage points
 of pricing error on six paired seeds. Both are recorded in `docs/GAPS.md`.
@@ -265,20 +269,23 @@ filled orders without telling their owners, took position disagreement between a
 the ledger from 362 of 494 pairs to 2.
 
 Evidence now arrives over the session rather than all at `t=0`, anchored on the pre-window
-level, so the underlying genuinely diffuses -- late-session dispersion of the future goes
-from 11 to 279 across six paired seeds -- at an accuracy cost of +2.20% of range, 95%
+level, so the underlying genuinely diffuses. Late-session dispersion of the future goes
+from 11 to 279 across six paired seeds, at an accuracy cost of +2.20% of range, 95%
 interval [-0.21%, +4.61%].
 
-Stop, stop-limit and iceberg orders are in. Stops are held off the book -- publishing one
-says where the market must go to set off a cascade -- and a cascade is measured rather than
-prevented, with a bound only so that a chain cannot run forever. Icebergs refresh to the
-back of their level, which is the priority they pay for hiding.
+Stop, stop-limit and iceberg orders are in. Stops are held off the book, because publishing
+one says where the market must go to set off a cascade, and a cascade is measured rather
+than prevented, with a bound only so that a chain cannot run forever. Icebergs refresh to
+the back of their level, which is the priority they pay for hiding.
 
 Nine instrument classes now. The newest, `volatility`, is the first claim here on a
-*second* moment: how unevenly a Brawler performs across the maps it plays rather than how
-well. SPIKE and CROW settle within 1.2% of each other on level and 68% apart on dispersion,
-which is a difference no other contract on the exchange could express -- and it is bounded,
-so collateral stays arithmetic.
+*second* moment: how unevenly a competitor performs rather than how well. On the current
+listing QUILL and BASTION sit 60% apart on their solo win rates and 8.9% apart on dispersion,
+which is a different ordering rather than a rescaling of the same one, and no other contract on
+the exchange could express it. It is bounded, so collateral stays arithmetic.
+It also earns its place for a reason that only became visible later: within one format every
+skill statistic ranks the field almost identically, Spearman +1.000, so a second moment is
+one of the few places a genuinely different number lives.
 
 Tiered tick tables, message throttling and a kill switch are in. Writing the tests for the
 last two found that the throttle disabled the kill switch: a runaway is at its message cap
@@ -287,8 +294,18 @@ by definition at the moment someone reaches for the switch.
 Pegged and minimum-quantity orders are in, and so is the half of a clearing house that
 matters here: collateral nets across contracts on one underlying, exactly. A conversion and
 a strip are riskless by identity and are now charged nothing for it. Novation is already
-true by construction -- collateral is exact, so nobody can default and there is nothing to
+true by construction: collateral is exact, so nobody can default and there is nothing to
 be protected from.
+
+**Matches, which were not in this plan at all.** The statistical contracts settle once, at
+the end of a four-week window, so nothing resolved inside a session and the exchange drained
+as contracts expired. A match fixes both: it opens, runs for minutes, and ends with an
+outcome that is a fact, and the operator opens another whenever the board has room. Every
+contract on one match is priced off a single ensemble of drawn outcomes, so its 395 relations
+hold as arithmetic rather than being policed afterwards, measured at zero violations across
+22,650 relation checks in exact rational arithmetic. This is the largest thing the exchange
+gained after Phase 7 was declared done, and it is recorded here because the plan should not
+read as though it predicted it.
 
 Phase 7 is done. What remains of it is deliberate: margin and liquidation stay out, because
 leverage is the decision to hold less collateral than the worst case, which replaces an
@@ -297,14 +314,21 @@ different experiment rather than a missing feature.
 
 The next thing worth building is not on the exchange at all. Options here carry little time
 value because the underlying barely moves once its evidence has arrived, and the market's
-whole information budget is spent in the first minutes of a session. Experiment 3 --
-wealth dynamics, carrying P&L across trials to see whether the market migrates from a
-simple mean toward precision-weighting as capital tracks skill -- is the question the
-apparatus was built to answer.
+whole information budget is spent in the first minutes of a session. Experiment 3, wealth
+dynamics, carrying P&L across trials to see whether the market migrates from a simple mean
+toward precision-weighting as capital tracks skill, is the question the apparatus was built
+to answer. Matches give it a second setting to run in, one where the terminal event arrives
+every few minutes rather than once.
 
-### Phase 8: Real historical replay
-Only now, once Track A has accrued enough. Same harness, `BrawlReplayWorld`, one real patch as
-the shock. This is the external-validity result.
+### Phase 8: ~~Real historical replay~~ **DROPPED**
+This was the external-validity result: the same harness over a replay of real history, with one
+real patch as the shock. It depended on Track A, and it goes with it.
+
+Worth stating plainly rather than quietly, because it is the one thing the new world costs. No
+result in this repository is evidence that a real venue behaves this way. Every claim here is a
+claim about a mechanism under conditions this project controls, which is what makes the
+measurements sharp and is also exactly what limits them. A future world implementing the same
+protocol could restore this without touching the exchange, and that is what the seam is for.
 
 ### Phase 9+: Prediction-market venue (LMSR vs CLOB), options and event vol, margin and
 liquidation cascades, dashboard. In that order.
@@ -315,23 +339,28 @@ liquidation cascades, dashboard. In that order.
 
 | Decision | Choice | Reason |
 |---|---|---|
-| First instrument | Linear brawler win-rate future | Continuous, connects to largest dataset |
-| Esports match binaries | Deferred indefinitely | Weakest data, highest policy risk |
-| API IP lock | RoyaleAPI proxy, allow-list theirs | Removes the constraint for free; no VPS needed |
-| Collector host | Any always-on machine; laptop to start | Proxy decouples hosting from the IP lock |
-| Bindings | nanobind | Faster builds, smaller binaries, JAX-ready ndarray |
-| Build backend | scikit-build-core + CMake | Modern, not setuptools |
-| Engine order | Python reference → C++ port | Free correctness oracle for a Python-first dev |
-| BTN data | Manual export, bootstrap only | Closed source, unclear license, blocks bots |
-| Repo identity | `artificial-brawlstars-exchange` | Generic engine; Brawl is world #1 |
-| Disclaimer | Exact Fan Content Policy wording | Required verbatim |
+| The world | A synthetic esport, generated from a seed | Ours to name; a census of itself; a settlement re-derivable from the seed |
+| First instrument | Linear competitor win-rate future | Continuous, and the metric every other statistical contract is built from |
+| Match binaries | Listed, and now the larger half of the board | The matches are ours, they never run short, and they resolve inside a session |
+| Pooling formats | Refused, not standardized | A win rate is neutral at 0.100 in the elimination and 0.500 in the objective, so a pooled average prices the schedule |
+| Match pricing | One ensemble per match, priced by the settlement rule | Every identity that holds outcome by outcome holds in the prices as arithmetic |
+| Engine order | Python reference; a port only if a profile asks | The profile puts the cost in message plumbing, not in matching |
+| Repo identity | `artificial-esports-exchange` | Names the engine and the world it now carries |
+| Disclaimer | Simulated capital, no cash-out, no real venue, no endorsement by anybody | True, and the only claim that needs making now that nothing external is referenced |
+
+Decisions retired with the data track, kept so the table does not read as though they were
+never taken: the API proxy that worked around an IP-locked key, the always-on collector host,
+the third-party statistics export used to shape priors, and the verbatim third-party notice
+that a borrowed underlying required. None of them has anything to attach to now.
+
+The C++ toolchain decisions, nanobind for bindings and scikit-build-core with CMake for the
+build, stand as written and are unscheduled rather than reversed. If Phase 4 is ever revived by
+a profile, that is what it would use.
 
 ---
 
 ## References
 
-- Supercell Brawl Stars API, https://developer.brawlstars.com/
-- Supercell Fan Content Policy, https://supercell.com/en/fan-content-policy/
 - Byrd, Hybinette & Balch, *ABIDES*, https://arxiv.org/abs/1904.12066
 - *Optimal Market Making in Prediction Markets* (2026), https://arxiv.org/html/2607.17991v1
 - Avellaneda & Stoikov (2008), https://doi.org/10.1080/14697680701381228
@@ -339,3 +368,4 @@ liquidation cascades, dashboard. In that order.
 - Atanasov et al., *Distilling the Wisdom of Crowds*, https://pubsonline.informs.org/doi/10.1287/mnsc.2015.2374
 - Frey et al., *JAX-LOB* (2023), https://arxiv.org/abs/2308.13289
 - nanobind benchmarks, https://nanobind.readthedocs.io/en/latest/benchmark.html
+- Plackett (1975) and Luce (1959), the ranking model the match ensembles are compared against

@@ -88,12 +88,12 @@ SEAT = 20_000_000
 
 # One contract from each shape the listing has, chosen so the arithmetic is
 # exercised across the whole 800x range of tick spans rather than on whichever
-# symbol happened to be first. `SPIKE_WR_FUT` spans 40,000 ticks and
-# `SPIKE_GT47` spans 100, and a parameterisation that means the same thing on
-# both is the entire claim the normalised units make.
-FUTURE = "SPIKE_WR_FUT"
-BINARY = "SPIKE_GT47"
-CALL = "SPIKE_C4650"
+# symbol happened to be first. `EMBER_OBJECTIVE_WR` spans 40,000 ticks and
+# `EMBER_OBJECTIVE_GT500` spans 100, and a parameterisation that means the same
+# thing on both is the entire claim the normalised units make.
+FUTURE = "EMBER_OBJECTIVE_WR"
+BINARY = "EMBER_OBJECTIVE_GT500"
+CALL = "EMBER_OBJECTIVE_C4800"
 
 
 @pytest.fixture(scope="module")
@@ -216,8 +216,11 @@ def test_optimal_spread_is_the_papers_equation(listed, symbol):
 
     ``k`` is given in ticks and converted per contract as ``k_ticks *
     span_in_ticks``, because the measured half-spread of this book is a tick
-    quantity: 3.5 to 10.0 ticks across the 47 listed contracts on seed 7 over
-    600s, against 0.00007 to 0.075 of the range for the same spreads.
+    quantity. Re-measured on the circuit listing, taking the median half spread
+    of each contract while it is two sided: 2.5 to 10.5 ticks across all 50
+    contracts on seed 7 over 600s, a factor of 4.2, against 0.000072 to 0.040
+    of the range for the same spreads, a factor of 556. The tick reading is the
+    stable one, which is what makes it the unit to parameterise in.
     """
     instrument = listed[symbol]
     _, span_ticks = span_of(instrument)
@@ -561,11 +564,14 @@ def test_the_estimator_recovers_a_known_volatility():
     """A walk of known size comes back as a volatility of the right size.
 
     The estimator is a mean absolute deviation scaled by ``sqrt(pi/2)`` rather
-    than a mean square, because the mid series here jumps: measured over 600s
-    on seed 7 the RMS normalised volatility of ``SPIKE_WR_FUT`` is 0.0205 per
-    root second against a median-based 0.0014, a factor of 15, and all of the
-    gap is a handful of excursions to the top of the range. A square hands
-    those the estimate.
+    than a mean square, because the mid series here jumps. Re-measured over
+    600s on seed 7 across the circuit listing, sampling every 250ms: on
+    ``QUILL_SOLO_WR`` the RMS normalised volatility is 0.0729 per root second
+    against a median-based 0.0019, a factor of 39. On twenty of the fifty
+    contracts the median move is exactly zero while the RMS runs 0.027 to
+    0.342, which says the same thing more sharply: the ordinary interval on
+    this market has no move in it at all, and the whole of a squared estimate
+    is a handful of excursions. A square hands those the estimate.
     """
     step, interval = 0.004, 0.25
     volatility = BoundedVolatility(gain=0.5, warmup=4, sample_interval=interval)

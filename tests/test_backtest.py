@@ -57,7 +57,7 @@ FAST = BacktestConfig(
     warmup=14.0,
     return_interval=2.0,
     sample_interval=2.0,
-    symbols=("SPIKE_WR_FUT",),
+    symbols=("EMBER_OBJECTIVE_WR",),
 )
 
 
@@ -419,7 +419,7 @@ def test_a_config_survives_the_round_trip_through_its_manifest():
             warmup=14.0,
             return_interval=2.0,
             sample_interval=2.0,
-            symbols=("SPIKE_WR_FUT", "CROW_EQ"),
+            symbols=("EMBER_OBJECTIVE_WR", "BASTION_SOLO_EQ"),
             trade_during_warmup=True,
             market=(("makers", 1), ("surface", False)),
         ),
@@ -467,13 +467,30 @@ def test_the_warmup_holds_the_strategy_out_of_the_opening_auction():
     """The measurement that decides whether any other number here means anything.
 
     Every book opens at the midpoint of its settlement range, so the opening
-    call is a dislocation of the builder's making rather than a market: on seed
-    3, quoting all 47 books from t=0 books 2,739,688 of profit in the fourteen
-    warmup seconds, which is 13.7% of the strategy's capital and none of it
-    earned. It is also not a profit it keeps. Carrying that inventory into the
-    measured window takes the post-warmup P&L from -2,044,297 to -9,028,498, so
-    excluding the warmup from the statistics without also holding the strategy
-    out of the auction would leave the artefact inside the measurement.
+    call is a dislocation of the builder's making rather than a market.
+    Re-measured on the circuit listing, on seed 3, quoting all 50 books from
+    t=0: the fourteen warmup seconds book -1,356,601, which is 6.8% of the
+    strategy's 20,000,000 of capital and none of it earned. Carrying that
+    inventory into the measured window takes the post-warmup P&L from
+    -2,861,035 to -2,563,057, a difference of 297,978 or 10.4% of the measured
+    number, so excluding the warmup from the statistics without also holding
+    the strategy out of the auction would leave the artefact inside the
+    measurement.
+
+    **Both halves of that moved, and the direction is the interesting one.** On
+    the 47 book listing this replaces, the warmup booked a *profit* of 2,739,688
+    against the same capital, 13.7%, and carrying it took the measured P&L from
+    -2,044,297 to -9,028,498, more than trebling it. The artefact is now
+    smaller and its sign is the other way round, which says the size of the
+    opening dislocation is a property of what is listed rather than of the
+    auction: this listing opens 50 books at their range midpoints and the team
+    win rates sit near theirs, where the previous one opened 47 books whose
+    midpoints were mostly nowhere near.
+
+    So the assertion is on the share of the measured P&L the artefact moves,
+    against a measured 10.4%, rather than on it exceeding the measurement
+    outright as it did when the artefact was three times the size of what it
+    contaminated.
 
     Two runs, one seed, identical windows, differing only in whether the
     strategy was allowed to quote before the window opened.
@@ -491,7 +508,10 @@ def test_the_warmup_holds_the_strategy_out_of_the_opening_auction():
     assert held.warmup_pnl == 0, "the quarantine let something through"
     assert held.lots > 0, "the strategy did not trade in the measured window either"
     assert abs(control.warmup_pnl) > 0.02 * capital, (control.warmup_pnl, capital)
-    assert abs(control.pnl - held.pnl) > abs(held.pnl), (control.pnl, held.pnl)
+    assert abs(control.pnl - held.pnl) > 0.05 * abs(held.pnl), (
+        control.pnl,
+        held.pnl,
+    )
 
 
 @pytest.mark.slow

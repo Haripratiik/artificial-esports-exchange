@@ -28,7 +28,7 @@ WINDOW = ObservationWindow(
 def spec_with(**overrides) -> ContractSpec:
     defaults = dict(
         contract_id="TEST",
-        underlying=Single(MetricRef(metric="adjusted_win_rate", subject="SPIKE")),
+        underlying=Single(MetricRef(metric="win_rate", subject="EMBER")),
         payoff=Linear(scale=10_000.0),
         window=WINDOW,
         policy=DataPolicy(min_sample_size=1_000),
@@ -54,53 +54,15 @@ def test_contract_published_exactly_at_window_open_is_allowed():
     assert spec_with(published_at=WINDOW.start).published_at == WINDOW.start
 
 
-def test_dataset_visibility_filters_on_observation_not_window(dataset):
-    """An observer at time t sees rows collected by t, not rows *about* t.
-
-    This is the distinction that makes replay honest. A row describing August
-    battles that was not finished being collected until September must be
-    invisible to an agent standing in late August.
-    """
-    # Chosen to land inside the fixture's collection lag: the window ending
-    # 17 Aug has closed, but is not collected until 19 Aug. A cutoff outside
-    # that gap would make the test pass without demonstrating anything.
-    cutoff = datetime(2026, 8, 18, tzinfo=UTC)
-    visible = dataset.visible_at(cutoff)
-
-    assert len(visible) < len(dataset)
-    assert all(row.observed_at <= cutoff for row in visible)
-    # And crucially: some hidden rows describe windows that already closed.
-    hidden = [row for row in dataset if row.observed_at > cutoff]
-    assert any(row.window_end <= cutoff for row in hidden), (
-        "fixture should contain already-closed windows that were not yet collected"
-    )
-
-
-def test_aggregate_row_cannot_be_knowable_before_its_window_closes(dataset):
-    from tests.conftest import make_row
-
-    with pytest.raises(ValueError, match="cannot be knowable"):
-        row = make_row(battles=10, wins=5)
-        type(row)(
-            observed_at=row.window_start,
-            window_start=row.window_start,
-            window_end=row.window_end,
-            brawler_id=row.brawler_id,
-            mode_id=row.mode_id,
-            map_id=row.map_id,
-            trophy_bucket=row.trophy_bucket,
-            brawler_battles=row.brawler_battles,
-            brawler_wins=row.brawler_wins,
-            brawler_draws=row.brawler_draws,
-            stratum_battles=row.stratum_battles,
-            stratum_slots=row.stratum_slots,
-            source_id=row.source_id,
-        )
-
-
-def test_visibility_cutoff_must_be_timezone_aware(dataset):
-    with pytest.raises(ValueError, match="timezone-aware"):
-        dataset.visible_at(datetime(2026, 8, 20))
+# The three tests that stood here measured the collection lag of a crawled
+# dataset: an observer at time t sees rows collected by t rather than rows
+# *about* t. They went with the world they were about. The generated world has
+# no collection lag to hide behind, because a season is a pure function of its
+# seed and every match in a window is re-derivable by anyone holding it, so the
+# channel those tests guarded no longer exists rather than having moved. What
+# does still exist is the contract-side half of the same rule, which is the
+# published_at check directly above, and the reference-side half, which
+# `test_settlement.py` covers against the circuit oracle's own epoch.
 
 
 # --------------------------------------------------------------------------
@@ -128,11 +90,11 @@ def test_reference_id_is_required():
 
 
 def test_metric_ref_filters_must_be_sorted_and_unambiguous():
-    MetricRef(metric="m", subject="s", modes=("brawlBall", "gemGrab"))
+    MetricRef(metric="m", subject="s", modes=("objective", "solo"))
     with pytest.raises(ValueError, match="must be sorted"):
-        MetricRef(metric="m", subject="s", modes=("gemGrab", "brawlBall"))
+        MetricRef(metric="m", subject="s", modes=("solo", "objective"))
     with pytest.raises(ValueError, match="mixes 'ALL'"):
-        MetricRef(metric="m", subject="s", modes=(ALL, "gemGrab"))
+        MetricRef(metric="m", subject="s", modes=(ALL, "solo"))
     with pytest.raises(ValueError, match="duplicates"):
         MetricRef(metric="m", subject="s", maps=("A", "A"))
     with pytest.raises(ValueError, match="non-empty"):
@@ -140,8 +102,8 @@ def test_metric_ref_filters_must_be_sorted_and_unambiguous():
 
 
 def test_equal_filters_compare_equal_regardless_of_construction():
-    a = MetricRef(metric="m", subject="s", modes=("brawlBall", "gemGrab"))
-    b = MetricRef(metric="m", subject="s", modes=("brawlBall", "gemGrab"))
+    a = MetricRef(metric="m", subject="s", modes=("objective", "solo"))
+    b = MetricRef(metric="m", subject="s", modes=("objective", "solo"))
     assert a == b and hash(a) == hash(b)
 
 

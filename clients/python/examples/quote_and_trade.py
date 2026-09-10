@@ -8,7 +8,7 @@ each step, so a failure lands on a line you can point at.
     export ARENA_URL=http://localhost:8000
     export ARENA_KEY_ID=ak_...
     export ARENA_SECRET=...
-    python clients/python/examples/quote_and_trade.py SPIKE_WR_FUT
+    python clients/python/examples/quote_and_trade.py VANTA_OBJECTIVE_WR
 
 Without a key it still runs, and stops after the market data with a note saying
 what it skipped. That is deliberate: the first thing to check when a client is
@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arena_client import ArenaClient, ArenaError, AuthError, Rejected  # noqa: E402
 
-DEFAULT_SYMBOL = "SPIKE_WR_FUT"
+DEFAULT_SYMBOL = "VANTA_OBJECTIVE_WR"
 
 
 def rule(title: str) -> None:
@@ -86,10 +86,10 @@ def main() -> int:
 
     print(f"venue   {base_url}")
     print(f"symbol  {symbol}")
-    print(f"key     {key_id or '(none -- market data only)'}")
+    print(f"key     {key_id or '(none, market data only)'}")
 
     with ArenaClient(base_url, key_id=key_id, secret=secret) as client:
-        # -- public: what is listed, and on what grid ----------------------
+        # public: what is listed, and on what grid -----------------------
         rule("1. The instrument")
         instrument = client.instrument(symbol)
         tick = instrument["tick_size"]
@@ -103,7 +103,7 @@ def main() -> int:
         print(f"  expires          {instrument.get('expiry')}")
         print(f"  contract         {instrument.get('spec_digest')}")
 
-        # -- public: the book ---------------------------------------------
+        # public: the book ----------------------------------------------
         rule("2. The book")
         book = client.book(symbol, depth=5)
         print(f"  session  {book.get('session')}")
@@ -128,7 +128,7 @@ def main() -> int:
             print("  Everything above needed no credential, which is how it should be.")
             return 0
 
-        # -- signed: the account ------------------------------------------
+        # signed: the account -------------------------------------------
         rule("3. The account")
         account = client.account()
         print(f"  seat        {account.get('agent_id')}")
@@ -136,7 +136,7 @@ def main() -> int:
         print(f"  free cash   {account.get('free_cash')}")
         print(f"  equity      {account.get('equity')}")
 
-        # -- signed: place -------------------------------------------------
+        # signed: place --------------------------------------------------
         rule("4. Placing a post-only order")
         try:
             placed = client.place_order(
@@ -150,7 +150,7 @@ def main() -> int:
         except Rejected as err:
             # The venue understood and refused. Nothing is wrong with the
             # client; the market simply would not take this order now.
-            print(f"  refused: {err.code} -- {err.message}")
+            print(f"  refused: {err.code}: {err.message}")
             if err.detail:
                 print(f"  detail:  {err.detail}")
             return 1
@@ -163,13 +163,13 @@ def main() -> int:
             return 1
         print(f"  order id  {order_id}")
 
-        # -- signed: inspect ------------------------------------------------
+        # signed: inspect -------------------------------------------------
         rule("5. Looking at it")
         print(f"  {client.order(symbol, order_id)}")
         working = client.orders()
         print(f"  working orders now: {working}")
 
-        # -- signed: cancel -------------------------------------------------
+        # signed: cancel --------------------------------------------------
         rule("6. Cancelling it")
         print(f"  {client.cancel(symbol, order_id)}")
         print(f"  working orders after: {client.orders()}")
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     except AuthError as err:
         # Worth its own branch because retrying cannot help, and because the
         # two usual causes look identical from the outside.
-        print(f"\nauthentication failed: {err.code} -- {err.message}")
+        print(f"\nauthentication failed: {err.code}: {err.message}")
         print("Check the key is not revoked, and that this machine's clock is")
         print("within 30 seconds of the venue's. Both arrive as this one code,")
         print("because saying which would tell an unauthenticated caller which")

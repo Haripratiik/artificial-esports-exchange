@@ -15,15 +15,16 @@ the counterparty buys is only visible against something that has none.
 The one choice worth explaining is that the half-spread is a fraction of the
 contract's *settlement range* rather than a count of ticks or a percentage of
 the price. Every contract here settles inside a known interval and those
-intervals differ by three orders of magnitude: `SPIKE_CROW` spans 80,000 ticks
-and `SPIKE_GT47` spans 100. The incumbent makers use a constant number of
-ticks, so mm-1's five-tick half-spread is 0.00625% of the range on the spread
-contract and 5.0% of it on a binary, a factor of 800 between two books quoted
-by one parameter. A percentage of the price is no better, because a binary
-trading at 0.02 and a future at 4,670 cannot share one, and a contract worth
-nothing has no percentage at all. A fraction of the range is the only one of
-the three that means the same thing on every contract in this market, and it is
-available because every contract here has a range that is written down.
+intervals differ by three orders of magnitude: `HALCYON_FORMAT_SPD` spans
+80,000 ticks and `VANTA_SOLO_GT100` spans 100. The incumbent makers use a
+constant number of ticks, so mm-1's five-tick half-spread is 0.00625% of the
+range on the spread contract and 5.0% of it on a binary, a factor of 800
+between two books quoted by one parameter. A percentage of the price is no
+better, because a binary trading at 0.02 and a future at 4,670 cannot share
+one, and a contract worth nothing has no percentage at all. A fraction of the
+range is the only one of the three that means the same thing on every contract
+in this market, and it is available because every contract here has a range
+that is written down.
 
 Three things this baseline does that a first strategy usually forgets, and each
 of them was measured on this market rather than reasoned about.

@@ -4,8 +4,8 @@ Two things in ``clients/python/arena_client`` can be wrong in ways that no
 amount of reading catches, and both are checked here.
 
 **The signing scheme is transcribed, not imported.** A client that imports
-``arena.api.keys`` is not distributable -- it would need the exchange's source
-to sign a request -- so the header names, the canonical string and the body
+``arena.api.keys`` is not distributable (it would need the exchange's source to
+sign a request), so the header names, the canonical string and the body
 serialisation exist twice. Duplication that can drift silently is a liability;
 duplication that a test pins is just a copy. So this file signs the same inputs
 with both implementations and demands identical bytes. If the venue changes the
@@ -15,8 +15,8 @@ scheme, this suite fails before any client does.
 units so that conservation is integer zero rather than nearly zero. A client
 that parses a price into a float undoes that at the last step, quietly. The
 figures below are not invented: they were captured from a real run of
-``dashboard.state.MarketRunner``, and one of them -- an average price of
-``3479.328892044943820224719101``, which is a ratio of two exact integers --
+``dashboard.state.MarketRunner``, and one of them (an average price of
+``3479.328892044943820224719101``, which is a ratio of two exact integers)
 loses twelve of its twenty-eight significant digits to ``float()``.
 
 Nothing here talks to a server. Every request goes through
@@ -327,8 +327,8 @@ def test_the_query_string_is_inside_the_signature():
 def test_a_signed_request_verifies_against_the_venues_own_key_store():
     """End to end through the real verifier, with no server in the way.
 
-    If the client and the exchange disagree anywhere -- header spelling,
-    timestamp rendering, path assembly, body bytes -- ``KeyStore.verify``
+    If the client and the exchange disagree anywhere (header spelling,
+    timestamp rendering, path assembly, body bytes), ``KeyStore.verify``
     raises, because that is exactly what it is for.
     """
     store = keys.KeyStore()
@@ -488,12 +488,12 @@ def test_balances_come_back_as_decimal():
 def test_an_average_price_keeps_every_digit_the_venue_published():
     """The concrete cost of a float, measured on a real figure.
 
-    Average cost is a ratio of two exact integers, so it is as long as it needs
-    to be. This one is twenty-eight significant digits; the shortest numeral
-    that recovers the float is ``3479.328892044944``, sixteen of them. The
-    twelve it drops are not noise -- they are what makes
-    ``basis - closed_basis`` reconstruct the original exactly, which is the
-    property the whole ledger rests on.
+    Average cost is a ratio of two exact integers, so it is as long as it
+    needs to be. This one is twenty-eight significant digits; the shortest
+    numeral that recovers the float is ``3479.328892044944``, sixteen of them.
+    The twelve it drops are not noise: they are what makes ``basis -
+    closed_basis`` reconstruct the original exactly, which is the property the
+    whole ledger rests on.
     """
     client, _ = stub(REAL_ACCOUNT, key_id=DOC_KEY_ID, secret=DOC_SECRET)
     position = client.account()["positions"][0]

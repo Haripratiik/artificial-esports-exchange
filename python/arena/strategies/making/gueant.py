@@ -181,10 +181,10 @@ class GueantLehalleFT:
         # by 0.0000833 of the range per lot, and at the measured median
         # normalised volatility of 0.00075 per root second that is what gamma =
         # 40 reproduces. The two models spend it very differently, which is the
-        # point of running both. On `SPIKE_WR_FUT` at its measured volatility
-        # of 0.0024 the skew here is 1.3 ticks a lot against Avellaneda-Stoikov's
-        # 34, because this one is the stationary answer and that one is a
-        # variance accumulating over a horizon.
+        # point of running both. On a win rate future at its measured
+        # volatility of 0.0024 the skew here is 1.3 ticks a lot against
+        # Avellaneda-Stoikov's 34, because this one is the stationary answer
+        # and that one is a variance accumulating over a horizon.
         self.gamma = gamma
         # Order arrival decay per tick, so the base half-spread `(1/gamma) ln(1
         # + gamma/k)` is close to `1/k_ticks`, which is 5.0 ticks here against
@@ -234,7 +234,7 @@ class GueantLehalleFT:
         # Whether a quote may be posted through the other side of the book.
         # The closed form has no notion of a touch and its distances go
         # negative once `|q|` passes `base / c`, which with the measured
-        # per-lot skew of 1.15 ticks on `SPIKE_WR_FUT` and a base of 5.0 is
+        # per-lot skew of 1.15 ticks on a win rate future and a base of 5.0 is
         # five lots. A twelve lot quote clears that on its first fill, so left
         # true this strategy takes rather than makes.
         #

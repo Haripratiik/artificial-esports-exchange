@@ -24,9 +24,9 @@ moment it trades, and what it does with that is its business.
 **It measures its own markout and hands it back.** GLFT's adverse-selection
 term ``xi`` is not a parameter to be guessed, it is the drift of the mid after
 your own fills, and every desk computes it from its own trades. The adapter
-does that here -- from this agent's fills and this agent's view of the mid, so
-it stays inside what the strategy is allowed to know -- and puts it in the
-view. A strategy can then defend itself, or ignore it, and the difference is
+does that here (from this agent's fills and this agent's view of the mid, so it
+stays inside what the strategy is allowed to know) and puts it in the view. A
+strategy can then defend itself, or ignore it, and the difference is
 measurable.
 
 The shadow ledger is the same idea. An agent is never told its cash; it knows
@@ -88,10 +88,10 @@ class _OpenMarkout:
 class StrategyAgent(TradingAgent):
     """One strategy, wearing an agent.
 
-    A maker, a taker, or both -- a firm that quotes one asset class and takes
-    in another is an ordinary shape and refusing it would be an artificial
-    limit. What is not allowed is a single method that does both, which is how
-    the makers in this repository ended up aggressive on 61% of their fills.
+    A maker, a taker, or both: a firm that quotes one asset class and takes in
+    another is an ordinary shape and refusing it would be an artificial limit.
+    What is not allowed is a single method that does both, which is how the
+    makers in this repository ended up aggressive on 61% of their fills.
     """
 
     def __init__(
@@ -220,10 +220,10 @@ class StrategyAgent(TradingAgent):
         """Track cash, open a markout, and ask the strategy again.
 
         Overriding the private handler rather than the public `on_private`
-        hook, because a `Filled` does not carry its symbol -- the venue sends
-        one private channel per book and the symbol arrives with the envelope,
-        not with the event. Read from the event, `symbol` is always `None`, and
-        an override that trusts it silently books nothing: measured, 386 fills
+        hook, because a `Filled` does not carry its symbol; the venue sends one
+        private channel per book and the symbol arrives with the envelope, not
+        with the event. Read from the event, `symbol` is always `None`, and an
+        override that trusts it silently books nothing: measured, 386 fills
         moved this ledger by exactly zero.
         """
         super()._on_private(ctx, event, symbol)
@@ -236,7 +236,7 @@ class StrategyAgent(TradingAgent):
         signed = int(quantity) * (1 if side is Side.BUY else -1)
         # Fee zero, because a `Filled` does not carry one and the venue never
         # tells an agent what it was charged. That is realistic rather than a
-        # gap -- a desk reconciles fees afterwards -- but it means this book is
+        # gap (a desk reconciles fees afterwards), but it means this book is
         # pre-fee and will sit slightly above the venue's. Measured on the
         # incumbent makers, fees were 0.3% of P&L.
         self._book.apply_fill(
@@ -310,7 +310,7 @@ class StrategyAgent(TradingAgent):
                 self.withdraw(ctx, symbol, side)
                 continue
             # `post` is what decides whether this is a change worth sending,
-            # and it decides on the price that will actually rest -- after the
+            # and it decides on the price that will actually rest, after the
             # range clamp and the grid snap. Repeating that test here against a
             # differently-rounded number would report a move that is not one.
             price = snap(instrument, side, quote.price)

@@ -16,7 +16,7 @@ solvency can be enforced exactly:
     an order is admissible if the worst case of the position it would create is
     still covered by free cash
 
-All amounts are integer minor units -- see :mod:`arena.portfolio.money` -- so the
+All amounts are integer minor units (see :mod:`arena.portfolio.money`), so the
 ledger conserves value exactly rather than nearly.
 
 The conservatism worth knowing about: an agent holding a long and a short in
@@ -106,7 +106,7 @@ class Account:
 
         For a position not yet taken, where a price is all there is. Once it
         exists, charge :meth:`collateral_for_basis` against what it actually
-        paid -- an average price is a division and the basis is not.
+        paid: an average price is a division and the basis is not.
         """
         return Account.collateral_for_basis(
             quantity, Money(quantity * int(price)), bounds
@@ -130,7 +130,7 @@ class Account:
         quantity, bounds)``, and floor division rounds a long's average *down*:
         measured on seven lots bought as three at 10.25 and four at 11.50, the
         basis is 76,750,000 minor units and the collateral posted was
-        76,749,995 -- five short of what the position can lose. Under a minor
+        76,749,995, five short of what the position can lose. Under a minor
         unit per lot, and not zero, and this module's whole claim is that the
         figure is exact rather than close.
 
@@ -158,15 +158,16 @@ class Account:
         position at precisely the moment it needs to.
 
         And on the resulting position's *basis*, not on its quantity priced at
-        the incoming trade. The two differ whenever a fill adds to a position at
-        a different price, and they differ in the dangerous direction: measured
-        on an account holding 50,000 of cash and ten lots long at 5,000, a
-        further ten lots at 100 was checked as needing ``20 * 100 = 2,000`` and
-        produced a position carrying a basis of 51,000. The account passed, then
-        posted more collateral than it owned -- `free_cash` went to -1,000 --
-        and stood to owe a thousand it did not have if the contract settled at
-        the bottom of its range. Full collateralisation says an account can lose
-        everything it committed and never more; that check let it be more.
+        the incoming trade. The two differ whenever a fill adds to a position
+        at a different price, and they differ in the dangerous direction:
+        measured on an account holding 50,000 of cash and ten lots long at
+        5,000, a further ten lots at 100 was checked as needing ``20 * 100 =
+        2,000`` and produced a position carrying a basis of 51,000. The account
+        passed, then posted more collateral than it owned (`free_cash` went to
+        -1,000) and stood to owe a thousand it did not have if the contract
+        settled at the bottom of its range. Full collateralisation says an
+        account can lose everything it committed and never more; that check let
+        it be more.
         """
         position = self.positions.get(symbol)
         current = position.quantity if position else 0
@@ -206,11 +207,11 @@ class Account:
             self.collateral.pop(symbol, None)
         else:
             # Charged against the position's own basis, which is what it would
-            # lose. Not against an average derived from it: that division floors,
-            # and on a long it floors the average downwards, so the requirement
-            # came out under the loss by whatever the basis left over -- up to
-            # one minor unit a lot, every time two fills went on at different
-            # prices.
+            # lose. Not against an average derived from it: that division
+            # floors, and on a long it floors the average downwards, so the
+            # requirement came out under the loss by whatever the basis left
+            # over, up to one minor unit a lot, every time two fills went on at
+            # different prices.
             self.collateral[symbol] = self.collateral_for_basis(
                 position.quantity, position.cost_basis, bounds
             )
@@ -224,7 +225,7 @@ class Account:
         because a short position is a negative quantity. Nothing is realised:
         the holder gets cash and the contract is worth exactly that much less,
         so equity does not move. That is the correct accounting and it is also
-        the thing most likely to be got wrong -- booking a dividend as profit
+        the thing most likely to be got wrong. Booking a dividend as profit
         would report a holder as making money for holding.
 
         ``bounds`` are the claim's range *after* this payment, which is what
@@ -250,7 +251,7 @@ class Account:
     def settle(self, symbol: str, settlement_value: Money) -> Money:
         """Settle an expired contract: realise against the final value, free collateral.
 
-        Idempotent by symbol -- settling twice would pay a position out twice,
+        Idempotent by symbol: settling twice would pay a position out twice,
         and an expiry firing more than once is a plausible bug in any
         event-driven system.
         """

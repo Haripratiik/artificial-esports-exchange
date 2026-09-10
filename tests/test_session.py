@@ -2,7 +2,7 @@
 
 The clearing rule is a sequence of tie-breaks, and each one exists because the
 one before it can leave more than one answer. Testing only the first would pass
-on an implementation that resolves ties arbitrarily -- and an arbitrary opening
+on an implementation that resolves ties arbitrarily, and an arbitrary opening
 price is exactly the failure an auction is meant to prevent, because it is the
 price indices and settlements are struck at. So each tie-break gets a case
 constructed to reach it and no further.
@@ -326,13 +326,14 @@ def test_auction_fills_land_in_accounts_and_conserve_exactly():
 def test_an_auction_is_charged_rather_than_rebated():
     """Nobody crossed a spread, and that does not make everyone a maker.
 
-    This test used to assert the opposite -- that both sides earn the maker
-    rate, on the reasoning that an auction has no aggressor. The reasoning is
-    right and the conclusion was wrong, and running an opening auction for the
-    first time is what showed it: a maker rate is a rebate, so a venue billing
-    both sides of its own cross *pays out* on every share it crosses. Twenty-six
-    opening auctions took venue revenue to minus 1,251 before anything else went
-    wrong. Exchanges charge for cross executions; they do not pay for them.
+    This test used to assert the opposite: that both sides earn the maker
+    rate, on the reasoning that an auction has no aggressor. The reasoning
+    is right and the conclusion was wrong, and running an opening auction
+    for the first time is what showed it: a maker rate is a rebate, so a
+    venue billing both sides of its own cross *pays out* on every share it
+    crosses. Twenty-six opening auctions took venue revenue to minus 1,251
+    before anything else went wrong. Exchanges charge for cross executions;
+    they do not pay for them.
     """
     venue = _venue(fees=MAKER_TAKER)
     venue.begin_session("F")
@@ -364,7 +365,7 @@ def test_a_trade_cannot_print_outside_the_band():
 
     Limit up-limit down does not only pause a runaway after the fact: it
     prevents trades outside its bands. Without that, a market order with no
-    price protection walks a thin book to the floor -- measured on the live
+    price protection walks a thin book to the floor. Measured on the live
     exchange, a resting bid at **0.25** was filled on a contract worth 4,700,
     and the breaker then dutifully halted a symbol whose damage was done.
     """
@@ -385,11 +386,11 @@ def test_a_limit_order_names_its_price_and_keeps_it():
     """The collar protects orders that named no price. That is all it does.
 
     Collaring limit orders too was tried and was far worse than the disease.
-    They slid to the band's edge, the band later moved away from them, and the
-    book locked -- bid above offer, neither permitted to trade, and nothing in
-    continuous trading able to clear it. Measured on that version: 2,492 limit
-    states in five minutes and a future marking at 9,267 against a settlement
-    of 4,669.
+    They slid to the band's edge, the band later moved away from them, and
+    the book locked: bid above offer, neither permitted to trade, and nothing
+    in continuous trading able to clear it. Measured on that version: 2,492
+    limit states in five minutes and a future marking at 9,267 against a
+    settlement of 4,669.
 
     A trader who says 30,000 has said 30,000.
     """
@@ -405,11 +406,11 @@ def test_a_limit_order_names_its_price_and_keeps_it():
 def test_a_quote_pressing_against_the_band_is_a_limit_state_and_not_a_halt():
     """Three states, and the middle one is what makes it the rule it models.
 
-    A symbol is in a limit state when the best bid or offer is *at* a band --
-    interest that wants to be somewhere the venue will not let it go. One order
-    reaching the edge is one order, so it starts a clock; only staying there
-    stops the market. The clock has to advance for the pause to arrive, so this
-    drives it.
+    A symbol is in a limit state when the best bid or offer is *at* a band,
+    interest that wants to be somewhere the venue will not let it go. One
+    order reaching the edge is one order, so it starts a clock; only staying
+    there stops the market. The clock has to advance for the pause to
+    arrive, so this drives it.
 
     Judged from the quote rather than from a print, and it has to be: prints
     cannot leave the band any more, so a rule written in terms of them would
@@ -496,7 +497,7 @@ def test_halting_a_closed_symbol_does_nothing():
 
 
 def test_a_full_session_conserves_value_through_every_phase():
-    """Open, trade, halt, reopen, close -- one ledger throughout."""
+    """Open, trade, halt, reopen, close: one ledger throughout."""
     venue = _venue(fees=MAKER_TAKER, price_band=0.05)
     venue.begin_session("F")
     rng = random.Random(12)
@@ -535,7 +536,7 @@ def test_a_replace_during_a_call_phase_does_not_trade():
     Submits accumulate, because the engine routes them to its accumulate path.
     A replace goes down a different road entirely: it pulls the old order and
     re-runs the match on the replacement, and it never asks what phase the book
-    is in. So a halted book traded -- measured, a replace during a halt printed
+    is in. So a halted book traded: measured, a replace during a halt printed
     20 lots at 17,000 against an order that was only resting there because the
     auction had not run yet.
     """
@@ -558,7 +559,7 @@ def test_a_replace_cannot_cross_a_market_on_open_order_at_its_sentinel_price():
     """The same hole, in the form that matters.
 
     A market-on-open order rests at a sentinel so that it crosses every
-    candidate the auction considers -- that is the whole point of it, and it is
+    candidate the auction considers; that is the whole point of it, and it is
     why continuous matching must never see one. A replace during the call phase
     matched against exactly that, and printed trades at
     **-4,611,686,018,427,387,904**: the same catastrophe the engine's
@@ -587,7 +588,7 @@ def test_a_market_on_open_order_is_collateralised_before_the_auction_fills_it():
     what it will trade against.
 
     In continuous trading that is exact: the engine walks the same levels in
-    the same instant. In a call phase it is worthless -- the order rests until
+    the same instant. In a call phase it is worthless. The order rests until
     the uncross and then trades against liquidity that had not arrived yet. So
     the book walk found an empty ask side, concluded there was nothing to
     collateralise, and let a 100,000-lot market-on-open buy rest on an account
@@ -614,7 +615,7 @@ def test_a_market_on_open_order_is_collateralised_before_the_auction_fills_it():
 def test_a_market_on_open_order_it_can_afford_still_goes_through():
     """The permissive half. Reserving against the far end of the range is the
     honest assumption for an order that named no price, not a way to refuse the
-    order type -- an agent that can cover the worst case must still be able to
+    order type: an agent that can cover the worst case must still be able to
     take part in the auction.
     """
     venue = _venue()
@@ -660,9 +661,9 @@ def test_a_contract_that_expires_while_paused_is_not_reopened():
 
     So a symbol whose observation window closed while the breaker had it paused
     was still reported by ``reopen_due``, and the reopening auction printed 40
-    lots at 18,800 on a contract whose outcome was already determined -- then
-    put it back into continuous trading. Anyone trading there is trading
-    against an answer that already exists.
+    lots at 18,800 on a contract whose outcome was already determined, then put
+    it back into continuous trading. Anyone trading there is trading against an
+    answer that already exists.
     """
     clock, calendar = {"now": 0}, {"t": START}
     venue = _paused_venue(clock, calendar)
@@ -681,7 +682,7 @@ def test_a_contract_that_expires_while_paused_is_not_reopened():
 
 def test_a_live_contract_still_reopens_when_its_pause_runs_out():
     """The other half, so the guard above cannot be a way of never reopening
-    anything. The pause is a timer, and when it runs the symbol comes back --
+    anything. The pause is a timer, and when it runs the symbol comes back,
     through an auction, as it must.
     """
     clock, calendar = {"now": 0}, {"t": START}
@@ -700,10 +701,10 @@ def test_a_manual_halt_outlives_the_breakers_own_timer():
     """A halt somebody decided on ends when somebody decides it ends.
 
     The breaker's pause carries a reopen time, and it survived an operator
-    halting the same symbol for a different reason -- so the moment the band's
-    pause ran out, ``reopen_due`` offered up a symbol a human had stopped for
-    news, and the operator's halt quietly expired on a schedule the operator
-    never set.
+    halting the same symbol for a different reason. So the moment the
+    band's pause ran out, ``reopen_due`` offered up a symbol a human had
+    stopped for news, and the operator's halt quietly expired on a schedule
+    the operator never set.
     """
     clock, calendar = {"now": 0}, {"t": START}
     venue = _paused_venue(clock, calendar)
@@ -756,7 +757,7 @@ def test_an_auction_price_is_counted_once_in_the_reference_window():
     twice is worth twice the opinion it should be.
 
     The uncross recorded its cleared price into the window itself, on top of
-    the ``Traded`` events it had just produced -- which the fill path records
+    the ``Traded`` events it had just produced, which the fill path records
     like any other print. One auction, one print, two entries. That
     double-weights the auction in the mean the bands are drawn around, and
     inflates the count the halting rule waits for.
@@ -827,11 +828,11 @@ def test_a_stop_released_by_an_uncross_lands_in_a_continuous_book():
 
     An uncross runs while the symbol is still in its call phase, so a stop
     released inside it becomes a market order arriving at a book that does not
-    match -- and an unmatched market order is accumulated at the sentinel price.
-    That is the order that once printed trades at
-    -4,611,686,018,427,387,904 and billed 4.8e22 in fees. Releasing only after
-    the venue has flipped the symbol back to continuous is what keeps the
-    cascade in a book that can actually fill it.
+    match, and an unmatched market order is accumulated at the sentinel price.
+    That is the order that once printed trades at -4,611,686,018,427,387,904
+    and billed 4.8e22 in fees. Releasing only after the venue has flipped the
+    symbol back to continuous is what keeps the cascade in a book that can
+    actually fill it.
     """
     venue = _venue(fees=MAKER_TAKER)
     venue.begin_session("F")

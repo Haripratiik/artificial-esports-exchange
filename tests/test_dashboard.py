@@ -41,8 +41,8 @@ def as_operator() -> dict[str, str]:
     """The header that reaches the controls which change the market for all.
 
     Imported lazily inside the function so this module still imports cleanly if
-    the auth module is ever moved -- the tests that do not touch operator
-    routes should not fail on an import they never use.
+    the auth module is ever moved: the tests that do not touch operator routes
+    should not fail on an import they never use.
     """
     from dashboard.operator_auth import OPERATOR_HEADER, operator_token
 
@@ -63,7 +63,7 @@ def client():
     # `dashboard/server.py` sets them at import with the cookie-reading seat
     # hook this file's tests depend on. But `tests/test_api.py` builds its own
     # app and calls `rest.configure(...)` with a header-based hook, which
-    # replaces those globals process-wide -- and pytest collects `test_api.py`
+    # replaces those globals process-wide, and pytest collects `test_api.py`
     # before `test_dashboard.py`, so by the time these tests run the cookie
     # path has been swapped out from under them. Every test here passed in
     # isolation and one failed in the suite, which is the signature of exactly
@@ -152,12 +152,12 @@ def test_the_session_endpoint_describes_the_venue(client):
 def test_the_roster_reports_equity_as_a_price_not_as_minor_units(client):
     """The same failure as the settlement bug, a million times over.
 
-    ``Account.equity`` answers in the integer minor units the ledger is kept
-    in -- 1e-6 of a price unit -- and the roster published that straight into
-    a column the page renders with the money formatter. A maker worth
-    113,125,513.21 was drawn as "113125513.21M", and a *person's own seat*
-    appeared on the same table as "143745.00M" while the header two panels
-    away read "143.7k". Nothing looked broken. It looked like a big number.
+    ``Account.equity`` answers in the integer minor units the ledger is kept in
+    (1e-6 of a price unit) and the roster published that straight into a column
+    the page renders with the money formatter. A maker worth 113,125,513.21 was
+    drawn as "113125513.21M", and a *person's own seat* appeared on the same
+    table as "143745.00M" while the header two panels away read "143.7k".
+    Nothing looked broken. It looked like a big number.
     """
     # Against a market nobody is pumping, so the marks cannot move between the
     # reading and the recomputation. A live one is checked below by magnitude,
@@ -176,7 +176,7 @@ def test_the_roster_reports_equity_as_a_price_not_as_minor_units(client):
         assert Decimal(entry["equity"]) == from_money(account.equity(marks)), (
             f"{entry['id']} is published as {entry['equity']} against a real "
             "equity of "
-            f"{from_money(account.equity(marks))} -- which is what the ledger's "
+            f"{from_money(account.equity(marks))}, which is what the ledger's "
             "own integer unit looks like when it is read as a price"
         )
         checked += 1
@@ -186,9 +186,9 @@ def test_the_roster_reports_equity_as_a_price_not_as_minor_units(client):
 def test_the_served_roster_reports_equity_at_a_believable_size(client):
     """The same check against the market that is actually running.
 
-    Exactness is not available here -- a mark that moved between the reading
-    and the recomputation is the market working. Magnitude is, and magnitude is
-    the whole of the bug: trading moves value between participants rather than
+    Exactness is not available here: a mark that moved between the reading and
+    the recomputation is the market working. Magnitude is, and magnitude is the
+    whole of the bug: trading moves value between participants rather than
     creating it, so an account cannot drift a thousandfold from the capital it
     opened with, and the figure that was being published was off by a million.
     """
@@ -213,7 +213,7 @@ def test_a_halt_record_reports_prices_not_ticks():
     The venue records both in the unit it matches in, which is ticks, and that
     is right for the venue. Published unconverted, a band break on a contract
     quoted on a 0.25 grid printed 1,989 in a price column against a real price
-    of 497.25 -- on a claim whose entire settlement range is 0 to 1,000. A
+    of 497.25, on a claim whose entire settlement range is 0 to 1,000. A
     number four times outside the range the same page publishes reads as a
     number, not as a bug.
 
@@ -238,7 +238,7 @@ def test_a_halt_record_reports_prices_not_ticks():
             value = Decimal(str(halt[field]))
             assert low <= value <= high, (
                 f"{halt['symbol']} halted at {field}={value}, outside its own "
-                f"settlement range {low}..{high} -- which is what a tick count "
+                f"settlement range {low}..{high}, which is what a tick count "
                 "looks like when it is drawn under a price heading"
             )
 
@@ -246,12 +246,12 @@ def test_a_halt_record_reports_prices_not_ticks():
 def test_the_indicative_price_means_the_same_thing_on_both_endpoints():
     """One name, two units, four times apart.
 
-    The socket converts the auction's clearing price and the ladder endpoint
-    did not, so the same auction on the same contract at the same instant was
-    published as "5003.00" in one place and 20012 in the other. Nothing draws
-    the ladder's copy yet, which is the only reason it never reached a screen
-    -- and is exactly the position the settlement figure was in before someone
-    drew it.
+    The socket converts the auction's clearing price and the ladder
+    endpoint did not, so the same auction on the same contract at the same
+    instant was published as "5003.00" in one place and 20012 in the other.
+    Nothing draws the ladder's copy yet, which is the only reason it never
+    reached a screen, and is exactly the position the settlement figure was
+    in before someone drew it.
     """
     opening = MarketRunner()
     opening.start()
@@ -286,8 +286,8 @@ def test_the_agent_roster_is_published(client):
 def test_the_book_endpoint_returns_a_two_sided_ladder(client):
     # Polled rather than sampled once. The market this serves has an opening
     # call and a circuit breaker, so there are real moments when a book has one
-    # side or none -- and a test that happens to land on one of them is
-    # reporting the clock rather than the endpoint.
+    # side or none, and a test that happens to land on one of them is reporting
+    # the clock rather than the endpoint.
     for _ in range(40):
         book = client.get(f"/api/book/{SYMBOL}?levels=12").json()
         if book["bids"] and book["asks"]:
@@ -301,8 +301,8 @@ def test_the_book_endpoint_returns_a_two_sided_ladder(client):
         assert best_bid < best_ask, "the published ladder is crossed"
     else:
         # A call phase accumulates orders without matching them, so a crossed
-        # ladder is the mechanism rather than a fault -- and the indicative
-        # price is what a reader should be looking at instead.
+        # ladder is the mechanism rather than a fault, and the indicative price
+        # is what a reader should be looking at instead.
         assert "indicative" in book
 
 
@@ -315,12 +315,12 @@ def test_the_book_endpoint_bounds_the_level_count(client):
 def test_history_accumulates(client):
     """Asserts that the series *grows*, not that it grows at a given rate.
 
-    Two earlier versions of this test asserted a sample count -- first `> 5`,
-    then `>= 12` -- and both failed for the same reason: the recorder samples on
-    the server's own tick, so how many points exist at any moment depends on how
-    loaded the machine is and how many instruments are listed. Neither number
-    was ever the point. What the chart needs is a series that accumulates and
-    never doubles back, and that is what is checked.
+    Two earlier versions of this test asserted a sample count (first `> 5`,
+    then `>= 12`) and both failed for the same reason: the recorder samples on
+    the server's own tick, so how many points exist at any moment depends on
+    how loaded the machine is and how many instruments are listed. Neither
+    number was ever the point. What the chart needs is a series that
+    accumulates and never doubles back, and that is what is checked.
     """
     first = client.get(f"/api/history/{SYMBOL}").json()
     deadline = time.monotonic() + 25
@@ -469,10 +469,10 @@ def test_a_mistyped_order_is_answered_in_the_terms_of_the_box(client, what, fiel
     """The toast used to carry the interpreter's opinion of the failure.
 
     A blank size came back as "int() argument must be a string, a bytes-like
-    object or a real number, not 'NoneType'". A price copied off the ladder --
-    with the thousands separator the ladder itself drew -- came back as
-    "[<class 'decimal.ConversionSyntax'>]". Both are Python talking to itself,
-    on a screen someone is trying to trade from.
+    object or a real number, not 'NoneType'". A price copied off the ladder
+    (with the thousands separator the ladder itself drew) came back as "[<class
+    'decimal.ConversionSyntax'>]". Both are Python talking to itself, on a
+    screen someone is trying to trade from.
     """
     with client.websocket_connect("/ws") as socket:
         socket.receive_json()
@@ -491,7 +491,7 @@ def test_a_price_the_contract_cannot_settle_at_is_refused(client):
     Collateral is sized from the settlement range, so a bid *below* the floor
     scores as less risky than one inside it and passes every check the venue
     makes. A limit buy at -100 on a contract bounded at zero was accepted,
-    rested, and was eventually filled -- crediting the account for having been
+    rested, and was eventually filled, crediting the account for having been
     paid to take delivery of something that cannot be worth less than nothing.
     """
     with client.websocket_connect("/ws") as socket:
@@ -514,7 +514,7 @@ def test_a_misspelled_side_is_refused_rather_than_sold(client):
     """Anything that was not exactly "buy" became a SELL, silently.
 
     One character wrong in a client and the order went the other way, with
-    nothing anywhere saying so -- and it filled.
+    nothing anywhere saying so. And it filled.
     """
     with client.websocket_connect("/ws") as socket:
         socket.receive_json()
@@ -576,7 +576,7 @@ def test_the_server_starts_the_way_it_is_documented():
     """`python -m dashboard.server` must work outside pytest.
 
     It did not. The project keeps `arena` under `python/`, and the only thing
-    putting that on the path was `pythonpath` in the pytest configuration -- so
+    putting that on the path was `pythonpath` in the pytest configuration. So
     every test passed while the documented command, the sole way anyone opens
     the UI, died on ModuleNotFoundError.
 
@@ -596,7 +596,7 @@ def test_the_server_starts_the_way_it_is_documented():
         timeout=180,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Artificial Brawl Stars Exchange" in result.stdout
+    assert "Artificial Esports Exchange" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -614,7 +614,7 @@ def test_assets_are_served_with_a_usable_content_type(client, path, expected):
     Starlette serves static files with whatever `mimetypes` reports, and on
     Windows that reads the registry, where `.js` is commonly mapped to
     `text/plain`. Browsers enforce the MIME type of `<script type="module">`
-    strictly and refuse a module served as anything else -- so the entire front
+    strictly and refuse a module served as anything else, so the entire front
     end silently did not run. The page painted its static HTML, no handler was
     bound, no button worked, and the server logged nothing, because every
     request had answered 200.
@@ -691,12 +691,12 @@ def test_every_view_renders_against_a_real_snapshot(client, tmp_path):
 def test_the_controller_loads_and_throttles_its_rendering(client, tmp_path):
     """main.js under a stub DOM, driving frames by hand.
 
-    Two things are being caught. The first is that the controller loads at all
-    -- it owns the socket, the render loop and every binding, and had no
-    coverage. The second is that a burst of snapshots does not turn into a
-    burst of subtree rebuilds: replacing the panel destroys focus, scroll and
-    text selection, so rebuilding on every message at 20Hz made the whole
-    screen impossible to use with a keyboard.
+    Two things are being caught. The first is that the controller loads at all:
+    it owns the socket, the render loop and every binding, and had no coverage.
+    The second is that a burst of snapshots does not turn into a burst of
+    subtree rebuilds: replacing the panel destroys focus, scroll and text
+    selection, so rebuilding on every message at 20Hz made the whole screen
+    impossible to use with a keyboard.
     """
     snapshot = runner.market.snapshot()
     snapshot["generation"] = runner.generation
@@ -802,12 +802,12 @@ def test_the_ticket_reserves_what_the_venue_reserves(tmp_path):
     """"Reserved now" was the notional, not the reservation.
 
     They agree only for a long on a claim whose floor is zero, which most of
-    the board happens to be -- so it looked right until you sold, or touched
-    the spread. A sell of ten futures stopped at 4,600 announced 46,000 held
+    the board happens to be, so it looked right until you sold, or touched the
+    spread. A sell of ten futures stopped at 4,600 announced 46,000 held
     against the 54,000 the venue actually took; a spread stopped at zero
-    announced *nothing* held against 100,000. Understating every time, which
-    is the direction that leaves a trader believing in free cash they do not
-    have and their next order refused without explanation.
+    announced *nothing* held against 100,000. Understating every time, which is
+    the direction that leaves a trader believing in free cash they do not have
+    and their next order refused without explanation.
 
     The expected figures come from ``Account.collateral_required`` itself, so
     this is the page checked against the venue rather than against a second
@@ -872,10 +872,10 @@ def test_the_ticket_sends_the_stop_and_the_iceberg_it_collected(client, tmp_path
     """The Advanced panel collected two fields and threw them away.
 
     A trader typed a stop trigger and an iceberg size, watched the preview
-    describe a stop -- "Waits until 8,900.00", "Reserved now ..." -- pressed
-    Place Order, and got a plain limit that rested in full, visible,
-    immediately. Both fields were supported by the server and by the venue the
-    whole time; the submitter simply never read them.
+    describe a stop ("Waits until 8,900.00", "Reserved now ..."), pressed Place
+    Order, and got a plain limit that rested in full, visible, immediately.
+    Both fields were supported by the server and by the venue the whole time;
+    the submitter simply never read them.
 
     Driven through the real controller rather than asserted about the source,
     because what matters is the message that leaves the browser.
@@ -929,9 +929,9 @@ def test_the_send_button_is_live_wherever_the_venue_takes_orders(client, tmp_pat
 
     The exchange opens with a call auction, so every contract is in `pre_open`
     on the first page load. Orders in a call phase are accepted, do rest, and
-    are what sets the opening price -- and the button was disabled, under a
-    label reading "pre open -- orders will rest". `closed` is the only phase
-    that refuses orders, and there the same label was a lie the other way.
+    are what sets the opening price, and the button was disabled, under a label
+    reading "pre open, orders will rest". `closed` is the only phase that
+    refuses orders, and there the same label was a lie the other way.
     """
     fixture = tmp_path / "snapshot.json"
     fixture.write_text(json.dumps(_snapshot_fixture()), encoding="utf-8")
@@ -991,7 +991,7 @@ def test_the_revealed_value_is_a_price_not_a_tick_count(client):
         low, high = (float(b) for b in snapshot["books"][entry["symbol"]]["bounds"])
         assert low <= settles <= high, (
             f"{entry['symbol']} reveals {settles}, outside the range {low}..{high} "
-            "the same page prints -- which is what a tick count looks like when "
+            "the same page prints, which is what a tick count looks like when "
             "it is read as a price"
         )
         checked += 1
@@ -1003,12 +1003,12 @@ def test_a_percentage_gives_way_to_points_when_its_base_has_no_resolution(tmp_pa
     """A ratio divided by almost nothing is correct and useless.
 
     An option can open a session worth one tick. One on this board did, reached
-    96.375, and the market rail rendered the move as **+308,825.00%** -- which
-    is arithmetically right and says only that the contract went from the
-    smallest price it can represent to a real one. The move itself says that
-    better. Above 999% the figure is shown in points instead, which is a
-    statement about the resolution of a ratio rather than about the market:
-    nothing is clamped, hidden or invented.
+    96.375, and the market rail rendered the move as **+308,825.00%**, which is
+    arithmetically right and says only that the contract went from the smallest
+    price it can represent to a real one. The move itself says that better.
+    Above 999% the figure is shown in points instead, which is a statement
+    about the resolution of a ratio rather than about the market: nothing is
+    clamped, hidden or invented.
     """
     probe = tmp_path / "probe.mjs"
     # An absolute file URL: the probe is written into pytest's tmp dir, so a
@@ -1112,7 +1112,7 @@ def test_an_operator_route_refuses_a_visitor(client, path, body):
     """Five routes change the market for everybody, and had no guard at all.
 
     `POST /api/config` calls `MarketRunner.reconfigure`, whose own docstring
-    says "The old one is discarded, not paused" -- every account, position,
+    says "The old one is discarded, not paused": every account, position,
     working order and price series, for every connected user, gone. Any visitor
     could send it. `kill` was quieter and no better: it takes an **arbitrary**
     agent id, so one visitor could reach across and disable another human's
@@ -1165,13 +1165,13 @@ def test_a_key_survives_a_rebuild_and_keeps_its_seat(client):
     """Invalidating credentials on reset breaks every algorithm running.
 
     The industry splits on this and one side is plainly right. Binance
-    preserves API keys across its periodic testnet wipes and says so:
-    "Starting from August 2020, API Keys are preserved during resets. Users no
-    longer need to re-register new API Keys after a reset." tastytrade wipes
-    state nightly and makes the same carve-out: "Users, customers, and accounts
-    are untouched." Alpaca went the other way, replacing reset with
+    preserves API keys across its periodic testnet wipes and says so: "Starting
+    from August 2020, API Keys are preserved during resets. Users no longer
+    need to re-register new API Keys after a reset." tastytrade wipes state
+    nightly and makes the same carve-out: "Users, customers, and accounts are
+    untouched." Alpaca went the other way, replacing reset with
     create-and-delete, and warns "Don't forget to generate new API keys for any
-    newly created account" -- which means every reset breaks every running bot.
+    newly created account", which means every reset breaks every running bot.
 
     A rebuild here discards the whole market, so the risk is not just the key
     record surviving. It is that `LiveMarket.trader` answers an unknown id with
@@ -1207,7 +1207,7 @@ def test_a_key_survives_a_rebuild_and_keeps_its_seat(client):
     after = as_key("/v1/account")
     assert after.status_code == 200, "the rebuild invalidated a live credential"
     assert after.json()["account_id"] == seat_before, (
-        f"the key moved from {seat_before} to {after.json()['account_id']} -- "
+        f"the key moved from {seat_before} to {after.json()['account_id']}, "
         "which is what landing on the shared account looks like"
     )
 

@@ -1,22 +1,22 @@
 """One contract, several increments: the tiered tick table.
 
 A tick has two jobs and they pull against each other. Too fine and queue
-priority is worthless -- anyone can step in front of a resting order for a
+priority is worthless: anyone can step in front of a resting order for a
 hundredth of a penny, so nobody posts size and the depth that makes a market
 usable never appears. Too coarse and the spread cannot narrow to what the
 market actually knows, so the last part of the information in the price has
 nowhere to go. The resolution that is right at a price of 4 is wrong at 4,000,
-which is why a venue lets the increment grow with the price rather than
-picking one number and living with it at both ends of the range.
+which is why a venue lets the increment grow with the price rather than picking
+one number and living with it at both ends of the range.
 
 What the table is *not* is a change of unit. ``tick_size`` stays the finest
 increment and the unit every price is represented in, because the matching
 engine counts in integer ticks: a variable unit would make tick index 16,001
-mean one price near the bottom of a contract's range and a different price
-near the top, and order ids, price bands, marks and settlement figures are all
+mean one price near the bottom of a contract's range and a different price near
+the top, and order ids, price bands, marks and settlement figures are all
 denominated in those ticks. So the table is a rule about which prices may be
 *quoted*, enforced by the venue at the door, and every increment in it has to
-be a whole multiple of the base -- otherwise the rule would forbid prices the
+be a whole multiple of the base; otherwise the rule would forbid prices the
 representation can express, which is a rule nobody could follow.
 
 The feature arrived with no tests. ``VANTA_OBJECTIVE_WR`` is the one listed
@@ -139,10 +139,10 @@ def resting(book, instrument: Instrument) -> list[D]:
 def test_below_the_first_threshold_the_increment_is_the_base_tick():
     """The table adds bands above a price; it does not replace the base one.
 
-    An implementation that read the first row as the increment everywhere, or
-    that started its search from the coarsest row, would coarsen the whole
-    contract -- and the bottom of the range is exactly where a fine tick is
-    doing its work.
+    An implementation that read the first row as the increment everywhere,
+    or that started its search from the coarsest row, would coarsen the
+    whole contract, and the bottom of the range is exactly where a fine
+    tick is doing its work.
     """
     tiered = future(table=LISTED)
     assert tiered.increment_at(D("0.25")) == D("0.25")
@@ -153,11 +153,10 @@ def test_below_the_first_threshold_the_increment_is_the_base_tick():
 def test_the_threshold_price_itself_belongs_to_the_coarser_band():
     """The boundary is inclusive, and which side it falls on has to be pinned.
 
-    A strict ``>`` here would leave exactly one quotable price -- the threshold
-    -- governed by the fine tick while its neighbours a quarter away are
-    governed by the coarse one. Nobody would notice until an order landed
-    there, and then the answer would depend on which of two functions was
-    asked.
+    A strict ``>`` here would leave exactly one quotable price (the threshold)
+    governed by the fine tick while its neighbours a quarter away are governed
+    by the coarse one. Nobody would notice until an order landed there, and
+    then the answer would depend on which of two functions was asked.
     """
     tiered = future(table=LISTED)
     assert tiered.increment_at(D("3999.75")) == D("0.25")
@@ -191,9 +190,9 @@ def test_a_price_takes_the_coarsest_band_it_has_reached(price, increment):
 def test_a_contract_with_no_table_has_one_increment_at_every_price():
     """Every contract but one is in this case, so it is the case to protect.
 
-    A table-aware lookup that mishandled the empty table -- indexing row zero,
-    or defaulting to something other than the base tick -- would change the
-    grid of twenty-odd listed contracts that never asked for a tiered tick.
+    A table-aware lookup that mishandled the empty table (indexing row zero, or
+    defaulting to something other than the base tick) would change the grid of
+    twenty-odd listed contracts that never asked for a tiered tick.
     """
     plain = future()
     for price in ("0.25", "4000.00", "9999.75"):
@@ -234,8 +233,8 @@ def test_the_same_fraction_is_quotable_below_the_threshold_and_not_above_it():
 def test_a_price_off_its_band_grid_is_still_a_whole_number_of_base_ticks():
     """The table constrains quoting, not representation, and the two differ.
 
-    4,000.25 is a perfectly good tick index -- 16,001 -- and the engine can
-    match, mark and settle it. What it cannot be is *quoted* on this contract.
+    4,000.25 is a perfectly good tick index (16,001) and the engine can match,
+    mark and settle it. What it cannot be is *quoted* on this contract.
     Conflating the two would mean either an engine that cannot represent half
     its own price range, or a listing rule that nothing enforces.
     """
@@ -252,10 +251,10 @@ def test_a_price_off_its_band_grid_is_still_a_whole_number_of_base_ticks():
 def test_the_venue_accepts_a_limit_price_on_its_bands_grid():
     """The permissive half of the rule, which a too-eager check would break.
 
-    A grid test that compared against the base tick, or that used the
-    increment at the wrong price, would refuse legitimate orders -- and an
-    order refused for a price the contract does allow is worse than one
-    allowed off the grid, because the agent has no way to comply.
+    A grid test that compared against the base tick, or that used the increment
+    at the wrong price, would refuse legitimate orders, and an order refused
+    for a price the contract does allow is worse than one allowed off the grid,
+    because the agent has no way to comply.
     """
     tiered = future(table=LISTED)
     venue = venue_with(tiered)
@@ -340,12 +339,12 @@ def test_two_specs_differing_only_in_their_tick_table_are_different_contracts():
 def test_an_increment_that_is_not_a_whole_multiple_of_the_base_tick_is_refused():
     """A rule nobody could follow is worse than no rule.
 
-    With a base tick of 0.25 and a band increment of 0.30, the quotable prices
-    the band describes -- 4,000.30, 4,000.60 -- are not prices the engine can
-    represent, because it counts in quarter-point ticks. Every order in that
-    band would be refused whatever the agent did. Caught at construction
-    because the alternative is discovering it from a live book that cannot be
-    quoted.
+    With a base tick of 0.25 and a band increment of 0.30, the quotable
+    prices the band describes (4,000.30, 4,000.60) are not prices the engine
+    can represent, because it counts in quarter-point ticks. Every order in
+    that band would be refused whatever the agent did. Caught at
+    construction because the alternative is discovering it from a live book
+    that cannot be quoted.
     """
     with pytest.raises(ValueError, match="not a multiple of the base tick"):
         spec(table=(("4000.00", "0.30"),))
@@ -374,7 +373,7 @@ def test_a_non_positive_increment_is_refused(increment):
 def test_thresholds_that_do_not_ascend_are_refused(table):
     """The lookup takes the last matching row, so order is meaning, not style.
 
-    An out-of-order table does not fail loudly -- it quietly resolves to
+    An out-of-order table does not fail loudly: it quietly resolves to
     whichever row happens to be last, so a contract would get a grid nobody
     wrote down. Since the reading depends on the order, the order has to be a
     checked property of the table rather than a convention.
@@ -391,9 +390,9 @@ def test_thresholds_that_do_not_ascend_are_refused(table):
 def test_a_bid_snaps_down_and_an_offer_snaps_up():
     """Snapping must cost the agent a fraction of a tick, never buy it a trade.
 
-    Rounding to nearest -- the obvious implementation -- moves half of all
-    quotes toward the touch, so an agent that meant to bid 4,000.25 crosses at
-    4,001 instead and pays for a fill it did not ask for. The direction of the
+    Rounding to nearest (the obvious implementation) moves half of all quotes
+    toward the touch, so an agent that meant to bid 4,000.25 crosses at 4,001
+    instead and pays for a fill it did not ask for. The direction of the
     rounding is the entire safety property.
     """
     tiered = future(table=LISTED)
@@ -420,7 +419,7 @@ def test_snapping_never_makes_a_quote_more_aggressive():
     """Swept across the boundary, where an off-by-one band lookup would show.
 
     The two spot checks above pass on a snap that reads the increment at the
-    wrong price -- at the original rather than the snapped one, say. Walking
+    wrong price, at the original rather than the snapped one, say. Walking
     every tick from below 4,000 to well above it also pins the third property
     the spot checks leave out: the result is always on the grid, and always
     less than one increment from where the agent aimed.
@@ -504,10 +503,10 @@ def test_the_tiered_contract_trades_and_leaves_a_book_behind(live_market):
 def test_nothing_rests_off_the_grid_on_the_tiered_contract(live_market):
     """The end-to-end claim: no path into the book skips the listing rule.
 
-    Agents reach the venue through several routes -- the opening auction,
-    quotes, replaces, the arbitrageur -- and each one is a chance for a price
-    to arrive without having been snapped or checked. This is the only test
-    here that would notice.
+    Agents reach the venue through several routes (the opening auction, quotes,
+    replaces, the arbitrageur) and each one is a chance for a price to arrive
+    without having been snapped or checked. This is the only test here that
+    would notice.
     """
     tiered = live_market.venue.registry.require("VANTA_OBJECTIVE_WR")
     off_grid = [
@@ -552,8 +551,8 @@ def test_the_uniform_contract_still_quotes_quarters(live_market):
 
 
 def test_the_venue_refuses_a_quantity_off_the_contracts_lot():
-    """An instrument declares "tick / lot -- the grid the exchange enforces",
-    and only the tick was ever enforced.
+    """An instrument declares "tick / lot: the grid the exchange enforces", and
+    only the tick was ever enforced.
 
     A quantity that cannot exist is exactly as unquotable as a price that
     cannot exist, and the argument the price case already makes applies word
@@ -571,10 +570,10 @@ def test_the_venue_refuses_a_quantity_off_the_contracts_lot():
 
 
 def test_the_venue_accepts_a_whole_number_of_lots():
-    """The permissive half. A check that refused every size, or that compared
-    against the wrong number, would take the contract off the market entirely
-    -- and an agent told no for a size the contract does allow has no way to
-    comply.
+    """The permissive half. A check that refused every size, or that
+    compared against the wrong number, would take the contract off the
+    market entirely, and an agent told no for a size the contract does allow
+    has no way to comply.
     """
     tiered = Instrument(SYM, spec(), lot_size=10)
     venue = venue_with(tiered)
@@ -640,8 +639,8 @@ def test_the_venue_refuses_a_price_the_contract_can_never_settle_at():
     """A listing rule of the same kind as the grid, and the one nobody wrote.
 
     Measured on a contract bounded by [0, 10,000]: a bid at -100 was
-    acknowledged and rested, and a bid at 10,100 was acknowledged and *traded*
-    -- a print above everything the claim can ever be worth, which dragged the
+    acknowledged and rested, and a bid at 10,100 was acknowledged and *traded*,
+    a print above everything the claim can ever be worth, which dragged the
     mark of every position in the symbol up with it.
 
     Collateral structurally cannot catch this, which is exactly why it needs a
@@ -708,9 +707,9 @@ def test_an_amendment_cannot_move_an_order_outside_the_range():
 
 def test_a_payout_narrows_the_rule_without_touching_what_is_resting():
     """A share is worth less after it pays by exactly what it paid, and the
-    range the venue polices follows it down -- because that is the same range
-    the collateral is computed from, and quoting a wider one would let an order
-    be entered above what the claim can still deliver.
+    range the venue polices follows it down, because that is the same range the
+    collateral is computed from, and quoting a wider one would let an order be
+    entered above what the claim can still deliver.
 
     What does *not* move is anything already standing. The venue does not
     reprice an order whose owner named a price, and pulling one would close a

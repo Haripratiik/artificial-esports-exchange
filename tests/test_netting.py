@@ -14,7 +14,7 @@ collateral is exact: every instrument settles as a known function of a bounded
 scalar, so the portfolio's worst case is the minimum of a piecewise-linear
 function of one bounded variable. Its minimum sits at an endpoint or a kink,
 every kink is known in advance, and there are a handful of them. Evaluating
-each is not an approximation of the answer -- it is the answer.
+each is not an approximation of the answer; it is the answer.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def _spec(contract_id, payoff, tick="0.25", underlying=None, distribution=None):
 
     The catalogue only lists `>` binaries with positive thresholds and only
     linear distribution schedules, so three of the faults below are unreachable
-    from `instruments()` -- which is exactly why they survived.
+    from `instruments()`, which is exactly why they survived.
     """
     return ContractSpec(
         contract_id=contract_id,
@@ -232,8 +232,8 @@ def test_the_venue_groups_by_exactly_the_rule_netting_enforces(listed):
     """Whatever the venue calls one underlying, `worst_case` must accept.
 
     The two live in different modules and could drift apart, and drifting apart
-    means either the venue nets things the arithmetic refuses -- a crash on an
-    ordinary order -- or the arithmetic accepts things the venue would have
+    means either the venue nets things the arithmetic refuses (a crash on an
+    ordinary order) or the arithmetic accepts things the venue would have
     split, which is the silent direction.
     """
     from collections import defaultdict
@@ -265,7 +265,7 @@ def test_a_binary_offers_both_sides_of_its_threshold(listed):
     """A step is not a kink: the value differs either side and is never between.
 
     Which side is adverse depends on the sign of the position, and the caller
-    should not have to know -- so both are offered and both are evaluated.
+    should not have to know, so both are offered and both are evaluated.
     """
     binary = listed["EMBER_OBJECTIVE_GT500"].spec
     kinks = kinks_of(binary.payoff, binary.underlying.bounds())
@@ -290,7 +290,7 @@ def test_a_binary_offers_both_branches_whichever_way_it_compares(comparison):
     `>` and `<=` leave the threshold on the low branch, so ``{threshold, just
     above}`` happened to span both. `>=` and `<` put it on the high branch, so
     both candidates sat inside one branch and the other was never evaluated at
-    all -- a binary whose entire payout the minimisation could not see.
+    all: a binary whose entire payout the minimisation could not see.
     """
     payoff = Binary(comparison, 0.5, payout=1.0)
     branches = {payoff.apply(level) for level in kinks_of(payoff, (0.0, 1.0))}
@@ -387,15 +387,15 @@ def test_an_unknown_payoff_shape_is_refused_rather_than_sampled():
 def test_the_tick_grid_is_where_exactness_stops(listed):
     """What settles is the quantized payoff, and staircases do not cancel.
 
-    Legs sharing a scale and a tick cancel exactly -- half-even rounding is odd,
-    so ``quantize(x) + quantize(K - x) = K`` for ``K`` on the grid, which is why
-    put-call parity and the four weekly legs of a share still net to zero here.
-    Legs of *different* scale do not. This package is riskless before
+    Legs sharing a scale and a tick cancel exactly: half-even rounding is odd,
+    so ``quantize(x) + quantize(K - x) = K`` for ``K`` on the grid, which is
+    why put-call parity and the four weekly legs of a share still net to zero
+    here. Legs of *different* scale do not. This package is riskless before
     quantization and loses 1.25 after it, at a level of 0.00013.
 
     Recorded rather than corrected: the tight answer means enumerating every
-    level where any leg crosses a half-tick boundary -- 40,000 of them for one
-    scale-10,000 contract on a 0.25 grid -- which an order-entry check cannot
+    level where any leg crosses a half-tick boundary (40,000 of them for one
+    scale-10,000 contract on a 0.25 grid), which an order-entry check cannot
     afford, and the half-tick allowance that would bound it cheaply is not the
     exact number either. The loss is bounded by ``sum |quantity| * tick / 2``,
     and this asserts that bound so a future change cannot quietly widen it.
@@ -409,7 +409,7 @@ def test_the_tick_grid_is_where_exactness_stops(listed):
     for step in range(2_001):
         # A tenth of a basis point apart, over the bottom two percent of the
         # range. The worst point sits at 0.00013, which a coarser sweep steps
-        # straight over -- the staircase is 40,000 steps wide and its shape is
+        # straight over: the staircase is 40,000 steps wide and its shape is
         # not visible at any resolution a test can afford, which is the whole
         # reason this is bounded rather than solved.
         level = step * 0.02 / 2_000
@@ -446,11 +446,11 @@ def test_netting_frees_the_arbitrageur_when_collateral_binds():
 
     This claim got considerably smaller when the measurement got better, and
     the shrinkage is the useful part. It used to read 944 attempts and 374
-    fundings missed against 1,094 and 281 -- a large, clean win for netting.
-    Most of that win was two defects in the branch it was being compared
-    against. The *gross* check was counting working orders that were no longer
-    on the book, and was charging `resulting quantity * incoming price` rather
-    than the cost basis the fill would actually create. Both inflated gross
+    fundings missed against 1,094 and 281, a large, clean win for netting. Most
+    of that win was two defects in the branch it was being compared against.
+    The *gross* check was counting working orders that were no longer on the
+    book, and was charging `resulting quantity * incoming price` rather than
+    the cost basis the fill would actually create. Both inflated gross
     collateral, and an inflated comparison makes anything look good.
 
     Re-measured over five minutes with those fixed, `starved` being the
@@ -467,7 +467,7 @@ def test_netting_frees_the_arbitrageur_when_collateral_binds():
     That is not netting failing, it is netting not binding: with the gross
     check no longer overcharging, the arbitrageur rarely runs out of capital,
     and a discount on a bill you were never struggling to pay buys you nothing.
-    It is also a strong statement in its own right -- an identical trajectory
+    It is also a strong statement in its own right: an identical trajectory
     proves netting is inert when it should be inert, rather than quietly
     permitting trades gross margining would refuse.
 

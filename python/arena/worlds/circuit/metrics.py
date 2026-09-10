@@ -302,9 +302,9 @@ def eliminations_per_match(
     alike and the counts do not. So this has no term structure, the
     amount delivered in March is not a different thing from the amount delivered
     in April, and classifying it as a quantity would give it a delivery calendar
-    it does not have. The unit bug that priced SPIKE_VOL_W1 at 274.92 against a
-    settlement of 71.09 was exactly this distinction declared upstream and
-    ignored downstream.
+    it does not have. The unit bug that priced ``RIFT_SOLO_VOL_W1`` at 274.92
+    against a settlement of 71.09 was exactly this distinction declared upstream
+    and ignored downstream.
 
     It is a rate whose range is not [0, 1], which is fine and is why bounds are
     declared per metric rather than assumed. Measured over 4,000 matches per

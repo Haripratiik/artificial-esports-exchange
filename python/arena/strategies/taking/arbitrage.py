@@ -52,8 +52,9 @@ ratio rounding broke.
 
 **Quantization residue is charged for.** Legs of different scale do not cancel
 exactly once each settlement is snapped to its own tick: netting.py measures one
-SPIKE_WR_FUT against ten SPIKE_WR_W1 as riskless before quantization and losing
-1.25 after it, bounded above by ``sum |q| tick / 2``. Binaries tick at 0.01 and
+four week win rate future against ten of its first weekly leg as riskless
+before quantization and losing 1.25 after it, bounded above by
+``sum |q| tick / 2``. Binaries tick at 0.01 and
 calls at 0.25, so that bound is added to the cost hurdle rather than left to be
 discovered.
 
@@ -190,10 +191,12 @@ def derive_binary_relations(instruments: dict[str, Instrument]) -> list[Relation
     # -- the chain: a vertical spread sandwiched by digitals at its strikes ---
     #
     # Formed for every pair of strikes rather than adjacent ones. Across a full
-    # ladder the wide pairs would be implied, but the digitals here are sparse:
-    # SPIKE lists calls at five strikes and binaries at four thresholds, only
-    # two of which coincide with a strike, so the bound on a non-adjacent pair
-    # is a statement no adjacent pair can make.
+    # ladder the wide pairs would be implied, and the digitals here are far too
+    # sparse for that: `EMBER_OBJECTIVE_WR` is the only underlying carrying both
+    # families, and it lists calls at 4,800 and 5,000, puts at 5,000 and 5,200,
+    # and one digital struck at 5,000. A pair is bounded only where a digital
+    # happens to sit at the strike the bound reads, so narrowing the family to
+    # adjacent pairs would give up bounds nothing else on the board states.
     chains: dict[tuple[str, float, str], list[tuple[float, str]]] = {}
     digitals: dict[str, list[tuple[float, str, Binary]]] = {}
     for symbol, instrument in sorted(instruments.items()):
@@ -390,16 +393,17 @@ class StaticArbitrage:
         # How many consecutive wakeups a relation must be outside its band, in
         # the same direction, before a package is sent.
         #
-        # This is the answer to staleness rather than to cost. The view lags the
-        # venue by this strategy's latency, and the moments a ladder looks most
-        # violated are exactly the moments it is being repriced, so a single
-        # observation is as likely to be a stale picture as an arbitrage.
-        # Measured on seed 7 without it: the strategy sent a package to buy
-        # SPIKE_GT47 at 0.06 against a sale of SPIKE_GT48 at 0.88, and by the
-        # next wakeup both books were 0.94 bid at 1.00. The sale filled, the
-        # purchase could not, and the position it was left holding was the one
-        # the market had just moved against. Two observations is the smallest
-        # number that can tell a level from a transient and costs half a wakeup.
+        # This is the answer to staleness rather than to cost. The view lags
+        # the venue by this strategy's latency, and the moments a ladder looks
+        # most violated are exactly the moments it is being repriced, so a
+        # single observation is as likely to be a stale picture as an
+        # arbitrage. Measured on seed 7 without it: the strategy sent a package
+        # to buy one rung of a binary ladder at 0.06 against a sale of the rung
+        # above it at 0.88, and by the next wakeup both books were 0.94 bid at
+        # 1.00. The sale filled, the purchase could not, and the position it
+        # was left holding was the one the market had just moved against. Two
+        # observations is the smallest number that can tell a level from a
+        # transient and costs half a wakeup.
         self.confirmations = max(1, confirmations)
         self.fee_bps = fee_bps
 
@@ -606,9 +610,10 @@ class StaticArbitrage:
 
         Ranked by what a package pays per unit of balance sheet it ties up, not
         by how far outside its band the relation sits. The two disagree, and
-        badly: a chain package on SPIKE is worth about 90 in a mispricing and
-        costs 10,170 in collateral to hold, while a ladder package on the same
-        subject is worth 0.2 and costs 0.71, so absolute mispricing ranks the
+        badly: a chain package on one competitor's win rate is worth about 90
+        in a mispricing and costs 10,170 in collateral to hold, while a ladder
+        package on the same subject is worth 0.2 and costs 0.71, so absolute
+        mispricing ranks the
         chain first at 0.9% of capital against the ladder's 28%. This strategy
         can carry one package at a time, so the ordering decides what it spends
         the session doing.

@@ -2,9 +2,9 @@
 
 The dashboard is one client of this venue. It is not a privileged one, and this
 module exists so that nothing about it has to be. Everything a person can do by
-clicking -- read the listings, read a book, place an order, cancel it, read
-their own account -- a program can do here, over the same market, through the
-same event queue, at the same latency. A systematic trader that had to drive a
+clicking (read the listings, read a book, place an order, cancel it, read their
+own account) a program can do here, over the same market, through the same
+event queue, at the same latency. A systematic trader that had to drive a
 WebSocket meant for a page would be trading a different exchange from the one
 the page shows.
 
@@ -18,31 +18,31 @@ by something going wrong rather than by preference.
 **Market data is candles, and a candle has three OHLC blocks.**
 ``GET /v1/instruments/{symbol}/candles`` publishes open/high/low/close for the
 trade price, for the bid and for the ask separately, which is Kalshi's
-``price``/``yes_bid``/``yes_ask`` shape. On a thin book -- and this venue is
-thin by construction -- the last print is a fact about whenever somebody last
-crossed the spread, while the quotes are facts about the period; only the quote
-candles let a backtester reconstruct what was actually transactable. The
-sampled mid path at ``/history`` remains, and remains a chart's input rather
-than a program's.
+``price``/``yes_bid``/``yes_ask`` shape. On a thin book (and this venue is thin
+by construction) the last print is a fact about whenever somebody last crossed
+the spread, while the quotes are facts about the period; only the quote candles
+let a backtester reconstruct what was actually transactable. The sampled mid
+path at ``/history`` remains, and remains a chart's input rather than a
+program's.
 
 **A key is bound to a seat, never to an account id.** ``runner.reconfigure``
 discards the whole market and every account in it, and ``LiveMarket.trader``
 answers an id it has never heard of with the *shared* account. A credential that
 captured ``you-3`` at issue time would therefore, the first time anybody pressed
 Rebuild in the Lab, quietly start trading a communal seat alongside every other
-stale credential -- one balance, one blotter, everyone able to cancel everyone
+stale credential: one balance, one blotter, everyone able to cancel everyone
 else's orders. That is the same failure the session cookie was fixed for in
 ``dashboard/server.py::_seat_now``, and it is fixed here the same way: the key
 stores a stable seat token, and the account is re-resolved on every single
-request. ``KeyStore.clear`` documents the opposite policy -- that a rebuild
-should invalidate every key -- and it is right about a key bound to an account
-and wrong about one bound to a seat, which is exactly why this module binds to a
-seat.
+request. ``KeyStore.clear`` documents the opposite policy, that a rebuild
+should invalidate every key, and it is right about a key bound to an account
+and wrong about one bound to a seat, which is exactly why this module binds to
+a seat.
 
 **An order is accepted, not acknowledged.** ``POST /v1/orders`` answers 202,
 because at the moment it answers the order is still crossing a 20ms latency link
 and the matching engine has not seen it. Answering 200 with an order id would
-mean either inventing one or waiting for the round trip -- and waiting would give
+mean either inventing one or waiting for the round trip, and waiting would give
 an API client a synchronous confirmation that no algorithm in this simulation
 gets, which is precisely the exemption that makes a live view stop being a view
 of the same system. The exchange's order id appears in ``GET /v1/orders`` when
@@ -114,8 +114,8 @@ BOOK_DEPTH_CAP = 100
 TRADES_DEFAULT = 50
 TRADES_CAP = 500
 
-# Instruments and positions are bounded by the listing itself -- twenty-eight
-# symbols on the default configuration -- so these caps exist to keep the
+# Instruments and positions are bounded by the listing itself (twenty-eight
+# symbols on the default configuration), so these caps exist to keep the
 # contract uniform rather than to protect anything.
 INSTRUMENTS_DEFAULT = 200
 INSTRUMENTS_CAP = 1_000
@@ -139,7 +139,7 @@ HISTORY_DEFAULT = 600
 
 # Candles. Only the page size lives here: the retained depth, the period enum
 # and the span they buy are all the runner's, read off its rings at request
-# time for the same reason the history cap is -- a number restated in two files
+# time for the same reason the history cap is: a number restated in two files
 # is a number that will disagree with itself.
 #
 # 240 as the default because it is a screen's worth and a warm-up's worth at
@@ -147,10 +147,10 @@ HISTORY_DEFAULT = 600
 # 180-second window this API could answer for before candles existed.
 CANDLES_DEFAULT = 240
 
-# Credentials per seat. Unlike the other lists this one has no natural bound --
-# a session can mint keys until it gets bored -- so it needs a stated one like
-# everything else, and the list is ordered oldest first so a client that reaches
-# the cap sees the keys it is most likely to have forgotten about.
+# Credentials per seat. Unlike the other lists this one has no natural bound (a
+# session can mint keys until it gets bored), so it needs a stated one like
+# everything else, and the list is ordered oldest first so a client that
+# reaches the cap sees the keys it is most likely to have forgotten about.
 KEYS_DEFAULT = 100
 KEYS_CAP = 500
 
@@ -162,7 +162,7 @@ CLIENT_ORDER_MEMORY = 512
 # The touch is read from a two-level snapshot rather than a one-level one.
 # Market-on-open interest rests at a sentinel price so that it crosses every
 # candidate an auction weighs, and a one-level snapshot of a book that holds any
-# can therefore contain nothing but the sentinel -- which published a bid of
+# can therefore contain nothing but the sentinel, which published a bid of
 # 4,611,686,018,427,387,904 on the dashboard once already.
 TOUCH_LEVELS = 2
 
@@ -180,9 +180,9 @@ class Seat:
     that survives a market rebuild. The dashboard's signed session id is one;
     anything unique and durable would do. It is deliberately not the account
     id, which lasts only as long as the market that issued it, and deliberately
-    not the display name, which is not an identity -- two visitors called
-    "Ash" are two traders, and binding to the name would merge them into one
-    account, which is the bug this whole module is arranged around.
+    not the display name, which is not an identity: two visitors called "Ash"
+    are two traders, and binding to the name would merge them into one account,
+    which is the bug this whole module is arranged around.
     """
 
     token: str
@@ -193,8 +193,8 @@ class Seat:
 class _ClientOrder:
     """One order this API accepted, from the client's point of view.
 
-    Kept so that ``client_order_id`` -- the only identifier the client chose --
-    can be tied back to the exchange's order id once the acknowledgement has
+    Kept so that ``client_order_id``, the only identifier the client chose, can
+    be tied back to the exchange's order id once the acknowledgement has
     travelled back over the latency link.
     """
 
@@ -218,17 +218,17 @@ _KEYS: KeyStore = KeyStore()
 _RUNNER: Any | None = None
 
 # How the caller of a key-management request is identified. Those three
-# endpoints are the bootstrap -- they are how a browser session mints the first
-# credential -- so they cannot themselves be authenticated by a key.
+# endpoints are the bootstrap: they are how a browser session mints the first
+# credential. So they cannot themselves be authenticated by a key.
 _BROWSER_SEAT: Callable[[Any], Seat | None] | None = None
 
 # Optionally, how the *application* resolves a seat token to the account it
-# holds right now. When the app supplies this -- ``dashboard/server.py`` can,
-# from the same table its cookies use -- a key and its owner's browser share one
-# account across a rebuild rather than being re-seated into two. Without it this
-# module re-seats on its own, which still gives the key its own account and
-# still survives a rebuild; it just may not be the same account the cookie lands
-# in.
+# holds right now. When the app supplies this (``dashboard/server.py`` can,
+# from the same table its cookies use), a key and its owner's browser share one
+# account across a rebuild rather than being re-seated into two. Without it
+# this module re-seats on its own, which still gives the key its own account
+# and still survives a rebuild; it just may not be the same account the cookie
+# lands in.
 _SEAT_NOW: Callable[[str], Any | None] | None = None
 
 # Seat token -> display name. Never cleared: a name outlives the accounts it
@@ -256,10 +256,10 @@ _MESSAGES: dict[str, deque] = {}
 # registers the agent, and ``Venue.open_account`` checks for an existing account
 # several statements before it creates one. Two threads through that window both
 # pick ``you-1`` and the second overwrites the first, which is two people
-# sharing one account -- the failure this module exists to prevent, arrived at
+# sharing one account: the failure this module exists to prevent, arrived at
 # from the other direction. ``dashboard/server.py`` takes the same lock for the
-# same reason; a REST client is if anything more likely to race, because nothing
-# about an HTTP request promises to arrive on one event loop.
+# same reason; a REST client is if anything more likely to race, because
+# nothing about an HTTP request promises to arrive on one event loop.
 _LOCK = threading.Lock()
 
 
@@ -288,16 +288,16 @@ def configure(
         )
         app.include_router(rest.router)
 
-    -- which is the whole integration: the application already knows how to
+    That is the whole integration: the application already knows how to
     recognise one of its browser sessions and where that session is sitting
     right now, and those two facts are the only ones this module cannot work
     out for itself.
 
     Swapping the runner clears every seat binding, and it has to: a binding is
     an account id, an account id only means something inside the market that
-    minted it, and carrying one across would hand the new market's ``you-1`` --
-    somebody else entirely -- to the key that used to hold the old one. The
-    names are kept, because a name is not an account.
+    minted it, and carrying one across would hand the new market's ``you-1``,
+    somebody else entirely, to the key that used to hold the old one. The names
+    are kept, because a name is not an account.
     """
     global _KEYS, _RUNNER, _BROWSER_SEAT, _SEAT_NOW
     if keys is not None:
@@ -336,7 +336,7 @@ def signed_path(path: str, query: str = "") -> str:
 #
 # Registered into ``ERRORS`` rather than raised as a locally minted
 # ``ApiError``, and the distinction matters. ``_runner`` above argues the case
-# out loud for the opposite decision -- it uses a wrong-shaped code rather than
+# out loud for the opposite decision: it uses a wrong-shaped code rather than
 # put one on the wire that ``errors.py`` does not list, because "a catalogue a
 # client cannot look a code up in is the exact drift the catalogue exists to
 # prevent". A code raised from here and never registered would be exactly that
@@ -356,10 +356,10 @@ ERRORS.setdefault(
 def _refuse(code: str, message: str = "", **detail: Any) -> ApiError:
     """One refusal, built from the catalogue so a code and its status agree.
 
-    The sentence may be improved per call site -- ``errors.py`` says the codes
-    are the contract and the sentences are free to get better -- but the code
-    and the HTTP status always come from the catalogue, so a client branching on
-    either can never be told two different things about the same failure.
+    The sentence may be improved per call site (``errors.py`` says the codes
+    are the contract and the sentences are free to get better), but the code
+    and the HTTP status always come from the catalogue, so a client branching
+    on either can never be told two different things about the same failure.
     """
     catalogued, status = ERRORS[code]
     return ApiError(code, message or catalogued, status, detail or None)
@@ -371,7 +371,7 @@ class _Answers(APIRoute):
     A route class rather than an exception handler on the app, because the app
     is not ours: ``dashboard/server.py`` mounts this router into a FastAPI
     instance that already has its own handlers, and a bare ``HTTPException``
-    escaping from here would answer ``{"detail": ...}`` -- the exact shape
+    escaping from here would answer ``{"detail": ...}``, the exact shape
     ``errors.py`` exists to abolish. Attaching it to the router means every
     route added to this file later is covered without anybody remembering to.
     """
@@ -417,8 +417,8 @@ def _runner() -> Any:
 
     Reaching this refusal means the application mounted the router and never
     called :func:`configure`, which is a bug in the server rather than in the
-    request -- and ``invalid_request`` is admittedly the wrong shape for that.
-    It is used anyway, because the alternative is to put a code on the wire that
+    request, and ``invalid_request`` is admittedly the wrong shape for that. It
+    is used anyway, because the alternative is to put a code on the wire that
     ``errors.py`` does not list, and a catalogue a client cannot look a code up
     in is the exact drift the catalogue exists to prevent. The sentence says
     what actually happened.
@@ -450,10 +450,10 @@ def _instrument(symbol: str) -> Any:
 def _clock_ns() -> int:
     """Elapsed simulated nanoseconds, the same way the venue reads them.
 
-    The venue's throttle is a rolling *simulated* second -- see
-    ``Venue._rate_limited`` -- so the surfacing of it here has to be measured on
-    the same clock, or a market running at forty times speed would be refused by
-    one and allowed by the other.
+    The venue's throttle is a rolling *simulated* second (see
+    ``Venue._rate_limited``), so the surfacing of it here has to be measured on
+    the same clock, or a market running at forty times speed would be refused
+    by one and allowed by the other.
     """
     venue = _venue()
     if venue.sim_clock is not None:
@@ -494,8 +494,8 @@ def _stamp(raw: Any, default: int, field_name: str) -> int:
     The same clock ``GET /v1/exchange`` publishes as ``clock`` and
     ``GET /v1/instruments/{symbol}/history`` publishes in ``t``, which is the
     kernel's elapsed simulated nanoseconds and is deliberately not a wall clock.
-    A market here runs at a speed the operator sets -- up to fifty times real
-    time -- so an hour of this exchange is not an hour of anybody's afternoon,
+    A market here runs at a speed the operator sets, up to fifty times real
+    time, so an hour of this exchange is not an hour of anybody's afternoon,
     and stamping its data with a wall clock would make every candle's width a
     function of how fast the server happened to be turning.
 
@@ -524,7 +524,7 @@ def _stamp(raw: Any, default: int, field_name: str) -> int:
 def _cursor(raw: Any, field_name: str) -> int | None:
     """One monotonic cursor value, or None when the caller sent none.
 
-    Zero is a legitimate cursor -- "everything from the beginning" -- and is
+    Zero is a legitimate cursor, "everything from the beginning", and is
     therefore distinguished from absent rather than folded into it. A client
     reconnecting with a cursor it has never advanced sends 0, and reading that
     as "no cursor" would hand it the newest page instead of the oldest.
@@ -561,8 +561,8 @@ def _whole(raw: Any, field_name: str, code: str) -> int:
     except (ArithmeticError, ValueError):
         raise _refuse(code, f"{field_name} must be a whole number, not {raw!r}") from None
     # ``Decimal`` accepts "nan" and "infinity", and both survive the integrality
-    # check below -- infinity is equal to its own integral value -- so without
-    # this the next line is ``int(Decimal("Infinity"))``, which raises
+    # check below: infinity is equal to its own integral value. Without this
+    # the next line is ``int(Decimal("Infinity"))``, which raises
     # ``OverflowError`` and answers a client's typo with a 500 and a traceback.
     if not number.is_finite():
         raise _refuse(code, f"{field_name} must be a whole number, not {raw!r}")
@@ -577,8 +577,8 @@ def _price(raw: Any, field_name: str) -> Decimal:
     A JSON number is refused when it carries a fraction, and the refusal is the
     point rather than an inconvenience. ``json.loads('{"price": 4700.10}')``
     yields a binary double that is not 4700.10, and this venue's whole
-    accounting argument -- integers everywhere, so ``conservation_check`` is
-    exactly zero and not nearly zero -- starts at the wire. Whole numbers are
+    accounting argument (integers everywhere, so ``conservation_check`` is
+    exactly zero and not nearly zero) starts at the wire. Whole numbers are
     accepted because a JSON integer is exact, so a client quoting a round price
     does not have to quote it in quotes.
     """
@@ -595,13 +595,13 @@ def _price(raw: Any, field_name: str) -> Decimal:
     except (ArithmeticError, ValueError):
         raise _refuse(
             "invalid_price",
-            f"{raw!r} is not a {field_name} -- digits and a decimal point only, "
+            f"{raw!r} is not a {field_name}: digits and a decimal point only, "
             "with no commas or currency symbols",
         ) from None
     # ``Decimal`` parses "nan" and "infinity" happily, and every arithmetic
-    # check downstream then either propagates the NaN -- which compares false
+    # check downstream then either propagates the NaN (which compares false
     # against everything and so passes a range test by looking like neither too
-    # high nor too low -- or raises out of the modulo in ``on_grid``. A price
+    # high nor too low) or raises out of the modulo in ``on_grid``. A price
     # that is not a number is refused as one rather than allowed to become a
     # 500 several frames later.
     if not value.is_finite():
@@ -632,7 +632,7 @@ def _quotable(instrument: Any, price: Decimal, field_name: str) -> Decimal:
         raise _refuse(
             "invalid_price",
             f"{price} is outside {instrument.symbol}'s settlement range {low} to "
-            f"{high} -- it cannot settle there, so no {field_name} may rest there",
+            f"{high}. It cannot settle there, so no {field_name} may rest there",
         )
     return price
 
@@ -690,8 +690,8 @@ def _account_for(token: str, fallback_name: str = "") -> Any:
     * the generation moved, which is ``reconfigure`` having built a new market;
     * the bound id is not in the venue's account table, which catches a rebuild
       that arrived by any other route. That last check is the one that matters,
-      because it tests the actual failure -- ``LiveMarket.trader`` answers an
-      unknown id with the shared account -- rather than a bookkeeping proxy for
+      because it tests the actual failure (``LiveMarket.trader`` answers an
+      unknown id with the shared account) rather than a bookkeeping proxy for
       it.
 
     Re-seating rather than refusing keeps the credential working across a
@@ -737,7 +737,7 @@ def _browser(request: Request) -> Seat:
 
     These three endpoints cannot be authenticated by a key, because they are
     where a key comes from. So they are authenticated the way the page is, and
-    the application says how -- this module has no business reading a cookie
+    the application says how. This module has no business reading a cookie
     whose signing secret belongs to somebody else.
     """
     if _BROWSER_SEAT is None:
@@ -795,11 +795,12 @@ def _authenticate(request: Request, raw: bytes) -> _Caller:
 def _throttle(token: str, reducing: bool = False) -> None:
     """Surface the venue's per-participant message rate as a 429.
 
-    The venue already throttles -- ``Venue.message_rate``, a rolling simulated
-    second, ``RejectReason.RATE_LIMITED`` -- but it does it on the far side of a
-    latency link, so a client that overruns it gets 202 for every order and then
-    silence. The refusals land in a blotter it has to poll for and correlate,
-    which is an obscure way to learn something a status code says in one number.
+    The venue already throttles (``Venue.message_rate``, a rolling simulated
+    second, ``RejectReason.RATE_LIMITED``), but it does it on the far side of a
+    latency link, so a client that overruns it gets 202 for every order and
+    then silence. The refusals land in a blotter it has to poll for and
+    correlate, which is an obscure way to learn something a status code says in
+    one number.
 
     Two properties are copied from the venue rather than invented, so the two
     cannot disagree about what is allowed:
@@ -850,9 +851,9 @@ def _reconcile(token: str, acknowledged: list[dict[str, Any]]) -> None:
     """Tie each acknowledged order back to the ``client_order_id`` that placed it.
 
     The client chooses one identifier and the exchange chooses another, and
-    nothing carries the first into the engine -- ``Submit`` has no client tag,
-    by design, because the engine holds no reference to anything above it. So
-    the join is made here, on the four facts both sides know: symbol, side,
+    nothing carries the first into the engine: ``Submit`` has no client tag, by
+    design, because the engine holds no reference to anything above it. So the
+    join is made here, on the four facts both sides know: symbol, side,
     quantity and the price that was actually accepted.
 
     Matching on those is exact where it needs to be and harmless where it is
@@ -904,19 +905,19 @@ def _client_order_row(caller: "_Caller", record: _ClientOrder) -> dict[str, Any]
     Three states, and they are the three questions a client that has lost track
     of a POST actually has.
 
-    ``pending`` -- this API accepted it and no acknowledgement has come back
+    ``pending`` means this API accepted it and no acknowledgement has come back
     yet. Either it is still crossing the latency link, or the venue refused it
-    on the far side; those are distinguishable, and the refusal is in
-    ``GET /v1/account/fills`` under ``rejections``. No timeout is applied here
-    for the reason ``working_orders`` gives: how long a round trip takes is a
+    on the far side; those are distinguishable, and the refusal is in ``GET
+    /v1/account/fills`` under ``rejections``. No timeout is applied here for
+    the reason ``working_orders`` gives: how long a round trip takes is a
     property of this seat's link and of how fast the market is being run, and a
     guessed timeout that fires early reports a failure that has not happened.
 
-    ``working`` -- it rested, and ``order`` carries the live row.
+    ``working`` means it rested, and ``order`` carries the live row.
 
-    ``done`` -- the exchange assigned it an id and it is no longer in the book:
-    filled outright, filled through, or cancelled. A market order is typically
-    this from the first moment a client can ask.
+    ``done`` means the exchange assigned it an id and it is no longer in the
+    book: filled outright, filled through, or cancelled. A market order is
+    typically this from the first moment a client can ask.
     """
     listing = _venue().registry.get(record.symbol)
     status = "pending"
@@ -936,7 +937,7 @@ def _client_order_row(caller: "_Caller", record: _ClientOrder) -> dict[str, Any]
         "side": record.side,
         "quantity": record.quantity,
         # The price as sent, in contract units, with the engine's own integer
-        # beside it under a name that says which is which -- the same pairing
+        # beside it under a name that says which is which, the same pairing
         # ``_order_row`` publishes and for the same reason.
         "price": (
             None
@@ -955,10 +956,10 @@ def _acknowledged(caller: "_Caller") -> list[dict[str, Any]]:
     """Every order the exchange has acknowledged to this account, from its blotter.
 
     The blotter rather than the working orders, because an order that filled the
-    instant it arrived was acknowledged and never rested -- a market order
-    always, an immediate-or-cancel usually -- and matching only against what is
-    resting leaves exactly those unreconcilable. They are the ones a client most
-    wants named, since a fill is the event it has to book.
+    instant it arrived was acknowledged and never rested (a market order
+    always, an immediate-or-cancel usually) and matching only against what is
+    resting leaves exactly those unreconcilable. They are the ones a client
+    most wants named, since a fill is the event it has to book.
 
     Bounded by ``HumanAgent.log``'s own 200 entries: an account that generated
     two hundred private events between two polls loses the earliest
@@ -1052,9 +1053,10 @@ def _instrument_row(symbol: str) -> dict[str, Any]:
         "tick": str(instrument.tick_size),
         "lot": instrument.lot_size,
         # The value bounds, not the settlement bounds. What an order may rest at
-        # is what the claim can still be worth, payments included -- a share
-        # that has paid part of itself out is worth less by exactly that, and
-        # quoting the un-narrowed range would advertise prices the venue refuses.
+        # is what the claim can still be worth, payments included: a share that
+        # has paid part of itself out is worth less by exactly that, and
+        # quoting the un-narrowed range would advertise prices the venue
+        # refuses.
         "bounds": [str(low), str(high)],
         "settlement_bounds": [str(settle_low), str(settle_high)],
         "expiry": instrument.expiry.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1073,20 +1075,20 @@ def _candle_row(instrument: Any, candle: Any) -> dict[str, Any]:
     The three blocks are the design, and they are copied from Kalshi rather than
     invented: their candlestick carries ``price``, ``yes_bid`` and ``yes_ask``
     as separate open/high/low/close structures, and the reason generalises past
-    binary contracts. On a thin book the last trade is close to meaningless --
-    it is a fact about whenever somebody last crossed the spread, which on nine
-    of this venue's forty-seven contracts was more than a simulated second ago
-    -- while the bid and the ask are facts about the period itself. A backtester
-    that wants to know what it could actually have transacted at reads the quote
-    candles; the trade candle only tells it what somebody else did.
+    binary contracts. On a thin book the last trade is close to meaningless (it
+    is a fact about whenever somebody last crossed the spread, which on nine of
+    this venue's forty-seven contracts was more than a simulated second ago),
+    while the bid and the ask are facts about the period itself. A backtester
+    that wants to know what it could actually have transacted at reads the
+    quote candles; the trade candle only tells it what somebody else did.
 
     ``mean`` is Kalshi's fifth price field and is the volume-weighted average.
     It is the one figure on this payload that is not exact, because it is a
     quotient of two integers and a quotient of two integers is not always a
-    decimal -- 100 lots at 3 and 200 at 4 average to 11/3. So ``notional``
-    travels beside it, exact and integral, and a client that needs the exactness
-    divides it itself and keeps the remainder. Everything else here is an
-    integer or an exact decimal string, and none of it is a float.
+    decimal: 100 lots at 3 and 200 at 4 average to 11/3. So ``notional``
+    travels beside it, exact and integral, and a client that needs the
+    exactness divides it itself and keeps the remainder. Everything else here
+    is an integer or an exact decimal string, and none of it is a float.
     """
     tick = instrument.tick_size
 
@@ -1104,7 +1106,7 @@ def _candle_row(instrument: Any, candle: Any) -> dict[str, Any]:
             mean = str(notional / Decimal(candle.volume))
     else:
         # No print in the period, so the mean of nothing is the last thing that
-        # traded -- the same value the open, high, low and close all carry.
+        # traded, the same value the open, high, low and close all carry.
         # Consistent with the block rather than null, so a client averaging
         # across bars does not have to special-case the quiet ones.
         mean = price(candle.price_close)
@@ -1141,8 +1143,8 @@ def _order_row(symbol: str, order: Any) -> dict[str, Any]:
 
     ``ticks`` is published as well as ``price``, and the name is doing the work:
     everything that has gone wrong in this codebase around ticks went wrong
-    because a raw internal unit appeared under a label that promised a price --
-    a settlement of 18,677 on a contract marked at 4,663, a halt record reading
+    because a raw internal unit appeared under a label that promised a price: a
+    settlement of 18,677 on a contract marked at 4,663, a halt record reading
     1,989 for 497.25. A field called ``ticks`` promises a tick count, and a
     client reconciling against the exchange's own integers should not have to
     divide a decimal string by a tick size to get them back.
@@ -1194,7 +1196,7 @@ def _working_orders(caller: _Caller) -> list[dict[str, Any]]:
             #
             # Given every key the ordinary row has, filled with nulls, because
             # a list whose members have different shapes makes every client
-            # that reads it branch on which one it got -- and the one that
+            # that reads it branch on which one it got, and the one that
             # forgets to branch fails on the rare row rather than the common
             # one, which is the worst possible distribution of that bug.
             side = who.order_side.get((symbol, order_id))
@@ -1308,11 +1310,12 @@ async def exchange() -> dict[str, Any]:
             "message_rate": venue.message_rate,
             # Symbols not matching continuously, asked as a question about the
             # phase rather than about a name. A halt does not put a symbol into
-            # a state called "halted" -- it puts it into an auction, which is
-            # also where the opening call and the closing call live -- so a
+            # a state called "halted" (it puts it into an auction, which is
+            # also where the opening call and the closing call live), so a
             # client watching for the string would watch forever. What it
             # actually needs to know is which books will not trade its order
-            # right now, and every one of those phases answers that the same way.
+            # right now, and every one of those phases answers that the same
+            # way.
             "not_trading": sorted(
                 symbol
                 for symbol in venue.registry.symbols
@@ -1331,8 +1334,8 @@ async def instruments(
 ) -> dict[str, Any]:
     """Everything listed, filtered by class or by subject.
 
-    Both filters are derived rather than declared -- the class comes from the
-    payoff and the underlying, the subjects from the underlying's atoms -- so
+    Both filters are derived rather than declared: the class comes from the
+    payoff and the underlying, the subjects from the underlying's atoms. So
     they work identically for all nine classes the venue lists and there is
     nothing here that knows what a future or an option is.
 
@@ -1371,7 +1374,7 @@ async def instrument(symbol: str) -> dict[str, Any]:
     venue = _venue()
     row = _instrument_row(symbol)
     schedule = listing.spec.distribution
-    # The contract's own parameters -- a strike, a scale, a threshold -- are
+    # The contract's own parameters (a strike, a scale, a threshold) are
     # published exactly as the contract layer holds them, which is as floats.
     # They are terms of the claim rather than money in the ledger, they feed
     # the spec digest in that form, and the WebSocket already publishes the
@@ -1427,7 +1430,7 @@ async def book(symbol: str, depth: str | None = None) -> dict[str, Any]:
 
     Market-on-open interest rests at a sentinel so that it crosses every
     candidate an auction weighs. It is real interest and it is not a price, so
-    it is summarised as ``market_on_open`` rather than drawn as a level --
+    it is summarised as ``market_on_open`` rather than drawn as a level:
     publishing it as one put a bid of 4,611,686,018,427,387,904 on a screen.
     """
     listing = _instrument(symbol)
@@ -1538,7 +1541,7 @@ def _candle_ring(symbol: str, raw_period: str) -> tuple[Any, list[int]]:
 
     The enum is read off the runner rather than declared here. This module is
     mounted by an application it must not import, and the periods are that
-    application's -- so the values a client is refused against are the values
+    application's, so the values a client is refused against are the values
     that are actually being aggregated, and there is no second copy to go stale
     the way the sampling comment in ``dashboard/state.py`` did.
     """
@@ -1610,7 +1613,7 @@ async def candles(request: Request, symbol: str) -> dict[str, Any]:
     the refusal names both numbers.
 
     ``limit`` is *not* that check and is clamped like every other list here,
-    because a limit is a page size rather than a claim about coverage -- the
+    because a limit is a page size rather than a claim about coverage; the
     response says which one it applied, and ``start``/``end`` come back
     unchanged so a client can see exactly what it asked for.
     """
@@ -1643,7 +1646,7 @@ async def candles(request: Request, symbol: str) -> dict[str, Any]:
             raise _refuse(
                 "invalid_request",
                 f"that range asks for {wanted} candlesticks of {ring.period}s and "
-                f"this venue retains {ring.depth} per period -- narrow the range "
+                f"this venue retains {ring.depth} per period, so narrow the range "
                 f"or ask for a longer period",
                 requested=wanted,
                 cap=ring.depth,
@@ -1686,7 +1689,7 @@ async def account(request: Request) -> dict[str, Any]:
     """Cash, collateral, equity and both halves of PnL, for the calling key.
 
     Every figure is a string in price units. The ledger underneath is integer
-    minor units -- a millionth of a price unit -- and publishing those raw put a
+    minor units (a millionth of a price unit) and publishing those raw put a
     maker worth 113,125,513.21 on the dashboard as "113125513.21M" once
     already: a raw internal unit under a label that promises a price.
     """
@@ -1733,10 +1736,11 @@ def _numbered(entries: list[dict[str, Any]], total: int, key: str) -> dict[str, 
     The id is not invented here and is not an index into anything. ``HumanAgent``
     appends exactly one log entry per private event and
     ``TradingAgent._on_private`` increments exactly one counter for the same
-    event, in that order -- so the agent's own ``fills`` counter *is* the
+    event, in that order, so the agent's own ``fills`` counter *is* the
     sequence number of its last fill, and the k entries the log still holds are
-    the last k of them. Counting backwards from the counter gives every retained
-    event a number that is stable, gap-free, and monotonic across symbols.
+    the last k of them. Counting backwards from the counter gives every
+    retained event a number that is stable, gap-free, and monotonic across
+    symbols.
 
     Across symbols is the requirement, and it is why the engine's own
     ``sequence`` cannot be used: sequence numbers are minted per matching engine
@@ -1746,7 +1750,7 @@ def _numbered(entries: list[dict[str, Any]], total: int, key: str) -> dict[str, 
     The counter also makes eviction visible, which is the part that matters
     after a disconnect. ``HumanAgent.log`` keeps the last 200 private events of
     every kind, so an account that generated three hundred between two polls has
-    genuinely lost the earliest ones -- and a cursor that renumbered from
+    genuinely lost the earliest ones, and a cursor that renumbered from
     whatever survived would hand a reconnecting client a contiguous-looking
     series with a hole in it. ``first_id`` against the client's own cursor is
     how it finds out instead.
@@ -1764,7 +1768,7 @@ def _numbered(entries: list[dict[str, Any]], total: int, key: str) -> dict[str, 
 
 @router.get("/account/fills")
 async def fills(request: Request, limit: str | None = None) -> dict[str, Any]:
-    """This account's executions, most recent first -- and its refusals.
+    """This account's executions, most recent first, and its refusals.
 
     Both, in one response, because a client that reads only its fills never
     learns that an order was refused. The venue rejects asynchronously: an
@@ -1776,13 +1780,13 @@ async def fills(request: Request, limit: str | None = None) -> dict[str, Any]:
     ``amendments`` is the third list, and it is here rather than nowhere for
     the same argument. A replace's whole observable outcome is
     ``kept_priority``, which is a fact about what the engine did and cannot be
-    inferred from the resulting order -- an order for six at 100 looks
-    identical whether it kept its place in the queue or went to the back of it.
-    Without this list a client could send an amendment through
-    ``PATCH /v1/orders/{symbol}/{order_id}`` and never learn what it cost,
-    which would make a REST client less capable than the page. It is also the
-    only place a **pegged** order's tracking is visible: the engine emits one
-    of these every time the reference moves.
+    inferred from the resulting order: an order for six at 100 looks identical
+    whether it kept its place in the queue or went to the back of it. Without
+    this list a client could send an amendment through ``PATCH
+    /v1/orders/{symbol}/{order_id}`` and never learn what it cost, which would
+    make a REST client less capable than the page. It is also the only place a
+    **pegged** order's tracking is visible: the engine emits one of these every
+    time the reference moves.
 
     ``?after=<fill_id>`` returns only fills strictly after that id, the way
     Binance's ``myTrades?fromId=`` does, and ``?after_rejection=`` and
@@ -1791,8 +1795,8 @@ async def fills(request: Request, limit: str | None = None) -> dict[str, Any]:
     tell a fill it has already booked from one it has not, and the only safe
     reading of an ambiguous blotter is to re-book everything or none of it.
     Three cursors rather than one because they number three different sequences
-    -- fill 12, rejection 12 and amendment 12 are unrelated events -- and a
-    single ``after`` applied to all of them would silently drop from two.
+    (fill 12, rejection 12 and amendment 12 are unrelated events) and a single
+    ``after`` applied to all of them would silently drop from two.
 
     Ordering stays newest-first even under a cursor, which is worth stating
     because Binance's ascending order is the more usual choice for one. It costs
@@ -1938,16 +1942,16 @@ async def order_by_client_order_id(request: Request) -> dict[str, Any]:
 
     The colon suffix rather than a fourth path segment, which is Alpaca's
     ``/v2/orders:by_client_order_id`` exactly. A segment would have had to be
-    either ``/orders/{client_order_id}`` -- which collides with the exchange's
+    either ``/orders/{client_order_id}`` (which collides with the exchange's
     own ids under ``/orders/{symbol}/{order_id}`` and would make the meaning of
-    a path depend on how many segments follow it -- or a nested collection that
+    a path depend on how many segments follow it) or a nested collection that
     does not exist. A colon is a legal path character, it sorts as a sibling of
     the collection rather than a member of it, and it reads as what it is: a
     lookup on the collection rather than an item in it.
 
     This is the half of the reconciliation story that was missing. ``POST
     /v1/orders`` refuses a ``client_order_id`` this seat has already used, and
-    the argument for refusing is sound and is in :func:`place_order` -- but
+    the argument for refusing is sound and is in :func:`place_order`, but
     refusing without giving the client any way to *ask* what happened to the
     first attempt leaves a retried, timed-out POST exactly where it started. It
     knows its id was used. It still does not know whether it is long.
@@ -1984,8 +1988,8 @@ def _order_request(payload: dict[str, Any]) -> tuple[dict[str, Any], Any]:
     Checked here rather than left to the venue because the venue's refusal
     arrives asynchronously as a ``RejectReason`` in a blotter, and "your
     quantity was not a multiple of the lot size" is a fact about the request
-    that the request itself can be told. Anything the venue alone can know --
-    collateral, the price band, an auction phase -- is still left to the venue.
+    that the request itself can be told. Anything the venue alone can know
+    (collateral, the price band, an auction phase) is still left to the venue.
     """
     symbol = str(payload.get("symbol") or "")
     if not symbol:
@@ -2037,11 +2041,11 @@ def _order_request(payload: dict[str, Any]) -> tuple[dict[str, Any], Any]:
 
     peg, offset = _peg_request(payload)
 
-    # The order type is derived from what was sent -- a price makes it a limit,
-    # a trigger makes it a stop, a reference makes it a peg -- exactly as
-    # ``LiveMarket.submit`` derives it. A declared ``type`` is therefore checked
-    # against that rather than obeyed, so a client whose fields and whose
-    # declaration disagree is told which, instead of having one of them
+    # The order type is derived from what was sent (a price makes it a limit, a
+    # trigger makes it a stop, a reference makes it a peg) exactly as
+    # ``LiveMarket.submit`` derives it. A declared ``type`` is therefore
+    # checked against that rather than obeyed, so a client whose fields and
+    # whose declaration disagree is told which, instead of having one of them
     # silently win.
     #
     # A peg is tested before the other two for the reason ``LiveMarket.submit``
@@ -2121,7 +2125,7 @@ def _peg_request(payload: dict[str, Any]) -> tuple[str | None, int]:
 
     The vocabulary is read off :class:`PegReference` rather than restated, so a
     fourth reference added to the exchange is reachable from here without
-    anybody editing this module -- the same argument the time-in-force check
+    anybody editing this module, the same argument the time-in-force check
     twenty lines up makes about ``TimeInForce``.
 
     Both failures answer ``invalid_order_type`` rather than earning a code of
@@ -2134,7 +2138,7 @@ def _peg_request(payload: dict[str, Any]) -> tuple[str | None, int]:
     reason ``Submit.peg_offset`` is one: on a contract carrying a tick table the
     same decimal is a different number of ticks at different levels, so an
     offset expressed as a price would silently change size as the reference
-    moved -- which is precisely what a peg exists to stop happening.
+    moved, which is precisely what a peg exists to stop happening.
     """
     raw_peg = payload.get("peg")
     peg: str | None = None
@@ -2174,8 +2178,8 @@ async def place_order(request: Request) -> JSONResponse:
 
     Body::
 
-        {"symbol": "SPIKE_WR_FUT", "side": "buy", "quantity": 5,
-         "price": "4700.25", "type": "limit", "time_in_force": "gtc",
+        {"symbol": "VANTA_OBJECTIVE_WR", "side": "buy", "quantity": 5,
+         "price": "4700.00", "type": "limit", "time_in_force": "gtc",
          "stop": null, "display": 0, "client_order_id": "abc-1"}
 
     ``symbol``, ``side`` and ``quantity`` are required; everything else has a
@@ -2183,10 +2187,10 @@ async def place_order(request: Request) -> JSONResponse:
     ``client_order_id`` is echoed back and is the identifier the order is
     reconcilable by until the exchange has assigned its own.
 
-    A **pegged** order names ``peg`` -- one of ``bid``, ``ask``, ``mid`` -- and
-    an optional signed ``peg_offset`` in ticks, and names no ``price``::
+    A **pegged** order names ``peg`` (one of ``bid``, ``ask``, ``mid``) and an
+    optional signed ``peg_offset`` in ticks, and names no ``price``::
 
-        {"symbol": "SPIKE_WR_FUT", "side": "buy", "quantity": 5,
+        {"symbol": "VANTA_OBJECTIVE_WR", "side": "buy", "quantity": 5,
          "peg": "bid", "peg_offset": -1}
 
     It exists because quoting a *number* and quoting a *position* are different
@@ -2195,7 +2199,7 @@ async def place_order(request: Request) -> JSONResponse:
     and each one arrives in this account's blotter as a ``replace`` event
     carrying the same order id. The id does not change, which is why
     ``PATCH``/``DELETE /v1/orders/{symbol}/{order_id}`` keep working on a peg
-    that has moved -- measured, and it did not before: a peg left this account's
+    that has moved. Measured, and it did not before: a peg left this account's
     working-order list at its first reprice and could then not be cancelled at
     all.
 
@@ -2203,7 +2207,7 @@ async def place_order(request: Request) -> JSONResponse:
     resolved them, so ``time_in_force`` comes back null when none was given
     rather than filled in with the default. Echoing cannot drift from what the
     venue does; restating its defaults here would be a second copy of a rule
-    that lives in ``LiveMarket.submit`` -- where an unpriced order is immediate,
+    that lives in ``LiveMarket.submit``, where an unpriced order is immediate,
     a triggered one rests, and anything else rests unless told otherwise.
 
     A ``client_order_id`` this seat has already used is refused rather than
@@ -2214,8 +2218,8 @@ async def place_order(request: Request) -> JSONResponse:
     That refusal is a **409 Conflict**, not a bad request, and it carries the
     existing order in its detail: its exchange id, its status, and its price and
     quantity as sent. The status code is doing real work here. 400 says "your
-    request is malformed, fix it and resend" and this request is not malformed
-    -- it is a perfectly good order that conflicts with one that already exists,
+    request is malformed, fix it and resend" and this request is not malformed:
+    it is a perfectly good order that conflicts with one that already exists,
     which is what 409 means everywhere else on the web. And the detail is the
     answer to the question the retrying client is actually asking: it retried
     because it does not know whether the first attempt landed, and being told
@@ -2238,7 +2242,7 @@ async def place_order(request: Request) -> JSONResponse:
         if existing is not None:
             # Reconciled first, so the conflict reports "working, id 41" rather
             # than "pending" for an order the exchange acknowledged while the
-            # client was deciding to retry -- which is precisely the window a
+            # client was deciding to retry, which is precisely the window a
             # retry happens in.
             _reconciled(caller)
             raise _refuse(
@@ -2310,7 +2314,7 @@ async def order_detail(request: Request, symbol: str, order_id: str) -> dict[str
 
     Both halves of the address are required. Order ids come from the matching
     engine and there is one engine per book, so id 5 exists on every contract at
-    once -- addressing by id alone means addressing whichever of them was found
+    once: addressing by id alone means addressing whichever of them was found
     first.
 
     An order belonging to somebody else answers exactly as one that never
@@ -2334,17 +2338,17 @@ async def order_detail(request: Request, symbol: str, order_id: str) -> dict[str
     return row
 
 
-# What an amendment may change. Everything else on an order -- its side, its
-# time in force, its display size, its trigger -- is a property of the order
-# rather than of the claim it has on the queue, and ``Replace`` cannot carry
-# any of them.
+# What an amendment may change. Everything else on an order (its side, its time
+# in force, its display size, its trigger) is a property of the order rather
+# than of the claim it has on the queue, and ``Replace`` cannot carry any of
+# them.
 #
 # A field outside this set is refused rather than ignored, and the reason is a
 # bug this venue has already had once in the other direction: a replace used to
 # drop ``display_size``, so an iceberg came back fully displayed and published
 # the size its owner was working in slices precisely so that nobody could see
 # it. The engine now carries it across. Silently accepting ``display`` here
-# would rebuild exactly that failure from the client's side -- it would believe
+# would rebuild exactly that failure from the client's side: it would believe
 # it had changed the visible size, and nothing would have.
 _AMENDABLE = ("quantity", "price")
 
@@ -2355,9 +2359,9 @@ async def amend_order(request: Request, symbol: str, order_id: str) -> JSONRespo
 
     Body::
 
-        {"quantity": 6}                     -- size only, price unchanged
-        {"price": "4700.25"}                -- price only, size unchanged
-        {"quantity": 6, "price": "4700.25"} -- both
+        {"quantity": 6}                     size only, price unchanged
+        {"price": "4700.25"}                price only, size unchanged
+        {"quantity": 6, "price": "4700.25"} both
 
     **Why PATCH and not POST.** POST on an item URL means "create a subordinate
     resource under this one", and nothing is created here: the exchange's order
@@ -2375,9 +2379,9 @@ async def amend_order(request: Request, symbol: str, order_id: str) -> JSONRespo
         10 -> 6 at a different price         kept_priority=False   they fill
 
     Queue priority survives a strict reduction at an unchanged price and
-    nothing else -- so an amendment that re-sends a field it is not changing
-    goes to the back of the queue for asking for nothing. PATCH's contract is
-    "send only what is changing", which makes the priority-preserving call the
+    nothing else, so an amendment that re-sends a field it is not changing goes
+    to the back of the queue for asking for nothing. PATCH's contract is "send
+    only what is changing", which makes the priority-preserving call the
     natural one to write. PUT's contract is "send the whole representation",
     which would have made the priority-destroying call the natural one, and a
     client would have paid for the method choice in fills it did not get.
@@ -2389,17 +2393,17 @@ async def amend_order(request: Request, symbol: str, order_id: str) -> JSONRespo
     ``GET /v1/account/fills`` under ``amendments``, carrying ``kept_priority``
     and its own cursor; the resulting order is at
     ``GET /v1/orders/{symbol}/{order_id}``. It cannot be inferred from that
-    order -- one for six at 100 looks identical whether it kept its place in
-    the queue or went to the back of it -- which is why the event is published
+    order (one for six at 100 looks identical whether it kept its place in the
+    queue or went to the back of it), which is why the event is published
     rather than left to be worked out.
 
     Omitting ``quantity`` re-sends the order's current ``remaining``, which is
-    what the engine counts an amendment against -- so amending a partly filled
+    what the engine counts an amendment against. So amending a partly filled
     order to 4 leaves 4 lots working rather than 4 minus what already traded.
     Note the race that omission accepts: if a fill lands while the amendment is
-    in flight, the quantity sent is above the new remaining and the engine reads
-    it as an increase, which loses priority. A client that cares sends the
-    number it wants.
+    in flight, the quantity sent is above the new remaining and the engine
+    reads it as an increase, which loses priority. A client that cares sends
+    the number it wants.
 
     Omitting both is refused. An amendment that changes nothing still costs
     queue position, so answering it with success would charge a client for a
@@ -2407,7 +2411,7 @@ async def amend_order(request: Request, symbol: str, order_id: str) -> JSONRespo
 
     Not idempotent, and deliberately unlike ``DELETE``. A cancel for an order
     that is not resting is a correct outcome the client asked for; an amendment
-    to an order that is not resting is not -- there is nothing to carry the new
+    to an order that is not resting is not: there is nothing to carry the new
     terms. So it answers 404, exactly as ``GET`` on the same address does, and
     for the same non-disclosure reason: an order belonging to somebody else
     answers exactly as one that never existed does.
@@ -2454,13 +2458,13 @@ async def amend_order(request: Request, symbol: str, order_id: str) -> JSONRespo
         quantity = _whole(payload["quantity"], "quantity", "invalid_quantity")
         if quantity <= 0:
             # The engine refuses this as INVALID_QUANTITY and leaves the order
-            # exactly where it was, which is right -- an amendment to zero is
-            # not a cancel and must not be read as one. Said here so a client
-            # that meant to cancel is told to use DELETE.
+            # exactly where it was, which is right: an amendment to zero is not
+            # a cancel and must not be read as one. Said here so a client that
+            # meant to cancel is told to use DELETE.
             raise _refuse(
                 "invalid_quantity",
                 "quantity must be a positive whole number; an amendment to zero "
-                "is not a cancel -- DELETE the order instead",
+                "is not a cancel. DELETE the order instead",
             )
         # The listing rule the submit path applies, applied here too. It is the
         # half of the grid that nobody enforced for a long time: a contract
@@ -2500,17 +2504,17 @@ async def amend_order(request: Request, symbol: str, order_id: str) -> JSONRespo
 
     # The client's own record follows the amendment, because that record holds
     # the order *as sent* and an amendment is also something this seat sent.
-    # Leaving the original size there would have
-    # ``GET /v1/orders:by_client_order_id`` report a quantity the client itself
-    # has already superseded.
+    # Leaving the original size there would have ``GET
+    # /v1/orders:by_client_order_id`` report a quantity the client itself has
+    # already superseded.
     #
     # Being straight about what this does not fix: if the venue then refuses
     # the amendment, the record carries a size that never took effect. That is
-    # the same shape ``place_order`` already accepts -- it remembers an order
-    # the venue may refuse a round trip later -- and it is survivable for the
-    # same reason: the ``order`` block published beside it is read from the
-    # engine and stays the authority on what is actually resting, and the
-    # refusal itself is in ``GET /v1/account/fills`` under ``rejections``.
+    # the same shape ``place_order`` already accepts (it remembers an order the
+    # venue may refuse a round trip later) and it is survivable for the same
+    # reason: the ``order`` block published beside it is read from the engine
+    # and stays the authority on what is actually resting, and the refusal
+    # itself is in ``GET /v1/account/fills`` under ``rejections``.
     #
     # ``_reconciled`` first, for the reason it is called from every other read
     # that can name an order: binding client ids only where the list is built
@@ -2562,8 +2566,8 @@ async def cancel_order(request: Request, symbol: str, order_id: str) -> dict[str
 
     The first is that the client is right. It wanted that order not to be
     resting, and it is not resting. Failing the call would make a correct
-    outcome look like an error, and the standard response to a failed cancel --
-    send it again -- cannot improve on it.
+    outcome look like an error, and the standard response to a failed cancel
+    (send it again) cannot improve on it.
 
     The second is that a race is the normal case, not the exceptional one.
     Orders here are cancelled over a latency link, so a cancel and a fill cross
@@ -2573,8 +2577,8 @@ async def cancel_order(request: Request, symbol: str, order_id: str) -> dict[str
     The third is that it costs nothing to give away. A cancel for somebody
     else's order, a cancel for an id that never existed and a cancel for an
     order that filled a millisecond ago all answer identically, so this
-    endpoint discloses nothing about orders that are not the caller's -- which
-    a 404 for "no such order" and a 200 for "yours, now gone" would.
+    endpoint discloses nothing about orders that are not the caller's, which a
+    404 for "no such order" and a 200 for "yours, now gone" would.
 
     An unknown *symbol* is still refused, because that is a typo rather than a
     race, and answering it with success would let a client believe it had
@@ -2637,9 +2641,9 @@ def _key_row(key: ApiKey) -> dict[str, Any]:
     """One credential, described without either secret it holds.
 
     ``ApiKey.public`` publishes ``agent_id``, and in this module that field
-    holds the seat token -- the same value the owner's browser session is
-    identified by. So the row is built here instead: what a key's owner needs to
-    see is which seat it trades and which account that seat is in right now,
+    holds the seat token, the same value the owner's browser session is
+    identified by. So the row is built here instead: what a key's owner needs
+    to see is which seat it trades and which account that seat is in right now,
     and neither of those is the token.
     """
     return {
@@ -2661,7 +2665,7 @@ async def issue_key(request: Request) -> JSONResponse:
     way it escapes.
 
     The key is bound to the caller's *seat*, not to the account that seat is
-    sitting in. The account will change -- every rebuild replaces it -- and a
+    sitting in. The account will change (every rebuild replaces it) and a
     credential that had captured the old id would fall through
     ``LiveMarket.trader`` onto the shared account and trade a communal seat.
     """

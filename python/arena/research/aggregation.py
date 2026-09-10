@@ -9,13 +9,13 @@ nothing about the market.
 
 So the market is scored against a ladder, weakest rung first:
 
-  1. best single agent, chosen after the fact -- an upper bound nobody could
-     have picked in advance, included precisely because it is unfair
+  1. best single agent, chosen after the fact: an upper bound nobody could have
+     picked in advance, included precisely because it is unfair
   2. simple mean of the agents' probabilities
   3. precision-weighted mean, weighting by how much evidence each agent saw.
      In this world those weights are *known exactly*, which no real study can
      say, so this rung is stronger here than it could be in the field
-  4. extremized log-odds mean -- the rung that matters
+  4. extremized log-odds mean, the rung that matters
 
 Why extremizing is the rung that matters
 ----------------------------------------
@@ -34,7 +34,7 @@ known result. A market that beats rung 4 has done something worth reporting.
 
 **d is fitted out of sample.** Fitting it on the same trials it is scored on
 would let the baseline see the answers and would understate the market's
-performance is unfair in the other direction -- so the trials are split, d is
+performance is unfair in the other direction, so the trials are split, d is
 fitted on one half and evaluated on the other, and both halves take both roles.
 """
 
@@ -138,7 +138,7 @@ def fit_extremization(
     That is deliberate. Extremizing assumes the pooled forecast is
     under-confident, which is what happens when forecasters see disjoint pieces
     of the evidence. If a population is instead over-confident, the best factor
-    is below one and clamping the grid at 1.0 would hide it -- reporting a
+    is below one and clamping the grid at 1.0 would hide it, reporting a
     baseline pinned at its own boundary as though it were an interior optimum.
     Letting the factor go below one can only make this baseline stronger, which
     is the conservative direction for anything the market is claimed to beat.
@@ -181,7 +181,7 @@ def murphy_decomposition(
     Reliability is miscalibration (lower is better). Resolution is the ability
     to separate events that happen from those that do not (higher is better).
     Uncertainty is a property of the events themselves and no forecaster can
-    change it -- so a Brier difference driven entirely by uncertainty is not a
+    change it, so a Brier difference driven entirely by uncertainty is not a
     skill difference at all.
     """
     f = np.asarray(forecasts, dtype=float)
@@ -315,10 +315,10 @@ def benjamini_hochberg(comparisons: Sequence[Comparison]) -> list[Comparison]:
     """Control the false discovery rate across the ladder.
 
     Four comparisons are made against the same market, so at the usual 5% level
-    one spurious "win" per twenty runs is expected by chance alone. Benjamini-
-    Hochberg is the standard correction and is less brutal than Bonferroni,
-    which matters when the comparisons are correlated -- and these are, since
-    every rung is computed from the same agents.
+    one spurious "win" per twenty runs is expected by chance alone.
+    Benjamini-Hochberg is the standard correction and is less brutal than
+    Bonferroni, which matters when the comparisons are correlated. And these
+    are, since every rung is computed from the same agents.
     """
     # A comparison whose p-value could not be computed is not a test, and
     # counting it as one corrupts every comparison that *was* computed.

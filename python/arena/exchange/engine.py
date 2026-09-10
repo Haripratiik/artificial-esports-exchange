@@ -2,9 +2,18 @@
 
 Deterministic by construction: no clock, no randomness, no I/O. Feed it the same
 commands in the same order and it emits byte-identical events, every time, on
-any machine. That property is not a nicety -- it is the acceptance test for the
-C++ port, which must produce an identical event stream from an identical command
-stream, and it is what makes a seeded experiment reproducible months later.
+any machine. That property is not a nicety: it is what makes a differential
+test statable at all, since a second implementation has to produce an identical
+event stream from an identical command stream, and it is what makes a seeded
+experiment reproducible months later.
+
+No such second implementation is owed. A C++ kernel was once listed as
+outstanding work; profiled over two simulated minutes of the live market, the
+time is in ``kernel.send``, ``latency.delay`` and the book snapshot the venue
+broadcasts, and matching does not appear in the fourteen most expensive
+functions by self time. So a port is a performance decision to take when a
+profile asks for one, and ``tests/test_differential.py`` is worth keeping green
+either way.
 
 Matching rules, in the order they are applied:
 
@@ -26,7 +35,7 @@ it wanted more.
 A **pegged** order does not bend it at all, and that is worth saying because it
 looks like it should. Its price is a reference plus an offset rather than a
 number it chose, and every time the reference moves it is taken off the book and
-put back at the new price with a new arrival number -- exactly as a replace
+put back at the new price with a new arrival number, exactly as a replace
 would be, and for exactly the same reason. A new price is a new claim on a queue
 other orders were already waiting in.
 """
@@ -93,11 +102,11 @@ class _PendingStop:
         """The order this becomes once it is triggered.
 
         A plain stop becomes a *market* order, and a market order is
-        immediate-or-cancel by construction here -- an unpriced order that
-        rested would match anything forever. Carrying the stop's own
-        time-in-force through would hand the engine a GTC market order, which
-        it refuses, and the stop would vanish on being triggered: parked,
-        released, rejected, gone, with nothing in the tape to say so.
+        immediate-or-cancel by construction here: an unpriced order that rested
+        would match anything forever. Carrying the stop's own time-in-force
+        through would hand the engine a GTC market order, which it refuses, and
+        the stop would vanish on being triggered: parked, released, rejected,
+        gone, with nothing in the tape to say so.
         """
         if self.limit_price is None:
             return Submit(
@@ -193,7 +202,7 @@ class MatchingEngine:
         # The rule this models does not only pause a runaway after the fact: it
         # *prevents trades outside the bands*, and that is the half that
         # protects anyone. Without it a market order with no price protection
-        # walks a thin book to the floor -- measured here, a resting bid at
+        # walks a thin book to the floor: measured here, a resting bid at
         # **0.25** was filled on a contract worth 4,700, and the breaker then
         # dutifully halted a symbol whose damage was already done.
         #
@@ -206,7 +215,7 @@ class MatchingEngine:
         self._pegs: list[_Peg] = []
         # How many times a single command may set the pegs moving. A peg that
         # reprices changes the touch, which can move another peg, which can move
-        # the first one back -- two orders pegged to each other's side of the
+        # the first one back: two orders pegged to each other's side of the
         # book have no fixed point and would otherwise chase each other forever.
         # The bound is what makes that a bad idea rather than a hang.
         self._max_peg_passes = 8
@@ -281,8 +290,8 @@ class MatchingEngine:
         """Place an order. ``order_id`` reuses an id already acknowledged.
 
         Only a released stop passes one, and it has to. A stop is acknowledged
-        under an id while it is parked -- that id is the agent's handle on it,
-        and it is what the venue reserves collateral against -- and the order
+        under an id while it is parked (that id is the agent's handle on it,
+        and it is what the venue reserves collateral against), and the order
         it becomes was being minted a *fresh* id, with nothing in the stream
         linking the two. Measured: a stop acknowledged as order **4** traded as
         order **6**, and a cancel of 4 came back ``unknown_order`` with the
@@ -321,7 +330,7 @@ class MatchingEngine:
         # A stop acknowledges at the price it is contingent on: its limit if it
         # has one, otherwise its trigger. The venue reserves collateral from
         # this, and a stop that acknowledged no price at all would be reserved
-        # against by nothing -- an agent could park a hundred of them, each
+        # against by nothing: an agent could park a hundred of them, each
         # individually affordable and collectively not.
         acknowledged_at = command.price
         if command.order_type in (OrderType.STOP, OrderType.STOP_LIMIT):
@@ -356,7 +365,7 @@ class MatchingEngine:
         if peg is not None:
             # Before the call-phase branch, and deliberately. `_accumulate`
             # rests an order at `limit`, which for a peg is the sentinel a
-            # priceless order gets -- so an auction would have counted it as
+            # priceless order gets, so an auction would have counted it as
             # crossing every candidate at 2^62 and cleared the book against it.
             self._pegs.append(peg)
             if acknowledged_at is None:
@@ -422,7 +431,7 @@ class MatchingEngine:
         # about to rest through. Measured: a stop-limit sell for nineteen at 99
         # triggered by a print at 97, released while the taker's seven unfilled
         # lots were still in flight, left the book bid **101** against ask
-        # **99** -- a spread of minus two, crossed and stuck. The peg path
+        # **99**: a spread of minus two, crossed and stuck. The peg path
         # already rested before releasing; this one was the odd case out.
         events.extend(self._release_after(events))
 
@@ -432,13 +441,13 @@ class MatchingEngine:
         """Rest, cancel or retire an order once its matching pass is over.
 
         The terminal check comes first, and it is not defensive. Self-trade
-        prevention can finish an order mid-walk -- CANCEL_NEWEST and
-        CANCEL_BOTH both do -- and the arithmetic test that follows would then
-        read "nothing left" as "completely filled". Measured: an agent whose
-        own resting offer met its own incoming bid got a ``Cancelled`` event, an
-        empty tape, and an order whose status said **filled** and whose
-        ``filled`` property said **10**. Every reconciliation downstream reads
-        those two, and both of them were describing a trade that never printed.
+        prevention can finish an order mid-walk (CANCEL_NEWEST and CANCEL_BOTH
+        both do), and the arithmetic test that follows would then read "nothing
+        left" as "completely filled". Measured: an agent whose own resting
+        offer met its own incoming bid got a ``Cancelled`` event, an empty
+        tape, and an order whose status said **filled** and whose ``filled``
+        property said **10**. Every reconciliation downstream reads those two,
+        and both of them were describing a trade that never printed.
         """
         if order.status.terminal:
             self.book.track(order)
@@ -472,7 +481,7 @@ class MatchingEngine:
 
         A **market** order is the exception, and not an inconsistency. It is
         required to be IOC in continuous trading only because an unpriced
-        resting order would match anything forever -- during a call phase nothing
+        resting order would match anything forever: during a call phase nothing
         matches until the uncross, so the danger does not exist. What it becomes
         is a market-on-open order: willing to trade at whatever price the
         auction clears at, which is exactly what such an order means.
@@ -499,7 +508,7 @@ class MatchingEngine:
         """Clear the accumulated book at a single price.
 
         Everything trades at the auction price, including orders that were
-        willing to pay more -- the price improvement is the reward for having
+        willing to pay more: the price improvement is the reward for having
         been in the auction, and it is why the clearing price is trustworthy in
         a way a first-arrival price is not.
 
@@ -586,7 +595,7 @@ class MatchingEngine:
         """Take market-on-open orders that did not trade back out of the book.
 
         They rest at the sentinel price so that they cross every candidate in
-        the auction, which is the whole point of them -- and it is why leaving
+        the auction, which is the whole point of them, and it is why leaving
         one behind is catastrophic rather than untidy. An unfilled market sell
         sits at minus 2^61, which is the best offer in the book by a margin of
         2^61, so the first continuous buy order matches it *at that price*. Run
@@ -596,7 +605,7 @@ class MatchingEngine:
 
         A market order is an instruction about the auction it was entered for.
         Once that auction has cleared there is no price it was willing to pay,
-        because it never named one, so cancelling is the only honest outcome --
+        because it never named one, so cancelling is the only honest outcome,
         and it is what venues do with unexecuted market-on-open interest.
         """
         events: list[Event] = []
@@ -611,7 +620,7 @@ class MatchingEngine:
             # reduces the level's total and leaves the order in the queue as a
             # tombstone; what makes the matcher skip it on the way past is its
             # status being terminal. Removing without marking left an order the
-            # depth no longer counted but the matcher would still fill -- so it
+            # depth no longer counted but the matcher would still fill, so it
             # was invisible to every diagnostic that reads resting orders while
             # remaining perfectly tradeable, which is why the sentinel prints
             # survived two attempts at fixing them.
@@ -621,7 +630,7 @@ class MatchingEngine:
     def _fillable(self, order: Order, collar: tuple[int, int] | None) -> bool:
         """Whether all of ``order`` could be filled immediately.
 
-        Asks ``_executable`` -- what the walk would really take -- rather than
+        Asks ``_executable`` (what the walk would really take) rather than
         summing published depth, and the difference is the whole contract of
         fill-or-kill. Aggregate depth counts liquidity the walk cannot have:
         an order whose own minimum quantity the taker is too small to satisfy,
@@ -653,11 +662,11 @@ class MatchingEngine:
 
         Correcting this required moving `tests/reference_matcher.py` in the
         same step. The reference matcher counted that quantity too, so fixing
-        one side alone made twelve differential tests disagree -- and a
-        harness that disagrees is a worse failure than the one it is reporting,
-        while a harness that agrees on the wrong answer reports nothing at all.
-        Both sides now skip the taker's own resting orders in the same place
-        their walks already skip them.
+        one side alone made twelve differential tests disagree, and a harness
+        that disagrees is a worse failure than the one it is reporting, while a
+        harness that agrees on the wrong answer reports nothing at all. Both
+        sides now skip the taker's own resting orders in the same place their
+        walks already skip them.
         """
         return (
             self._executable(order, collar, count_self_matched=False)
@@ -679,7 +688,7 @@ class MatchingEngine:
         """Resolve a would-be wash trade according to the configured policy.
 
         Removing the resting order also pops it off the level, so the matching
-        loop advances rather than meeting the same order forever -- which would
+        loop advances rather than meeting the same order forever, which would
         be an infinite loop rather than a wrong price. Popped only when it is
         the front of the queue, which it is unless a minimum-quantity order
         ahead of it was passed over; anywhere else the terminal status is what
@@ -760,7 +769,7 @@ class MatchingEngine:
         prints at each of them, and offering only the final price to the stops
         drops any trigger the walk passed through on the way. Measured: offers
         of five at 100 and five at 110, a sell stop parked at 100, and a buy for
-        ten -- the tape read ``[(5, 100), (5, 110)]``, the market had traded at
+        ten: the tape read ``[(5, 100), (5, 110)]``, the market had traded at
         100, and the stop was still parked afterwards. The rest of the cascade
         already worked this way, checking each print of every released order, so
         the first round was the one that disagreed.
@@ -802,7 +811,7 @@ class MatchingEngine:
         """Fire everything these prints triggered, and everything that triggers.
 
         Iterative rather than recursive, and bounded. A stop that fills moves
-        the price, which can trigger more stops -- that is a cascade, it is
+        the price, which can trigger more stops: that is a cascade, it is
         real, and this does not prevent it. What it does prevent is a cascade
         that never terminates, which would be a bug in the model rather than an
         event in the market. `cascade_depth` records how far each one went.
@@ -842,10 +851,10 @@ class MatchingEngine:
         # parked list to hand it over, so anything still pending when the bound
         # bites has left the engine entirely: no order, no acknowledgement, no
         # cancellation, and a later cancel answered `unknown_order`. Measured on
-        # a forty-deep ladder with the bound at 24 -- twenty-four stops
-        # released, fifteen still parked, and **one** that simply ceased to
-        # exist with nothing in the stream to say so. Parked again, it stays a
-        # live order and the next print that reaches it sets it off.
+        # a forty-deep ladder with the bound at 24: twenty-four stops released,
+        # fifteen still parked, and **one** that simply ceased to exist with
+        # nothing in the stream to say so. Parked again, it stays a live order
+        # and the next print that reaches it sets it off.
         if pending:
             self._stops.extend(pending)
         return depth
@@ -855,7 +864,7 @@ class MatchingEngine:
     def _peg_target(self, peg: _Peg) -> Price | None:
         """Where this peg may rest right now, or ``None`` if nowhere.
 
-        Three reasons a peg has no price. There is no reference -- an empty
+        Three reasons a peg has no price. There is no reference: an empty
         book, or a mid peg with only one side quoted. The session is not trading
         continuously, where the only touch on offer is the sentinel a
         market-on-open order rests at, which is not a price. Or the peg is
@@ -900,7 +909,7 @@ class MatchingEngine:
         ):
             # Post-only promises the order never takes. A peg does not choose
             # its own price, so the promise is kept by declining to follow the
-            # reference rather than by rejecting the order -- there is nothing
+            # reference rather than by rejecting the order: there is nothing
             # left to reject, the order was accepted before the touch moved.
             return None
         return target
@@ -910,7 +919,7 @@ class MatchingEngine:
 
         The order must be off the book when this is called, because it sets the
         price directly. A peg tracking the opposite side of the book is an
-        aggressive order and is meant to trade -- "pay the offer, whatever the
+        aggressive order and is meant to trade: "pay the offer, whatever the
         offer is" is a real instruction, and it is the one a market peg writes.
         """
         order = peg.order
@@ -929,9 +938,9 @@ class MatchingEngine:
 
         The old order is tombstoned rather than spliced out, which is how every
         removal works here, so it must be marked terminal or the matcher will
-        still fill it on the way past. The replacement carries the same id --
-        an agent's handle on its order does not change because the touch moved
-        -- and a new arrival number, which is the whole cost of repricing.
+        still fill it on the way past. The replacement carries the same id (an
+        agent's handle on its order does not change because the touch moved)
+        and a new arrival number, which is the whole cost of repricing.
 
         The book is touched only if the order was in it. ``OrderBook.remove``
         finds its level by the order's price, and a peg that is off the book
@@ -949,7 +958,7 @@ class MatchingEngine:
         # rather than an implementation limitation. A new price is a new claim
         # on a queue that other orders were already waiting in, and letting a
         # peg keep its position through a reprice would hand it a standing
-        # advantage no other order can buy -- it could sit at the front of one
+        # advantage no other order can buy: it could sit at the front of one
         # level, follow the touch to another, and still be at the front there.
         self._arrival += 1
         fresh = Order(
@@ -1067,7 +1076,7 @@ class MatchingEngine:
         filled a resting bid at **0.25** on a contract worth 4,700. A limit
         order names a price and is entitled to it; collaring one too was tried
         and was much worse than the disease. Orders slid to a band edge, the
-        band later moved away from them, and the book locked -- bid above offer,
+        band later moved away from them, and the book locked: bid above offer,
         neither allowed to trade, nothing in continuous trading able to clear
         it. Measured on that version: 2,492 limit states in five minutes and a
         future marking at 9,267 against a settlement of 4,669.
@@ -1086,7 +1095,7 @@ class MatchingEngine:
         # returning here before it started meant self-trade prevention never
         # ran. Measured: a maker bid fourteen at 99 and then offered seven at 98
         # with a minimum of three. Without the minimum its stale bid was
-        # cancelled and the offer rested alone; with it, both orders stayed --
+        # cancelled and the offer rested alone; with it, both orders stayed:
         # the same agent on both sides of a book crossed 99 against 98, which
         # only a third party could ever clear.
         may_print = incoming.min_quantity <= 0 or (
@@ -1111,7 +1120,7 @@ class MatchingEngine:
                 if not low <= int(resting_price) <= high:
                     # Past the edge of the collar. The order stops here rather
                     # than printing beyond it, and whatever is left is
-                    # cancelled -- a market order was never willing to rest.
+                    # cancelled: a market order was never willing to rest.
                     break
 
             level.prune()
@@ -1126,7 +1135,7 @@ class MatchingEngine:
                 # reaches may be a worse one. That is not a trade-through of a
                 # protected quote: an order carrying a minimum is offering
                 # conditional liquidity, and the condition is not met. The
-                # alternative -- stopping here -- would let one order with a
+                # alternative (stopping here) would let one order with a
                 # large minimum make its whole price level untradeable by
                 # everyone smaller than it, which is a far worse market than a
                 # slightly worse fill.
@@ -1260,7 +1269,7 @@ class MatchingEngine:
         because the two differ: a resting order with a minimum of its own may be
         passed over, and an order that would only meet itself contributes
         nothing. Used for the minimum-quantity test, where an over-count is the
-        one error that matters -- it would admit an order and then fill it for
+        one error that matters: it would admit an order and then fill it for
         less than its minimum, which is the outcome the field exists to prevent.
 
         A **dry run of the walk**, one execution at a time, rather than a sum
@@ -1274,7 +1283,7 @@ class MatchingEngine:
         behind it, against a sell for six carrying a minimum of five. The sum
         said six were reachable, the order was admitted, and the walk took
         three from the iceberg, one from the lot behind it, and then found its
-        remaining two below the iceberg's minimum -- **an order with a minimum
+        remaining two below the iceberg's minimum: **an order with a minimum
         of five executed for four**.
 
         So the queue is copied and consumed exactly as ``_match`` consumes it:
@@ -1283,7 +1292,7 @@ class MatchingEngine:
 
         ``count_self_matched`` treats the taker's own resting orders as if they
         belonged to somebody else. It exists for one caller and is wrong on its
-        own terms -- see ``_fillable``, which explains why it is there and what
+        own terms: see ``_fillable``, which explains why it is there and what
         has to change before it can go.
         """
         wanted = int(incoming.remaining)
@@ -1348,7 +1357,7 @@ class MatchingEngine:
             # not merely unhelpful. The venue drops its working-order entry on a
             # rejection, so a cancel an agent believed had failed released the
             # collateral reserved against the stop while leaving the stop parked
-            # and able to trigger -- measured as one stop still parked with the
+            # and able to trigger: measured as one stop still parked with the
             # reservation gone. It also meant the kill switch could report a
             # participant as flat while its stops were still armed.
             if parked.agent_id != command.agent_id:
@@ -1403,8 +1412,8 @@ class MatchingEngine:
             ]
         if order.agent_id != command.agent_id:
             # Reported as not-owner rather than unknown. Leaking "this id exists"
-            # is harmless here -- ids are engine-assigned and sequential, so an
-            # agent could enumerate them anyway -- and the honest error is far
+            # is harmless here (ids are engine-assigned and sequential, so an
+            # agent could enumerate them anyway), and the honest error is far
             # easier to debug than a misleading one.
             return [
                 Rejected(
@@ -1495,7 +1504,7 @@ class MatchingEngine:
             and self._crossable_levels(order.side, new_price)
         ):
             # Post-only promised the order would never take, and a replace does
-            # not retract the promise -- it is the same order at a new price.
+            # not retract the promise: it is the same order at a new price.
             # Before the flag was carried on the order, a post-only sell resting
             # at 105 over a bid of 100 and then replaced to 100 printed **ten
             # lots as the aggressor**, which is the single thing that order type
@@ -1518,7 +1527,7 @@ class MatchingEngine:
             # `OrderBook.shrink`, not `consume`. Routing a shrink through the
             # fill path took the lots out of the level's total even when they
             # came out of an iceberg's reserve, which was never counted in it,
-            # and refreshed the exhausted slice to the back of the queue -- the
+            # and refreshed the exhausted slice to the back of the queue: the
             # exact priority loss this branch had just promised did not happen.
             # Measured on an iceberg for twelve showing three with four lots
             # behind it: shrinking to six left the level at 4 against 7 really
@@ -1589,7 +1598,7 @@ class MatchingEngine:
         # A replace that crosses is a print like any other, and a stop cannot
         # tell how the print was caused. Without this, a resting offer moved
         # down onto a bid traded ten lots at 100 while a stop parked at 100 sat
-        # untouched -- the identical print delivered as a new order set the same
+        # untouched: the identical print delivered as a new order set the same
         # stop off immediately. Whether a stop fires must not depend on which
         # message the tape came from.
         events.extend(self._release_after(events))
@@ -1652,7 +1661,7 @@ def _validate(command: Submit) -> RejectReason | None:
     ):
         # An order with no price cannot hide anything: it never rests, so
         # there is no queue for a reserve to wait in. A peg is on the list
-        # because it does rest -- it has no price of its own, which is a
+        # because it does rest: it has no price of its own, which is a
         # different thing from having no price.
         return RejectReason.INVALID_QUANTITY
     if pegging:
@@ -1663,7 +1672,7 @@ def _validate(command: Submit) -> RejectReason | None:
         if command.price is not None:
             return RejectReason.INVALID_PRICE
         if command.time_in_force in (TimeInForce.GTC, TimeInForce.POST_ONLY):
-            # An unpriced resting order would match anything forever -- and a
+            # An unpriced resting order would match anything forever, and a
             # post-only market order is a contradiction in terms, since a market
             # order is defined by being willing to cross.
             return RejectReason.MARKET_ORDER_MUST_BE_IOC
@@ -1680,7 +1689,7 @@ def _first_dry_tradeable(queue: list["_DryOrder"], wanted: int) -> "_DryOrder | 
     two answer about different things: one picks a real order to trade with, the
     other picks a copy to subtract from. Any difference between them is a case
     where the count and the walk disagree, which is the whole failure this
-    machinery exists to prevent -- so they are kept side by side, a few lines
+    machinery exists to prevent, so they are kept side by side, a few lines
     apart, where a change to one that is not made to the other is visible.
     """
     for entry in queue:

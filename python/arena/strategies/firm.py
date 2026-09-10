@@ -10,12 +10,14 @@ exactly where a single strategy would, and everything it adds is arithmetic on
 quantities the venue already charges in.
 
 **The budget is denominated in collateral, and the unit of budgeting is the
-netting group.** Measured on the live catalogue, the exchange is not 47
-instruments, it is ten groups keyed exactly the way ``Venue._underlying_of``
-keys them: adjusted_win_rate on SPIKE with 20 members, on ELPRIMO with 9, on
-CROW with 8 and on PIPER with 1, stratum_dispersion on SPIKE and on CROW with
-one each, battle_volume on SPIKE with 4 and on CROW with 1, one difference and
-one basket. A group is exactly the set within which capital is released,
+netting group.** Measured on the live catalogue, the exchange is not 50
+instruments, it is 22 groups keyed exactly the way ``Venue._underlying_of``
+keys them: win_rate on QUILL in the solo format with 7 members, on BASTION in
+the solo format with 6, on EMBER in the objective format with 6 and on VANTA in
+the solo format with 4, match_volume on RIFT with 5, five further objective
+win_rate groups with 2 apiece, and twelve groups holding a single contract, one
+of which is a difference and one a basket. A group is exactly the set within
+which capital is released,
 because it is exactly the set :func:`~arena.portfolio.netting.worst_case` will
 accept, so it is the only granularity at which a capital budget means anything
 at all. The key is derived from the contract's underlying rather than from its
@@ -26,10 +28,10 @@ editing a list.
 one.** The usual buy-side budget is expressed in value-at-risk, and VaR is not
 subadditive, so per-strategy VaR budgets need not sum to a portfolio bound.
 Artzner, Delbaen, Eber and Heath's own counterexample for that is a pair of
-digital options, which this venue lists eight of. The worst case here is exact
+digital options, which this venue lists ten of. The worst case here is exact
 arithmetic over a bounded scalar, it is subadditive by construction, and a sum
 of per-group budgets is therefore a real bound rather than a hopeful one. No
-covariance matrix is estimated across the ten groups, and none should be: from
+covariance matrix is estimated across the 22 groups, and none should be: from
 minutes of one seed it would be noise, and it would smuggle an estimate back
 into the one place this project refuses one.
 
@@ -714,8 +716,8 @@ class Firm:
             # The claim stops being a resting one and becomes reapable, exactly
             # like a take: it still catches a fill that crosses the cancel on
             # the wire, and it dies once the market prints without us. Deleting
-            # it outright lost the four lots of CROW_WR_FUT the uncross booked
-            # against an empty queue on seed 7.
+            # it outright lost the four lots of a win rate future the uncross
+            # booked against an empty queue on seed 7.
             if queue is not None:
                 for claim in queue:
                     claim.resting = False
@@ -1283,14 +1285,14 @@ class Firm:
 
         That was not a small error. Measured on seed 7 over sixty simulated
         seconds while this method still differenced cash: every position in the
-        firm's book carried a basis of 0.00 against the venue's 4,919.19 on
-        CROW_WR_FUT, and since ``collateral_for`` charges a long the distance
-        from its price down to the bottom of its range, a long booked at zero
-        reports a worst case of zero. Every group looked empty, the budget
-        never bound on anything the firm already held, and the CROW group
-        finished at 255,797.90 against a budget of 36,000. A budget checked
-        before every order is worth nothing if the book it is checked against
-        is blank.
+        firm's book carried a basis of 0.00 against the venue's 4,919.19 on a
+        win rate future, and since ``collateral_for`` charges a long the
+        distance from its price down to the bottom of its range, a long booked
+        at zero reports a worst case of zero. Every group looked empty, the
+        budget never bound on anything the firm already held, and that future's
+        netting group finished at 255,797.90 against a budget of 36,000.
+        A budget checked before every order is worth nothing if the book it is
+        checked against is blank.
 
         What does carry the price is the collateral. ``posted_collateral`` is
         charged against each position's own basis and moves only when a fill
@@ -1356,10 +1358,10 @@ class Firm:
         to survives that race for a wake, so the loser is only the order whose
         cancel and whose fill straddle a whole wake, and no strategy could have
         known. Measured over sixty simulated seconds on seed 7, one fill of
-        three lots of CROW_WR_FUT landed here out of 113, carrying 58.88 of a P&L of
-        -8,713.38, which is 0.68% of it. Giving those lots to whoever asked
-        last would be a guess dressed as attribution, so they are reported as
-        their own line instead.
+        three lots of a win rate future landed here out of 113, carrying 58.88
+        of a P&L of -8,713.38, which is 0.68% of it. Giving those lots to
+        whoever asked last would be a guess dressed as attribution, so they are
+        reported as their own line instead.
         """
         claims = self._claims.get((symbol, side), [])
         shares: list[list[Any]] = []
@@ -1766,10 +1768,11 @@ class Firm:
 
         A quote replaces the side's resting claim, because it replaces the
         side's working order. Wiping the whole queue instead was measured to
-        lose a take: the opening uncross booked two lots of SPIKE_WR_FUT at
-        9,968.50 against an empty queue, because the maker had requoted between
-        the take going out and the auction clearing, and 1,276.00 of P&L went
-        to the unattributed bucket rather than to the strategy that earned it.
+        lose a take: the opening uncross booked two lots of a win rate future
+        at 9,968.50 against an empty queue, because the maker had requoted
+        between the take going out and the auction clearing, and 1,276.00 of
+        P&L went to the unattributed bucket rather than to the strategy that
+        earned it.
 
         A take goes in front of the resting claim, because a take crosses now
         and a quote waits to be hit.
@@ -1797,21 +1800,23 @@ class Firm:
         market order rests through an opening call, and this venue's runs for
         ten simulated seconds against a 300ms wake, which is thirty-three wakes
         of resting; measured with a bare timer on seed 7, the uncross filled
-        four lots of SPIKE_WR_FUT against a projection of two and the CROW
-        group finished committing 56,013.50 against a budget of 36,000. It also
+        four lots of a win rate future against a projection of two and that
+        future's netting group finished committing 56,013.50 against a budget
+        of 36,000. It also
         rests through a circuit-breaker pause, which is the same shape and is
         not confined to the start of the session: measured on seed 7 with the
         timer conditioned on the symbol having ever printed, five fills came
         back at 20.0s, 40.0s and 52.0s with no claim left to book them against,
-        two lots and then four of SPIKE_C4600 at 5,400.00 and six of
-        SPIKE_C4650 at 0.00, and 97,200.00 of P&L belonged to no strategy.
+        two lots and then four of one call at 5,400.00 and six of the next
+        strike up the same chain at 0.00, and 97,200.00 of P&L belonged to no
+        strategy.
 
         Nor can it be aged out on the print alone. The uncross *is* the
         symbol's first print after a pause and it arrives in the same instant
         as the fills it produced, so reaping on the print dropped the claims
         for lots that were still on their way and the firm projected against a
-        book it no longer knew it had: on seed 7 the SPIKE group finished at
-        39,143.69 against a budget of 36,000.
+        book it no longer knew it had: on seed 7 the netting group behind that
+        chain finished at 39,143.69 against a budget of 36,000.
 
         So the clock starts at the *first print that is not ours*, and runs for
         one wake. A symbol that has stopped trading never starts it, whatever

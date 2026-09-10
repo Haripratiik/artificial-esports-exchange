@@ -16,7 +16,7 @@ included in the conservation check like any other. Netting fees against nothing,
 or discarding them, would make the ledger's central invariant a lie the moment
 fees were switched on.
 
-That also makes venue revenue *measurable* rather than notional -- with a rebate
+That also makes venue revenue *measurable* rather than notional. With a rebate
 schedule the venue can genuinely lose money, and this is what shows it.
 
 Rounding
@@ -43,7 +43,7 @@ BASIS_POINTS = 10_000
 class FeeSchedule:
     """Charged on notional, in basis points. Negative means a rebate.
 
-    ``taker_bps`` is paid by the aggressor -- the order that crossed the spread.
+    ``taker_bps`` is paid by the aggressor, the order that crossed the spread.
     ``maker_bps`` is paid by the resting side, and is usually negative, because
     a venue pays for the liquidity that makes it worth trading on.
     """
@@ -53,12 +53,12 @@ class FeeSchedule:
     # What an auction fill pays, on both sides. ``None`` means the taker rate.
     #
     # An auction has no aggressor, so the obvious thing is to bill every fill
-    # at the maker rate -- and that was done, and it is wrong in a way only
-    # running an auction shows. A maker rate is usually a rebate, so a venue
-    # billing both sides of its own opening cross *pays out* on every share it
-    # crosses. Measured on the first session that ran one: 26 opening auctions
-    # took venue revenue to **minus 1,251**, which is a venue paying people to
-    # let it open. Exchanges charge for cross executions rather than paying for
+    # at the maker rate. That was done, and it is wrong in a way only running
+    # an auction shows. A maker rate is usually a rebate, so a venue billing
+    # both sides of its own opening cross *pays out* on every share it crosses.
+    # Measured on the first session that ran one: 26 opening auctions took
+    # venue revenue to **minus 1,251**, which is a venue paying people to let
+    # it open. Exchanges charge for cross executions rather than paying for
     # them, and this defaults to the taker rate for that reason.
     auction_bps: float | None = None
 
@@ -107,7 +107,7 @@ FREE = FeeSchedule()
 
 # A conventional maker-taker schedule: the taker pays, the maker is paid rather
 # less, and the difference is what the venue keeps. Set so the venue's net take
-# is positive on every trade -- a schedule where rebates exceed fees is a venue
-# paying people to trade with each other, which is a real thing that happens and
-# a real way to go bankrupt.
+# is positive on every trade; a schedule where rebates exceed fees is a venue
+# paying people to trade with each other, which is a real thing that happens
+# and a real way to go bankrupt.
 MAKER_TAKER = FeeSchedule(taker_bps=2.0, maker_bps=-1.0)

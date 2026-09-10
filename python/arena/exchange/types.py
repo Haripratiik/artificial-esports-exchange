@@ -10,13 +10,15 @@ Conversion to and from a contract's tick grid happens once, at the boundary, in
 :mod:`arena.contracts`. Inside the engine there are only ticks.
 
 **Quantities are integers too**, counted in lots. Same reasoning, and it makes
-the conservation invariant -- quantity is neither created nor destroyed by
-matching -- checkable exactly rather than approximately.
+the conservation invariant (quantity is neither created nor destroyed by
+matching) checkable exactly rather than approximately.
 
-Both choices also make the eventual C++ port a transcription rather than a
-redesign: `int64_t` on both sides, identical arithmetic, identical results. That
-matters because the port will be validated by feeding both engines the same order
-stream and demanding identical tapes.
+Both choices would also make a C++ port a transcription rather than a redesign:
+`int64_t` on both sides, identical arithmetic, identical results. No port is
+owed, and `arena/exchange/engine.py` gives the profile that settles it; what
+this buys is that a port, if one is ever taken on for performance, can be
+validated by feeding both engines the same order stream and demanding identical
+tapes.
 """
 
 from __future__ import annotations
@@ -75,12 +77,12 @@ class OrderType(Enum):
     # Dormant until the market trades at or through a trigger, then a market
     # order. The classic risk tool and the classic accelerant: a stop sells
     # into a fall, which pushes the price further down, which triggers more
-    # stops. Nothing here prevents that cascade, and it should not -- being able
+    # stops. Nothing here prevents that cascade, and it should not; being able
     # to *measure* one is most of the reason to model stops at all.
     STOP = "stop"
     # The same trigger, becoming a limit order rather than a market one. It
     # protects against the fill an unpriced stop can get in a fast market, at
-    # the cost of possibly not filling at all -- which is the trade every stop
+    # the cost of possibly not filling at all, which is the trade every stop
     # user actually faces.
     STOP_LIMIT = "stop_limit"
     # Rests at a price it does not choose: a reference in the book, plus a
@@ -137,7 +139,7 @@ class SelfTradePrevention(Enum):
     time it requotes: its cancels are still in flight while the new quote
     arrives, so the new bid trades against its own stale offer. The position
     nets to zero and the PnL nets to zero, which is exactly why it is dangerous
-    -- nothing looks wrong. What it destroys is the tape: volume, prices and
+    (nothing looks wrong). What it destroys is the tape: volume, prices and
     every impact measurement derived from them are then largely fictional.
 
     Real venues offer the same policies under the name self-match prevention.
@@ -209,7 +211,7 @@ class RejectReason(Enum):
     # can process them, and the venue that has no limit is the one that goes
     # down with it.
     RATE_LIMITED = "rate_limited"
-    # The participant has been stopped -- by an operator, or by itself. Its
+    # The participant has been stopped: by an operator, or by itself. Its
     # working orders are pulled and it may not place more until it is let back
     # in.
     PARTICIPANT_HALTED = "participant_halted"

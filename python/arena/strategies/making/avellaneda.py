@@ -81,10 +81,13 @@ a maker that intends to carry the position all the way.
 
 The cap earns its place empirically as well as structurally. The mid series in
 the deep option books here is violently jumpy: measured over 600s on seed 7,
-``SPIKE_P4700`` has a median normalised level of 0.000 and a maximum of 1.000,
-and its RMS volatility of 0.218 of the range per root second is two thousand
-times its median-based estimate of 0.0001. Uncapped, ``sigma^2 * h`` on such a
-book asks for an inventory penalty larger than the contract is worth.
+one deep out of the money put had a median normalised level of 0.000 and a
+maximum of 1.000, and its RMS volatility of 0.218 of the range per root second
+is two thousand times its median-based estimate of 0.0001. That run predates
+the circuit, and the same shape survives it: on the current listing twenty of
+the fifty contracts have a median move of exactly zero against an RMS of 0.027
+to 0.342. Uncapped, ``sigma^2 * h`` on such a book asks for an inventory
+penalty larger than the contract is worth.
 
 **Volatility is state-dependent and estimated, not constant.** A constant sigma
 on a bounded claim is incoherent: it lets the price diffuse out of the interval
@@ -166,9 +169,9 @@ def reference_price(view: SymbolView) -> Decimal | None:
     it gives a mid of half a tick rather than nothing. But seven of the option
     books sit at a median normalised level of 0.000, which is one cancelled
     offer away from the state that does fire, and the value it would fall
-    through to on ``SPIKE_P4700`` is 2,350 on a put that is worth nothing. So
-    the checks here are against ``None``, and a contract with no price at all
-    gets no quote rather than a guessed one.
+    through to on one of them is 2,350 on a put that is worth nothing. So the
+    checks here are against ``None``, and a contract with no price at all gets
+    no quote rather than a guessed one.
     """
     mid = view.mid
     if mid is not None:
@@ -184,8 +187,8 @@ def on_increment(instrument: Instrument, side: Side, price: Decimal) -> Decimal:
     :func:`~arena.strategies.base.snap` reads ``instrument.tick_size`` and
     nothing else, but the grid a contract is actually quoted on is
     ``instrument.increment_at``, which can coarsen above a threshold written
-    into the contract. One of the 47 contracts listed here has such a table:
-    ``PIPER_WR_FUT`` steps in 1.00 above 4,000 and in 0.25 below it, so a
+    into the contract. One of the 50 contracts listed here has such a table:
+    ``VANTA_OBJECTIVE_WR`` steps in 1.00 above 4,000 and in 0.25 below it, so a
     modelled price of 5,232.25 comes back from ``snap`` off the grid the venue
     will accept. ``TradingAgent.quote`` repairs it before the order is sent, so
     nothing breaks today, but a strategy that emits a price its own contract
@@ -273,21 +276,28 @@ class BoundedVolatility:
     Two decisions in here are measurements rather than taste.
 
     **The estimator is a mean absolute deviation, not a mean square.** A price
-    series in this market jumps. Measured over 600s on seed 7, the RMS
-    normalised volatility of ``SPIKE_WR_FUT`` is 0.0205 per root second against
-    a median-based 0.0014, a factor of 15, and the whole of that gap is a
-    handful of excursions where the mid touched the top of the range. Squaring
-    hands those excursions the estimate. So this accumulates ``|du|`` and
-    multiplies by ``sqrt(pi / 2)``, which is the Gaussian relation ``E|X| =
-    sigma * sqrt(2 / pi)`` and is the standard robust substitute.
+    series in this market jumps. Re-measured over 600s on seed 7 across the
+    circuit listing, sampling every 250ms: on ``QUILL_SOLO_WR`` the RMS
+    normalised volatility is 0.0729 per root second against a median-based
+    0.0019, a factor of 39. On twenty of the fifty contracts the median move is
+    exactly zero while the RMS runs 0.027 to 0.342, which says the same thing
+    more sharply: the ordinary interval on this market has no move in it at
+    all, and the whole of a squared estimate is a handful of excursions.
+    Squaring hands those excursions the estimate. The figure this docstring
+    carried before, a factor of 15, was measured on the retired statistics
+    world and is superseded rather than contradicted, and
+    ``tests/test_strategies_optimal.py`` holds the re-measurement. So this
+    accumulates ``|du|`` and multiplies by ``sqrt(pi / 2)``, which is the
+    Gaussian relation ``E|X| = sigma * sqrt(2 / pi)`` and is the standard
+    robust substitute.
 
     **The estimate is transported between levels rather than de-modulated in
     place.** Dividing each increment by the local shape recovers ``sigma_hat``
     directly and is what the SDE literally says to do, and it is unusable here:
     measured across 47 contracts and 2,400 samples on seed 7, the smallest
     shape observed is 0.0004, so that division amplifies a one-tick move by
-    four orders of magnitude and ``ELPRIMO_C4650`` reports a level-free
-    volatility of 0.215 against a raw 0.0007. Instead the running
+    four orders of magnitude and one deep out of the money call reported a
+    level-free volatility of 0.215 against a raw 0.0007. Instead the running
     shape is tracked alongside the running increment, and the ratio of the
     shape now to the shape then transports the estimate. When the price has not
     moved between the window and now, which is the ordinary case, the ratio is
@@ -421,12 +431,13 @@ class AvellanedaStoikov:
         # The skew this produces is very sensitive to volatility, because the
         # variance is quadratic in it and the estimate spans two orders of
         # magnitude across the listing. At the median it is the incumbents' 3.3
-        # ticks a lot on a future; on `SPIKE_WR_FUT`, whose measured volatility
-        # is 0.0024, it is 34. That is the model rather than a miscalibration:
-        # a contract whose price moves ten times as much is one where carrying
-        # a lot costs a hundred times as much, and a maker that reprices hard
-        # after a fill is a maker that stays flat. Adverse selection is 117% of
-        # the incumbents' loss here, so staying flat is the medicine.
+        # ticks a lot on a future; on the win rate future at the top of that
+        # spread, whose measured volatility is 0.0024, it is 34. That is the
+        # model rather than a miscalibration: a contract whose price moves ten
+        # times as much is one where carrying a lot costs a hundred times as
+        # much, and a maker that reprices hard after a fill is a maker that
+        # stays flat. Adverse selection is 117% of the incumbents' loss here,
+        # so staying flat is the medicine.
         self.gamma = gamma
         # Order arrival decay, per tick. The base half-spread the model quotes
         # is `(1 / gamma) * ln(1 + gamma / k)`, which for small `gamma / k` is
@@ -485,12 +496,12 @@ class AvellanedaStoikov:
         # The paper emits a price and has no notion of a touch, and once the
         # reservation price has moved further than the half-spread the quote it
         # asks for is on the wrong side of the market. With the default gamma
-        # and the measured volatility of `SPIKE_WR_FUT` the reservation moves
-        # 34 ticks a lot against a capped half-spread of 9, so a single lot of
-        # inventory is enough to put it there. Left true, this strategy takes
-        # rather than makes, which `arena/strategies/base.py` names as the
-        # specific failure that produced the makers here aggressive on 61% of
-        # their fills.
+        # and that same measured volatility on a win rate future the
+        # reservation moves 34 ticks a lot against a capped half-spread of 9,
+        # so a single lot of inventory is enough to put it there. Left true,
+        # this strategy takes rather than makes, which
+        # `arena/strategies/base.py` names as the specific failure that
+        # produced the makers here aggressive on 61% of their fills.
         #
         # CONTRIBUTING.md records clamping to the touch costing the incumbents 9.4x,
         # so this was measured rather than inherited. Over 300s on seeds 7 and

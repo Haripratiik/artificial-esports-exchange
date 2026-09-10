@@ -6,8 +6,9 @@ each of them impossible to skip rather than merely documented somewhere.
 
 **The open is not a market.** The makers here anchor every book at the midpoint
 of its settlement range, because a maker that opened on the answer would be the
-thing that already knew. Measured on seed 3, ``SPIKE_C4550`` opens at 2725
-against a fair value of 119, and ``SPIKE_WR_FUT`` opens near 5000 against 4669.
+thing that already knew. Measured on seed 3, a call struck just inside the
+money opened at 2725 against a fair value of 119, and the win rate future it
+was written on opened near 5000 against 4669.
 A strategy that sells that open books a profit that is a property of the
 builder, not of the strategy. So every evaluation here holds the strategy out of
 the market for a configurable warmup and starts every statistic at the end of
@@ -113,10 +114,9 @@ __all__ = [
 
 
 # Euler-Mascheroni, which is where it enters: the expected maximum of ``N``
-# draws from a standard normal is asymptotically
-# ``(1-g)*Z^-1[1-1/N] + g*Z^-1[1-1/(N e)]``, and the deflated Sharpe ratio is
-# the probabilistic Sharpe ratio measured against that expected maximum rather
-# than against zero.
+# draws from a standard normal is asymptotically ``(1-g)*Z^-1[1-1/N] +
+# g*Z^-1[1-1/(N e)]``, and the deflated Sharpe ratio is the probabilistic
+# Sharpe ratio measured against that expected maximum rather than against zero.
 EULER_MASCHERONI = 0.5772156649015329
 
 # The constant in E[MDD] for a driftless random walk, 1.2533 = sqrt(pi/2). It is
@@ -556,7 +556,8 @@ class BacktestConfig:
     # Simulated seconds of session, and how many of them are thrown away. The
     # default warmup is a tenth of the default session, which on this market is
     # enough for the opening dislocation to be arbitraged away: measured on seed
-    # 3, SPIKE_C4550 leaves its 2725 open within the first 20 seconds.
+    # 3, the call this module's docstring opens on left its 2725 within the
+    # first 20 seconds.
     until: float = 600.0
     warmup: float = 60.0
     # The grid the return series is sampled on. Five seconds gives 108 periods

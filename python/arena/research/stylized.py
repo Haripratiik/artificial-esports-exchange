@@ -8,7 +8,7 @@ That is a different question and it needs different evidence.
 **This module measures. It does not tune.** Every function here reads a price
 or order-flow series and returns a number. Nothing feeds back into the agents,
 because a market adjusted until it reproduces a target statistic has been made
-to *look* real rather than shown to *be* plausible -- and the statistic then
+to *look* real rather than shown to *be* plausible, and the statistic then
 measures the adjustment rather than the market.
 
 Which facts to expect, and which not to
@@ -42,7 +42,7 @@ which in advance is what keeps this honest rather than a fishing expedition.
                               hours. No agent here splits anything
   fat tails                   an open question. Discrete flow and inventory limits
                               can produce them, but the literature is clear that
-                              *stabilising* agents dampen them -- and this market
+                              *stabilising* agents dampen them, and this market
                               is anchored by fundamental traders
 
 A result of "absent" against the second group is not a failure. It is the model
@@ -60,22 +60,22 @@ because they were not designed in:
 straddling the ~3 of the empirical inverse-cubic law. The mechanism is the
 market maker's position limit: once it stops quoting a side, the next
 aggressive order jumps several price levels instead of one, and those jumps are
-the tail. Nothing in the agent is tuned for this -- it falls out of a risk
-limit interacting with a discrete book.
+the tail. Nothing in the agent is tuned for this: it falls out of a risk limit
+interacting with a discrete book.
 
 **Volatility clustering did emerge**, at 0.17 to 0.30 lag-1 autocorrelation of
-|returns|, with a decay exponent of 0.36 on one instrument -- inside the
+|returns|, with a decay exponent of 0.36 on one instrument, inside the
 empirical 0.2 to 0.4 band. The reasoning that predicted its absence was wrong:
 clustering does not require clustered *information*, only clustered *impact*.
-When the maker is run over it widens and skews, which makes the next order
-move price further, which runs it over again. That feedback is endogenous
+When the maker is run over it widens and skews, which makes the next order move
+price further, which runs it over again. That feedback is endogenous
 volatility, and the literature argues it dominates news-driven volatility in
 real markets too.
 
 **Order-flow autocorrelation did emerge**, at 0.34 to 0.48. The prediction
 assumed no agent splits a metaorder. In fact the fundamental agents hold one
 fixed view for the whole session and accumulate toward a position limit over
-many wakeups -- which *is* metaorder splitting, arrived at by accident rather
+many wakeups, which *is* metaorder splitting, arrived at by accident rather
 than by design.
 
 The lesson is about method rather than about any one statistic: a mechanism
@@ -85,8 +85,8 @@ move is to measure first and explain second.
 One prediction that looked wrong was a measurement error instead. Lag-1 return
 autocorrelation came out at -0.22, suggesting a mean-reverting and inefficient
 price. Sampling the same market at different rates gave -0.20 at 100ms, +0.10
-at 500ms and +0.38 at one second -- so the number was microstructure noise, not
-a property of the price, and any single reading of it would have supported
+at 500ms and +0.38 at one second. So the number was microstructure noise, not a
+property of the price, and any single reading of it would have supported
 whichever conclusion was reached first. This is why ``variance_signature``
 exists and why a single-frequency autocorrelation should not be trusted here.
 """
@@ -145,8 +145,8 @@ def returns(prices: np.ndarray, log: bool = False) -> np.ndarray:
     """Successive price changes.
 
     Arithmetic by default rather than log. A contract here can legitimately
-    settle at or below zero -- a spread trades negative most of the time -- so
-    log returns are undefined for a large part of the instrument universe.
+    settle at or below zero (a spread trades negative most of the time), so log
+    returns are undefined for a large part of the instrument universe.
     """
     prices = np.asarray(prices, dtype=float)
     if prices.size < 2:
@@ -236,7 +236,7 @@ def ljung_box(series: np.ndarray, lags: int = 10) -> tuple[float, float]:
 def acf_decay_exponent(series: np.ndarray, max_lag: int = 40) -> float:
     """Power-law decay exponent of the autocorrelation of |series|.
 
-    Empirical equity data gives roughly 0.2 to 0.4 -- slow decay, the signature
+    Empirical equity data gives roughly 0.2 to 0.4: slow decay, the signature
     of long-memory volatility. A fast decay produces a large exponent and means
     volatility has no memory.
     """
@@ -247,7 +247,7 @@ def acf_decay_exponent(series: np.ndarray, max_lag: int = 40) -> float:
 
     # A decay exponent only means something if there is autocorrelation to
     # decay. Fitting a power law to a series with none produces a confident
-    # number from pure noise -- measured on white noise this returned -0.03,
+    # number from pure noise; measured on white noise this returned -0.03,
     # which reads as "slower decay than any real market" rather than as "no
     # memory at all". So the fit is attempted only once lag-1 clears the
     # standard 2/sqrt(n) significance band; below that the honest answer is
@@ -305,7 +305,7 @@ def bid_ask_bounce(trade_prices: np.ndarray) -> float:
     it is, the wider the effective spread.
 
     Its absence in a simulated market usually means trades are not really being
-    initiated from both sides -- which is what a wash-trading engine looks like.
+    initiated from both sides, which is what a wash-trading engine looks like.
     """
     return autocorrelation(returns(trade_prices), 1)
 
@@ -344,7 +344,7 @@ def variance_ratio(prices: np.ndarray, q: int = 4) -> float:
 
 
 def variance_signature(prices: np.ndarray, horizons: tuple[int, ...] = (1, 2, 4, 8, 16, 32, 64)) -> list[tuple[int, float]]:
-    """Variance ratio across sampling horizons -- the signature plot.
+    """Variance ratio across sampling horizons: the signature plot.
 
     The single most useful diagnostic here, and the one that stops a wrong
     conclusion being drawn from a single number.
@@ -353,7 +353,7 @@ def variance_signature(prices: np.ndarray, horizons: tuple[int, ...] = (1, 2, 4,
     quote flickering as a maker requotes, the tick grid, the bid-ask bounce.
     That noise is transient and reverses, so it inflates variance at short
     horizons and washes out at long ones. Measuring the variance ratio at one
-    sampling frequency therefore says nothing on its own -- it is a mixture of
+    sampling frequency therefore says nothing on its own; it is a mixture of
     the two, in unknown proportion.
 
     The signature separates them. Sub-one at short horizons rising toward one
@@ -434,14 +434,14 @@ def analyse(
     report.add(
         "return autocorrelation (lag 1)",
         autocorrelation(r, 1),
-        "|rho| < 0.1 -- unforecastable",
+        "|rho| < 0.1, unforecastable",
         lambda v: abs(v) < 0.1,
         "an efficient price cannot be predicted from its own past",
     )
     report.add(
         "variance ratio (q=4)",
         variance_ratio(mid, 4),
-        "near 1 -- random walk",
+        "near 1, a random walk",
         lambda v: 0.6 < v < 1.6,
         "above 1 trends, below 1 mean-reverts",
     )

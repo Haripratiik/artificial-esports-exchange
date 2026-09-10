@@ -3,13 +3,14 @@
 The engine is a pure function from a command and a book state to a list of
 events. It performs no I/O, reads no clock, and holds no reference to an agent.
 That is what makes a seeded run exactly reproducible, and what lets the same
-engine sit behind a discrete-event simulator, a differential test against the
-C++ port, or a live paper market without modification.
+engine sit behind a discrete-event simulator, a differential test against a
+second implementation, or a live paper market without modification.
 
 Every event carries a sequence number assigned by the engine in strict order.
 The sequence is the canonical ordering of everything that ever happened, and two
-engines fed identical commands must emit identical sequences -- which is the
-acceptance test for the C++ port.
+engines fed identical commands must emit identical sequences, which is what
+``tests/test_differential.py`` asserts, whether or not a second implementation
+is ever written.
 
 Message shapes follow the spirit of NASDAQ's OUCH (commands in) and ITCH (events
 out): a command is acknowledged or rejected, fills are reported per-order, and a
@@ -89,7 +90,7 @@ class Submit(Command):
     # ``peg_offset``, recomputed whenever the reference moves.
     #
     # A separate field rather than a reuse of ``price``, and the reason is not
-    # tidiness. Everything above the engine reads ``price`` as a price -- the
+    # tidiness. Everything above the engine reads ``price`` as a price: the
     # venue reserves collateral from it, and an offset of one tick sitting in
     # that field would have it reserve one tick's worth of cash for an order
     # that will rest at four thousand.
@@ -103,7 +104,7 @@ class Submit(Command):
     #
     # Not fill-or-kill, which is a statement about the whole order: an MPL order
     # is content to fill in pieces, and only insists that no piece be tiny. The
-    # motive is cost rather than impatience -- a thousand-lot order picked off
+    # motive is cost rather than impatience; a thousand-lot order picked off
     # one lot at a time pays the spread a thousand times and tells the market
     # what it is doing while it does so.
     min_quantity: int = 0
@@ -121,10 +122,10 @@ class Replace(Command):
     Priority follows the standard rule, which is not arbitrary: a strict
     reduction in quantity at an unchanged price **keeps** queue position,
     because the order is not asking for anything it was not already entitled to.
-    Any price change, or any increase in quantity, **loses** position -- it is a
-    new claim on the queue and jumping ahead of orders that were already waiting
-    would be unfair. Getting this backwards is a classic way to build a market
-    maker that looks far better than it is.
+    Any price change, or any increase in quantity, **loses** position. It is a
+    new claim on the queue and jumping ahead of orders that were already
+    waiting would be unfair. Getting this backwards is a classic way to build a
+    market maker that looks far better than it is.
     """
 
     order_id: OrderId
@@ -189,7 +190,7 @@ class Filled(Event):
 
     ``aggressor`` distinguishes the order that crossed the spread from the one
     that was resting. Nearly every microstructure measurement the project cares
-    about -- effective spread, order-flow imbalance, adverse selection -- needs
+    about (effective spread, order-flow imbalance, adverse selection) needs
     that distinction, and it cannot be recovered from prices after the fact.
     """
 

@@ -1,7 +1,7 @@
 # Artificial Esports Exchange
 
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat&logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1550-2ea44f?style=flat)
+![Tests](https://img.shields.io/badge/tests-1473-2ea44f?style=flat)
 ![Asset classes](https://img.shields.io/badge/asset%20classes-9-0A0A0A?style=flat)
 ![API](https://img.shields.io/badge/API-REST%20%2B%20WebSocket-0ea5e9?style=flat)
 ![Collateral](https://img.shields.io/badge/collateral-exact%2C%20not%20modelled-8b5cf6?style=flat)
@@ -12,8 +12,8 @@
 It was built to answer one question with evidence rather than opinion: **does a market aggregate dispersed information better than the agents trading inside it?** Answering that needs an instrument precise enough to trust, so the exchange is complete and runs end to end. A deterministic discrete-event kernel with per-agent latency. A price-time book carrying the order types real venues actually list. Opening and closing auctions, circuit breakers and a participant kill switch. A clearing house that nets portfolios exactly. Live settlement against a world this repository generates and can replay. A population of heterogeneous trading agents. A research harness that runs paired ablations from a manifest. And a browser front end that anyone can log into and trade on.
 
 ```
-43,000 lines of exchange, agents and research     1,550 tests across 49 files
-31,000 lines of tests                             355 markets in 9 browse rows
+41,000 lines of exchange, agents and research     1,473 tests across 45 files
+30,000 lines of tests                             358 markets, 318 of them binaries
 9 asset classes on one matching engine            conservation: integer zero
 bit-identical replay from a seed                  collateral: exact, not modelled
 ```

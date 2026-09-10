@@ -13,8 +13,8 @@ latency, and reach the venue the same way an algorithm's do. They get no
 privileged read of the book, no instant fills, and no exemption from the
 collateral check. Watching a market you are exempt from teaches nothing.
 
-**The engine is untouched.** Stepping is a property of the *kernel* -- see
-``Kernel.start``/``advance``/``finish`` -- not a special mode. The same seed,
+**The engine is untouched.** Stepping is a property of the *kernel* (see
+``Kernel.start``/``advance``/``finish``), not a special mode. The same seed,
 replayed headless, produces the same tape.
 
 The one thing that genuinely differs is the clock: real time advances whether or
@@ -58,7 +58,7 @@ def _distribution(instrument) -> dict[str, object] | None:
     """The payment stream, for a contract that has one.
 
     Only shares do. What a trader needs is how many payments are left and what
-    each is written on, because that -- not the settlement -- is what they are
+    each is written on, because that, not the settlement, is what they are
     buying.
     """
     schedule = instrument.spec.distribution
@@ -91,7 +91,7 @@ def _indicative_price(venue, instrument, symbol: str) -> str | None:
 # produce a different exchange: the agent population, the seeding, the order
 # the kernel runs things in, or the meaning of a recorded input. A journal
 # whose header disagrees is refused rather than replayed, because the failure
-# it prevents is silent -- the same commands land in a different market and the
+# it prevents is silent: the same commands land in a different market and the
 # rebuilt state is wrong in ways nothing downstream can detect.
 ENGINE_VERSION = "arena-live-1"
 
@@ -145,11 +145,11 @@ class HumanAgent(TradingAgent):
     def _on_private(self, ctx: SimulationContext, event: Any, symbol: str) -> None:
         """Record the event for the blotter, then let the base book it.
 
-        Overridden at the underscore level rather than at ``on_private`` because
-        only this one carries the symbol. Without it a blotter can say a fill
-        happened but not in what -- and the price would be a raw tick count,
-        which for a contract on a 0.25 grid is four times the number a person
-        expects to read.
+        Overridden at the underscore level rather than at ``on_private``
+        because only this one carries the symbol. Without it a blotter can say
+        a fill happened but not in what, and the price would be a raw tick
+        count, which for a contract on a 0.25 grid is four times the number a
+        person expects to read.
         """
         super()._on_private(ctx, event, symbol)
         entry: dict[str, Any] = {"t": int(ctx.now), "symbol": symbol, **event.to_dict()}
@@ -173,8 +173,8 @@ class LiveMarket:
     agents: list[TradingAgent] = field(default_factory=list)
     speed: float = 1.0
     # Everyone trading here, by account id. The first entry is the account a
-    # visitor gets before signing in, which keeps every existing caller -- and
-    # every test -- working unchanged.
+    # visitor gets before signing in, which keeps every existing caller (and
+    # every test) working unchanged.
     traders: dict[AgentId, HumanAgent] = field(default_factory=dict)
     latency: Any = None
     seat_cash: int = 0
@@ -216,7 +216,7 @@ class LiveMarket:
         Joining a running market rather than reserving a fixed number of seats
         up front. A pool would have been simpler and would have made "the
         exchange is full" a thing that could happen to someone, which is not a
-        property of an exchange -- it is a property of a workaround.
+        property of an exchange; it is a property of a workaround.
 
         The id is derived from the display name only for readability; the
         server hands out an opaque one. Two people with the same name get two
@@ -324,8 +324,8 @@ class LiveMarket:
         This is the step that was missing, and its absence was the largest
         remaining gap in the product. Measured before it existed: after a
         simulated hour all 47 contracts were still `continuous` and the settled
-        set was empty, so a position was marked forever and realised never --
-        an algorithm left running had no terminal event to score against.
+        set was empty, so a position was marked forever and realised never. An
+        algorithm left running had no terminal event to score against.
 
         The settlement machinery itself was complete and heavily tested the
         whole time. `build_market.prior_levels` already calls
@@ -333,8 +333,8 @@ class LiveMarket:
         the proof the oracle can answer. Nothing in the live path ever asked.
 
         Failures are recorded rather than raised. A contract the oracle cannot
-        answer for is a real outcome -- the evidence was never collected -- and
-        it must not take the market down with it; the venue's own settlement
+        answer for is a real outcome (the evidence was never collected) and it
+        must not take the market down with it; the venue's own settlement
         already distinguishes a VOID from a payout for exactly this reason.
         """
         if self.settlement_source is None:
@@ -351,7 +351,7 @@ class LiveMarket:
             try:
                 result = self.settlement_source(instrument.spec)
                 self.venue.settle(symbol, result)
-            except Exception as failure:  # noqa: BLE001 -- recorded, never fatal
+            except Exception as failure:  # noqa: BLE001 (recorded, never fatal)
                 self._settlement_log.append((symbol, repr(failure)))
                 continue
             self._settlement_log.append(
@@ -379,18 +379,19 @@ class LiveMarket:
         """Send one order. ``peg`` makes it a pegged one; everything else is derived.
 
         The peg arguments are keyword-only and default to "not a peg", so every
-        existing caller -- the browser ticket, the REST route, the tests --
-        keeps its current signature and its current behaviour exactly.
+        existing caller (the browser ticket, the REST route, the tests) keeps
+        its current signature and its current behaviour exactly.
 
         ``peg`` is the engine's own vocabulary rather than a second one: it
         takes a :class:`PegReference` or one of its values (``bid``, ``ask``,
         ``mid``), read off the enum rather than restated, so a fourth reference
         added to the exchange is reachable from here without anybody editing
-        this method. ``peg_offset`` stays a signed count of *ticks* for the same
-        reason it is one on ``Submit``: on a contract carrying a tick table the
-        same decimal is a different number of ticks at different levels, so an
-        offset expressed as a price would silently change size as the reference
-        moved -- which is precisely the thing a peg exists to stop happening.
+        this method. ``peg_offset`` stays a signed count of *ticks* for the
+        same reason it is one on ``Submit``: on a contract carrying a tick
+        table the same decimal is a different number of ticks at different
+        levels, so an offset expressed as a price would silently change size as
+        the reference moved, which is precisely the thing a peg exists to stop
+        happening.
         """
         self._record(
             "submit",
@@ -457,7 +458,7 @@ class LiveMarket:
         # can reach post-only and fill-or-kill rather than only the two defaults.
         #
         # A peg is checked before the other two because it looks like a market
-        # order from here -- it names no price -- and the unpriced branch would
+        # order from here (it names no price) and the unpriced branch would
         # have made it immediate-or-cancel, which is the one instruction a peg
         # cannot obey.
         if reference is not None:
@@ -516,8 +517,8 @@ class LiveMarket:
 
         The symbol is part of the address, not decoration. Order ids come from
         the matching engine and there is one per book, so id 5 exists on every
-        contract at once -- cancelling by id alone means cancelling whichever
-        of them happened to be found first. The client sends both because the
+        contract at once: cancelling by id alone means cancelling whichever of
+        them happened to be found first. The client sends both because the
         blotter it is reading already shows both; without one, the lookup falls
         back to a search and refuses if it is ambiguous.
         """
@@ -566,7 +567,7 @@ class LiveMarket:
         it. And the two commands race a fill: between the cancel and the
         resubmit the order is not in the book at all, so a client amending a
         quote in a moving market is repeatedly out of the market for a round
-        trip, or -- if the cancel loses the race -- ends up holding both.
+        trip, or, if the cancel loses the race, ends up holding both.
 
         **What it costs in queue priority, measured rather than assumed.** Two
         bids for ten at 100, ours first, then a sell of five sweeps the level:
@@ -576,9 +577,9 @@ class LiveMarket:
             10 -> 10 at the same price          kept_priority=False  they fill
             10 -> 6 at a different price        kept_priority=False  they fill
 
-        So the usual summary -- "raising size loses it, lowering it keeps it" --
-        is right about the two ends and silent about the middle, and the middle
-        is the case a client hits by accident. Priority survives a **strict
+        So the usual summary ("raising size loses it, lowering it keeps it") is
+        right about the two ends and silent about the middle, and the middle is
+        the case a client hits by accident. Priority survives a **strict
         reduction at an unchanged price and nothing else**: an amendment that
         re-sends the size it already had goes to the back of the queue for
         asking for nothing. Send only what is changing.
@@ -589,7 +590,7 @@ class LiveMarket:
 
         Addressed and owner-checked exactly as :meth:`cancel` is, and refused
         identically for an order that is somebody else's, already filled, or
-        never existed -- confirming that an id exists but belongs to another
+        never existed. Confirming that an id exists but belongs to another
         account tells a stranger something about that account.
         """
         # Same guard as `cancel`, for the same reason: instrumentation must not
@@ -619,8 +620,8 @@ class LiveMarket:
             return {"ok": False, "error": f"unknown symbol {symbol}"}
         if quantity <= 0:
             # The engine refuses this as INVALID_QUANTITY and leaves the order
-            # exactly where it was, which is right -- an amendment to zero is
-            # not a cancel and must not be read as one.
+            # exactly where it was, which is right: an amendment to zero is not
+            # a cancel and must not be read as one.
             return {"ok": False, "error": "quantity must be positive"}
         try:
             ticks = None if price is None else instrument.to_ticks(price)
@@ -673,7 +674,7 @@ class LiveMarket:
 
         The books, the tape and the clock are the same for everybody; the
         account, the blotter, the working orders and the counterparties are
-        not. Before there was one of each, so two browsers were one trader --
+        not. Before there was one of each, so two browsers were one trader:
         they shared a balance, and either could cancel the other's orders.
         """
         who = self.trader(trader)
@@ -710,17 +711,16 @@ class LiveMarket:
                 ),
                 "session": self.venue.session(symbol).value,
                 # What the call would clear at, published during it exactly as
-                # real venues publish an indicative price -- so an agent, or a
+                # real venues publish an indicative price. So an agent, or a
                 # person, can respond to the auction rather than only to its
                 # result.
                 "indicative": _indicative_price(self.venue, instrument, symbol),
                 "class": instrument.instrument_class,
                 "tick": str(instrument.tick_size),
-                # What the claim can be worth, not only what it settles at.
-                # A share settles at nothing because it has paid everything
-                # out, so the settlement range would say a share is worth
-                # zero to zero -- true at the last instant and useless
-                # before it.
+                # What the claim can be worth, not only what it settles at. A
+                # share settles at nothing because it has paid everything out,
+                # so the settlement range would say a share is worth zero to
+                # zero, true at the last instant and useless before it.
                 "bounds": [str(b) for b in instrument.value_bounds],
                 "trades": len(self.venue.engine(symbol).tape),
                 # What the contract actually is, so a trader can see the terms

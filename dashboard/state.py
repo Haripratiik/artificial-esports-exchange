@@ -12,9 +12,9 @@ the configuration therefore starts a new market, and the UI says so.
 
 Two records are kept, and they are for two different readers.
 
-The **sampled path** -- ``Series.stamps`` and ``Series.mids`` -- is for the
-chart and for the stylized-fact estimators. It is floats, because a chart is a
-float and ``analyse`` wants a numpy array.
+The **sampled path** (``Series.stamps`` and ``Series.mids``) is for the chart
+and for the stylized-fact estimators. It is floats, because a chart is a float
+and ``analyse`` wants a numpy array.
 
 The **candles** are for a program. They are integers in the exchange's own tick
 domain, they are aggregated as each period closes rather than recomputed on
@@ -24,7 +24,7 @@ book this thin. Nine of the forty-seven contracts the default configuration
 lists went a full simulated second without a print in the measurement that
 motivated this, and on a symbol that did not trade, the last trade price is a
 fact about some earlier minute while the bid and the ask are facts about the
-period -- so a backtester reconstructing what was actually *quotable* needs the
+period, so a backtester reconstructing what was actually *quotable* needs the
 quote candles and cannot get there from the tape.
 """
 
@@ -71,7 +71,7 @@ FEE_SCHEDULES: dict[str, FeeSchedule] = {
 #
 # The arithmetic is written out because the comment that used to sit here was
 # wrong by a factor of two. It said "sampling every fourth tick gives 5Hz, so
-# this buffer covers six minutes", and it was true when it was written -- then
+# this buffer covers six minutes", and it was true when it was written; then
 # SAMPLE_EVERY went from 4 to 2 and nobody came back to it. What the buffer
 # actually held was:
 #
@@ -80,15 +80,15 @@ FEE_SCHEDULES: dict[str, FeeSchedule] = {
 #     HISTORY / 10 = 1,800 / 10          = 180 seconds
 #
 # Three minutes, under a comment promising six, and nothing older than that
-# existed anywhere in this process. That is not a chart bug -- a chart wants a
-# few hundred points and gets them -- it is why the API's history endpoint was
+# existed anywhere in this process. That is not a chart bug (a chart wants a
+# few hundred points and gets them); it is why the API's history endpoint was
 # useless to anything systematic: three minutes is shorter than the shortest
 # thing a backtest measures.
 #
 # HISTORY is now 3,600, which at 10 samples a second is 360 seconds: the six
 # minutes the old comment claimed, actually delivered. It stays this size
 # because this buffer's job is the chart and the estimators, not the queryable
-# window -- that job now belongs to the candles below.
+# window. That job now belongs to the candles below.
 #
 # Bytes: four deques a symbol, one entry per sample (`trades` and `signs` fill
 # per print rather than per sample, so they are the loose bound rather than the
@@ -116,21 +116,21 @@ SAMPLE_EVERY = 2
 # are cut against is this simulator's, not a calendar's. A session here is
 # minutes to hours of simulated time, sampled ten times a second:
 #
-#     1 second   -- 10 samples a candle, the finest bar the sampler can fill
-#     10 seconds -- 100 samples
-#     60 seconds -- one simulated minute
+#     1 second:   10 samples a candle, the finest bar the sampler can fill
+#     10 seconds: 100 samples
+#     60 seconds: one simulated minute
 #
 # One second is the floor on purpose. A period shorter than 10 samples would
 # produce candles whose high and low are one or two observations, which is not
 # a range, it is noise with a box drawn round it.
 #
-# Depth, and the arithmetic that sizes it. Each candle is 17 int64 fields --
-# end, volume, trades, notional, open interest, and four each of price, bid and
-# ask -- stored flat in an ``array('q')`` ring rather than as objects. Flat
-# because the object form was measured at 564 bytes for a busy candle and 340
-# for a quiet one, against exactly 136 for the flat one, and 4x on a structure
-# this repetitive is the difference between a window worth querying and one that
-# is not:
+# Depth, and the arithmetic that sizes it. Each candle is 17 int64 fields (end,
+# volume, trades, notional, open interest, and four each of price, bid and ask)
+# stored flat in an ``array('q')`` ring rather than as objects. Flat because
+# the object form was measured at 564 bytes for a busy candle and 340 for a
+# quiet one, against exactly 136 for the flat one, and 4x on a structure this
+# repetitive is the difference between a window worth querying and one that is
+# not:
 #
 #     17 fields x 8 bytes                  = 136 bytes a candle
 #     x CANDLE_DEPTH = 1,800               = 245 KB a period a symbol
@@ -157,7 +157,7 @@ CANDLE_DEPTH = 1_800
 # for ``None`` and the absence is real: a book with nothing resting on one side
 # has no bid, and a period before the first print ever has no close. The value
 # is the minimum an int64 can hold, which no price on this venue can collide
-# with -- the widest settlement range listed is a few thousand contract units,
+# with: the widest settlement range listed is a few thousand contract units,
 # and even the market-on-open interest that rests at +2^62 so it crosses every
 # candidate an auction weighs is a large *positive* number, nowhere near this.
 _CANDLE_FIELDS = 17
@@ -246,7 +246,7 @@ class Candle(NamedTuple):
 
     ``notional`` is ``sum(price_in_ticks x quantity)`` over the period's prints,
     exact and integral. It is carried rather than only a mean because a mean is
-    a quotient and a quotient of two integers is not always a decimal -- so the
+    a quotient and a quotient of two integers is not always a decimal, so the
     number a client can check the arithmetic with has to be the numerator.
     """
 
@@ -540,7 +540,7 @@ def _open_interest(venue: Any) -> dict[str, int]:
     """Contracts outstanding per symbol: the sum of the long side.
 
     The textbook definition, and it is computable here rather than approximated
-    because this venue's positions net to zero by construction -- every contract
+    because this venue's positions net to zero by construction: every contract
     long is a contract short, so counting one side counts the contracts and
     counting both would count each twice.
 
@@ -610,7 +610,7 @@ def _role(agent) -> str:
 
     Published beside the class so the page can say "market maker" while the
     diagnostics keep the exact type. It is derived by isinstance rather than
-    by name, so a specialised maker is still a maker -- which is the thing two
+    by name, so a specialised maker is still a maker, which is the thing two
     tests got wrong when the options maker arrived and they went looking for
     the string "MarketMaker".
     """
@@ -730,13 +730,13 @@ class MarketRunner:
             engine = venue.engine(symbol)
             # Two levels, not one. Market-on-open interest rests at a sentinel
             # price so that it crosses every candidate an auction weighs, which
-            # makes it the top of the book by a margin of 2^61 -- and a
-            # one-level snapshot of a book holding any can therefore contain
-            # nothing but the sentinel, at which point ``best_bid`` filters it
-            # out and this samples NaN through an entire call phase. It is the
-            # same two levels ``rest.py::TOUCH_LEVELS`` reads, for the same
-            # reason, and reading one was quietly blanking the opening auction
-            # out of every chart and every candle.
+            # makes it the top of the book by a margin of 2^61, and a one-level
+            # snapshot of a book holding any can therefore contain nothing but
+            # the sentinel, at which point ``best_bid`` filters it out and this
+            # samples NaN through an entire call phase. It is the same two
+            # levels ``rest.py::TOUCH_LEVELS`` reads, for the same reason, and
+            # reading one was quietly blanking the opening auction out of every
+            # chart and every candle.
             snapshot = engine.book.snapshot(2)
             mid = snapshot.mid
             series.stamps.append(now)
@@ -774,8 +774,8 @@ class MarketRunner:
             "config": self.config.to_dict(),
             "fees": venue.fees.to_dict(),
             # Through `from_money`, like every other money field on this
-            # payload. It was published in raw *minor* units -- a factor of a
-            # million -- and the browser silently corrected it with `/ 1e6` at
+            # payload. It was published in raw *minor* units (a factor of a
+            # million), and the browser silently corrected it with `/ 1e6` at
             # the point of display. That is the same defect shape as the
             # settlement value that read 18,677 against a real 4,663 and the
             # equity column that rendered a seat as "143745.00M": a number
@@ -799,7 +799,7 @@ class MarketRunner:
     def _readable_halt(self, halt: dict[str, Any]) -> dict[str, Any]:
         """One breaker record, with its prices as prices.
 
-        The venue records a halt in the unit it matches in -- ticks -- which is
+        The venue records a halt in the unit it matches in (ticks), which is
         right for the venue and wrong for a screen. The Halts table draws
         ``price`` and ``reference`` straight into columns headed as such, so a
         band break on a contract quoted on a 0.25 grid printed 1,989 against a
@@ -836,8 +836,8 @@ class MarketRunner:
                         s: q for s, q in sorted(getattr(agent, "position", {}).items()) if q
                     },
                     # In price units, like every other money figure on the
-                    # wire. `Account.equity` answers in *minor* units -- the
-                    # integer the ledger is kept in -- and publishing that
+                    # wire. `Account.equity` answers in *minor* units (the
+                    # integer the ledger is kept in), and publishing that
                     # straight put the Participants table a million times out:
                     # a maker worth 113,125,513.21 was drawn as
                     # "113125513.21M", and a person's own seat showed
@@ -923,7 +923,7 @@ class MarketRunner:
             # In ticks until now, while every price on the page beside it was
             # in contract units. So the one number whose entire job is to be
             # compared against the market was in a different unit from the
-            # market: SPIKE_WR_FUT marked at 4,663 and revealed a "settlement"
+            # market: a win-rate future marked at 4,663 and revealed a "settlement"
             # of 18,677, and the chart drew that as a target line four times
             # off the top of the series. It looked like a number rather than
             # like a bug, which is why it survived.
@@ -977,11 +977,11 @@ class MarketRunner:
 
         ``AuctionResult.to_dict`` answers in ticks, which is right for the
         exchange and wrong for anything published. The socket already converts
-        this same figure -- ``books[symbol].indicative`` is "5003.00" -- while
-        the ladder endpoint was handing out 20012 for the same auction, on the
-        same contract, at the same instant. One name, two units, four times
-        apart. Nothing draws the ladder's copy yet, which is the only reason
-        it never appeared on a screen.
+        this same figure (``books[symbol].indicative`` is "5003.00") while the
+        ladder endpoint was handing out 20012 for the same auction, on the same
+        contract, at the same instant. One name, two units, four times apart.
+        Nothing draws the ladder's copy yet, which is the only reason it never
+        appeared on a screen.
         """
         venue = self.market.venue
         instrument = venue.registry.get(symbol)

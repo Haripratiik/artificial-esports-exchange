@@ -21,7 +21,7 @@ risk" in the same sense the exchange means it.
 this strategy is really about.** Measured against the informed agents' own
 posterior uncertainty, the collateral charge over-states the loss that is
 actually in play by roughly 47x on a future, 130x on a short option, 180x on a
-short commodity and 70x on the SPIKE_CROW spread. The consequence is not a
+short commodity and 70x on the spread contract. The consequence is not a
 detail: full Kelly on a future asks for about 1,290% of bankroll, so on this
 venue the capital constraint binds roughly 13 times for every once the sizing
 preference does. A strategy that computed ``f`` and stopped would be computing a
@@ -311,9 +311,9 @@ class KellyBayesian:
         # factor of two and costs four times the inverse CDF calls.
         self.draws = max(16, draws)
         # Keyed by what the contract is written on, never by symbol. An agent
-        # holding a different posterior for SPIKE per contract on SPIKE does not
-        # have a posterior for SPIKE, and the ladder it prices off those is not
-        # the ladder of any distribution.
+        # holding a different posterior per contract on one competitor does not
+        # have a posterior for that competitor, and the ladder it prices off
+        # those is not the ladder of any distribution.
         self._posterior: dict[str, tuple[float, float]] = dict(posterior or {})
         self._given = posterior is not None
         self._sample: dict[str, list[float]] = {}
@@ -336,8 +336,8 @@ class KellyBayesian:
         won out of battles seen, so a claim on a battle *count* or on a
         difference of two rates has no such posterior. Saying so is cheaper
         than clamping a level into [0, 1] and pretending the answer means
-        something: SPIKE_CROW is bounded by [-1, 1] and the clamp would put its
-        entire negative half at zero.
+        something: ``HALCYON_FORMAT_SPD`` is bounded by [-1, 1] and the clamp
+        would put its entire negative half at zero.
         """
         view_of = view.get(symbol)
         if view_of is None:

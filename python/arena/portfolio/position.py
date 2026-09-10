@@ -21,7 +21,7 @@ is not.
 
 The remaining case worth naming is the **flip**. A trade taking a position from
 +10 to -5 closes 10 lots and opens 5. It does not blend a long and a short cost
-basis into a number describing a position that never existed -- which is a
+basis into a number describing a position that never existed, which is a
 classic way to build a backtest reporting profits nobody could have made.
 """
 
@@ -97,16 +97,16 @@ class Position:
     def basis_after(self, quantity: int, price: Money) -> Money:
         """What :meth:`apply_fill` would leave the basis at, without applying it.
 
-        Needed because a solvency check has to price the position the fill would
-        *create*, and that position's exposure comes from its basis rather than
-        from the price of the trade that finished it. Pricing the whole
-        resulting quantity at the incoming price understates an add: measured on
-        ten lots long at 5,000 followed by ten more at 100, the check saw
-        ``20 * 100 = 2,000`` where the position it produced carries a basis of
-        51,000. An account with 50,000 of cash passed that check and came out
-        holding a position that can lose 51,000 -- owing a thousand it does not
-        have, which is the one thing full collateralisation is supposed to make
-        impossible.
+        Needed because a solvency check has to price the position the fill
+        would *create*, and that position's exposure comes from its basis
+        rather than from the price of the trade that finished it. Pricing the
+        whole resulting quantity at the incoming price understates an add:
+        measured on ten lots long at 5,000 followed by ten more at 100, the
+        check saw ``20 * 100 = 2,000`` where the position it produced carries a
+        basis of 51,000. An account with 50,000 of cash passed that check and
+        came out holding a position that can lose 51,000, owing a thousand it
+        does not have, which is the one thing full collateralisation is
+        supposed to make impossible.
 
         Every branch mirrors :meth:`apply_fill` line for line, and
         ``test_the_projected_basis_matches_the_applied_one`` holds them
@@ -131,15 +131,15 @@ class Position:
     ) -> FillRecord:
         """Apply an execution. ``quantity`` is signed: positive buys.
 
-        * **Opening or adding** -- same sign, or from flat. The basis grows by
+        * **Opening or adding**: same sign, or from flat. The basis grows by
           ``quantity * price``. Exact, no division.
-        * **Reducing** -- opposite sign, smaller magnitude. A proportional slice
-          of the basis closes and realises against the trade price. The slice is
-          *subtracted* from the basis rather than the basis being recomputed, so
-          the integer remainder stays in the position.
-        * **Flipping** -- opposite sign, larger magnitude. The whole basis
-          closes, which needs no proportion and so cannot round at all, then the
-          remainder opens at the trade price.
+        * **Reducing**: opposite sign, smaller magnitude. A proportional slice
+          of the basis closes and realises against the trade price. The slice
+          is *subtracted* from the basis rather than the basis being
+          recomputed, so the integer remainder stays in the position.
+        * **Flipping**: opposite sign, larger magnitude. The whole basis
+          closes, which needs no proportion and so cannot round at all, then
+          the remainder opens at the trade price.
         """
         if quantity == 0:
             raise ValueError("a fill must have non-zero quantity")

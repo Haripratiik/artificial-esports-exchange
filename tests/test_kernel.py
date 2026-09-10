@@ -75,7 +75,7 @@ class Recorder:
     subscribe_to: tuple[Feed, ...] = ()
     to_send: list[tuple[AgentId, Any]] = field(default_factory=list)
     # Delay before sending. Needed whenever a test wants other agents'
-    # subscriptions to have landed first -- a subscription is a message and is
+    # subscriptions to have landed first: a subscription is a message and is
     # subject to the sender's latency like any other, so a slow agent's request
     # to subscribe arrives slowly too.
     send_after: Duration | None = None
@@ -144,8 +144,8 @@ def test_simultaneous_events_are_broken_by_insertion_order():
     """Two events at the same nanosecond still need a total order.
 
     Without the insertion counter a heap of (timestamp, payload) tuples would
-    fall back to comparing payloads, which is either a TypeError or -- worse --
-    a silent ordering that depends on object contents.
+    fall back to comparing payloads, which is either a TypeError or, worse, a
+    silent ordering that depends on object contents.
     """
     kernel = Kernel(seed=1, latency=UniformLatency(base=millis(1), jitter=Duration(0)))
     a = Recorder(AgentId("a"), wake_every=millis(5))
@@ -237,7 +237,7 @@ def test_a_slow_agent_sees_the_same_event_later():
     """The core mechanism behind every latency experiment.
 
     Both agents subscribe to the same feed and the exchange broadcasts once.
-    They receive it at different times purely because their latencies differ --
+    They receive it at different times purely because their latencies differ,
     which is what makes 'how much is faster information worth' a measurable
     question rather than a stipulated one.
     """
@@ -526,7 +526,7 @@ def test_the_event_cap_does_not_strand_events_in_the_past():
     before current time" on events that were perfectly valid.
 
     The cap exists so a burst of activity cannot stall the loop serving the
-    browser -- so the corruption appeared only under load, which is the worst
+    browser. So the corruption appeared only under load, which is the worst
     place for a simulation clock to be wrong.
     """
     from dataclasses import dataclass, field
@@ -554,8 +554,8 @@ def test_the_event_cap_does_not_strand_events_in_the_past():
     kernel.add(ticker)
     kernel.start()
 
-    # Ask for ten seconds of a one-millisecond ticker -- 10,000 events -- but
-    # allow only 50 per slice, so the cap fires on every call.
+    # Ask for ten seconds of a one-millisecond ticker (10,000 events) but allow
+    # only 50 per slice, so the cap fires on every call.
     target = seconds(10)
     for _ in range(20):
         kernel.advance(until=target, max_events=50)
@@ -571,7 +571,7 @@ def test_the_event_cap_does_not_strand_events_in_the_past():
 def test_an_uncapped_advance_still_reaches_its_horizon():
     """The fix must not stop a quiet market's clock from moving.
 
-    With nothing left to run, time still has to pass -- otherwise a market with
+    With nothing left to run, time still has to pass; otherwise a market with
     no activity would freeze rather than idle.
     """
     kernel = Kernel(seed=1)

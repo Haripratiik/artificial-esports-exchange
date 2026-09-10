@@ -3,7 +3,7 @@
 The strongest assurance available for a matching engine short of a proof. The
 production engine earns its speed with a price heap, lazy removal of stale heap
 entries, price-level buckets carrying running totals, and cancellation by
-tombstone -- four optimisations, each a place a subtle bug could live and none of
+tombstone: four optimisations, each a place a subtle bug could live and none of
 them visible in the output when they go wrong.
 
 So it is checked against an implementation with no optimisations at all: a flat
@@ -41,10 +41,11 @@ AGENTS = [AgentId("a"), AgentId("b"), AgentId("c"), AgentId("d")]
 def random_stream(seed: int, count: int, *, price_span: int = 12) -> list:
     """A command stream with the shape real flow has.
 
-    Cancels and replaces are heavily represented on purpose. Most orders in an
-    electronic market are cancelled rather than filled, and cancellation is
-    exactly the path the production engine optimises with tombstones -- so a
-    stream without them would exercise none of the code most likely to be wrong.
+    Cancels and replaces are heavily represented on purpose. Most orders
+    in an electronic market are cancelled rather than filled, and
+    cancellation is exactly the path the production engine optimises with
+    tombstones, so a stream without them would exercise none of the code
+    most likely to be wrong.
     """
     rng = random.Random(seed)
     commands: list = []
@@ -145,7 +146,7 @@ def test_the_two_engines_leave_the_same_book(seed):
     """Resting depth must agree, which is what catches a leaked tombstone.
 
     A cancelled order that is skipped for matching but still counted in a level
-    total would never show up in the tape -- only in the depth.
+    total would never show up in the tape, only in the depth.
     """
     commands = random_stream(seed, 600)
     _fast, engine = real_trades(commands)

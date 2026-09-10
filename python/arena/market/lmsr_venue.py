@@ -3,8 +3,8 @@
 Everything an agent can observe here has the shape it has on the order-book
 venue: a two-sided book with depth at successive ticks, top-of-book and trade
 feeds, private fills, accounts, collateral and settlement. The only thing that
-changed is where the liquidity comes from -- a cost function instead of resting
-orders -- which is precisely the variable Experiment 2 needs to isolate.
+changed is where the liquidity comes from (a cost function instead of resting
+orders), which is precisely the variable Experiment 2 needs to isolate.
 
 Rendering the curve as a ladder
 -------------------------------
@@ -24,7 +24,7 @@ venue is *not* a book:
   the remainder is cancelled rather than left working. Agents already handle
   that lifecycle, since it is what an IOC does.
 * **The spread is made by rounding.** Raw LMSR is path independent, so a round
-  trip at the same net position is exactly free -- it has no spread at all.
+  trip at the same net position is exactly free: it has no spread at all.
   Quantising to the tick grid, always in the maker's favour, is what produces
   one. That keeps the maker's bounded-loss guarantee intact (it can only ever
   be charged less than the rule says) and it keeps the ledger exact, because
@@ -81,7 +81,7 @@ class LmsrBook:
     """The cost curve, presented as an L2 book.
 
     Sizes are the shares that move the marginal price across one tick, so the
-    ladder is the market's real liquidity rather than a decoration -- walking it
+    ladder is the market's real liquidity rather than a decoration. Walking it
     and applying the cost function give the same fills.
     """
 
@@ -106,7 +106,7 @@ class LmsrBook:
         """The touch. BUY is what the venue bids; SELL is what it offers.
 
         Rounded outward from fair value so the venue is never the one giving
-        value away on the rounding, and forced at least one tick apart -- two
+        value away on the rounding, and forced at least one tick apart; two
         equal touches would be a crossed quote to anyone reading the feed.
         """
         fair = self.fair_ticks
@@ -123,11 +123,11 @@ class LmsrBook:
     def best_priced(self, side: Side) -> Price | None:
         """The same touch, because there is nothing here to leave out.
 
-        The order book's version of this filters market-on-open interest,
-        which rests at a sentinel so that it crosses everything in the call.
-        A scoring-rule market holds no orders at all -- the touch is a function
-        of the outstanding quantity -- so there is no sentinel to hide and the
-        two questions have one answer.
+        The order book's version of this filters market-on-open interest, which
+        rests at a sentinel so that it crosses everything in the call. A
+        scoring-rule market holds no orders at all (the touch is a function of
+        the outstanding quantity), so there is no sentinel to hide and the two
+        questions have one answer.
 
         Present so that the two venues answer the same question by the same
         name. `VenueAgent.top_of_book` serves both and had to move to
@@ -436,7 +436,7 @@ class LmsrVenue(Venue):
     def _fillable(self, pool: LmsrPool, instrument: Instrument, command: Submit) -> int:
         """How much of this order the curve will fill at an acceptable price.
 
-        A market order takes the whole size -- the rule always has a price. A
+        A market order takes the whole size: the rule always has a price. A
         limit order walks the ladder and stops where the marginal price passes
         its limit, exactly as it would on a real book.
         """
@@ -460,9 +460,9 @@ class LmsrVenue(Venue):
     def _fill_ticks(self, pool: LmsrPool, instrument: Instrument, signed: int) -> Price:
         """The whole-tick price both sides book at.
 
-        Rounded against the trader -- up when buying, down when selling -- so the
-        maker is charged no more than the scoring rule says and its bounded loss
-        survives the quantisation.
+        Rounded against the trader (up when buying, down when selling) so the
+        maker is charged no more than the scoring rule says and its bounded
+        loss survives the quantisation.
         """
         average = pool.market.average_price(signed)
         ticks = average / float(instrument.tick_size)

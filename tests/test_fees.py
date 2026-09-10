@@ -2,7 +2,7 @@
 
 Two things could go wrong here and only one of them is loud. The loud one is
 charging the wrong amount. The quiet one is charging the right amount and
-putting it nowhere -- the ledger would still balance to within a rounding error,
+putting it nowhere: the ledger would still balance to within a rounding error,
 every test that checks "roughly conserved" would pass, and the venue's central
 invariant would have become an approximation without anyone noticing.
 
@@ -103,9 +103,9 @@ def test_the_taker_pays_and_the_maker_is_paid():
 def test_rounding_always_favours_the_venue(notional):
     """A charge rounds up and a rebate rounds down in magnitude.
 
-    The other way round, a strategy of many tiny fills would extract a fraction
-    of a unit per trade -- precisely the leak the integer ledger exists to make
-    impossible.
+    The other way round, a strategy of many tiny fills would extract a
+    fraction of a unit per trade, precisely the leak the integer ledger
+    exists to make impossible.
     """
     taker = int(MAKER_TAKER.charge(notional, aggressor=True))
     maker = int(MAKER_TAKER.charge(notional, aggressor=False))
@@ -261,11 +261,11 @@ def test_the_venue_starts_with_nothing_so_its_balance_is_its_revenue():
     """The venue is not a participant and nobody funded it.
 
     Its account fell through to the same opening balance as everybody else, so
-    it began with capital it had never received -- and that hid the single
-    thing this account exists to show. Measured on a schedule that pays out
-    more than it takes: two hundred fills took the venue **930,000,000** minor
-    units into the red and its own account still read 39,999,070,000,000, which
-    is comfortably solvent and a measurement of nothing.
+    it began with capital it had never received, and that hid the single thing
+    this account exists to show. Measured on a schedule that pays out more than
+    it takes: two hundred fills took the venue **930,000,000** minor units into
+    the red and its own account still read 39,999,070,000,000, which is
+    comfortably solvent and a measurement of nothing.
     """
     generous = FeeSchedule(taker_bps=1.0, maker_bps=-3.0)
     venue = Venue("arena", starting_cash=40_000_000, fees=generous)
@@ -319,15 +319,15 @@ def test_the_venues_own_capital_is_not_counted_as_capital_in_the_market():
 
 
 def test_the_rounding_rule_is_exact_at_every_notional_this_venue_can_reach():
-    """The rule is stated absolutely -- a charge rounds up, a rebate rounds down
-    in magnitude -- and it is computed in floating point, so it has a ceiling.
+    """The rule is stated absolutely (a charge rounds up, a rebate rounds down
+    in magnitude) and it is computed in floating point, so it has a ceiling.
 
     Measured, that ceiling is around 8e16 minor units of notional: at
     79,310,569,539,990,007 the taker fee came out one unit *below* the exact
     answer, which is the venue short by one. Reaching it needs roughly ten
     million lots at the top of a contract's range, against accounts that open
-    with 40,000,000 -- so it is four orders of magnitude out of reach, and it
-    is not a leak in any case, because the treasury receives exactly what the
+    with 40,000,000, so it is four orders of magnitude out of reach, and it is
+    not a leak in any case, because the treasury receives exactly what the
     participants were charged whatever the rounding does.
 
     This pins the reachable half of that statement. If capital here ever grows

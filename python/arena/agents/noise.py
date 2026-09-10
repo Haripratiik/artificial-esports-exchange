@@ -1,11 +1,11 @@
 """Noise traders.
 
-Not filler, and worth being clear about why. Without uninformed order flow there
-is nobody for a market maker to earn a spread from, and no camouflage for an
-informed trader to hide behind -- so both the market-making and the
+Not filler, and worth being clear about why. Without uninformed order flow
+there is nobody for a market maker to earn a spread from, and no camouflage for
+an informed trader to hide behind, so both the market-making and the
 information-asymmetry questions become degenerate. Every classic microstructure
-model needs noise for the same reason: Kyle's insider is only profitable because
-the market maker cannot tell them apart from the noise.
+model needs noise for the same reason: Kyle's insider is only profitable
+because the market maker cannot tell them apart from the noise.
 
 Two behaviours, because a population of purely random traders is *too* benign.
 Real uninformed flow chases trends and clusters, which is what produces the
@@ -99,9 +99,10 @@ class NoiseTrader(TradingAgent):
             self.take(ctx, symbol, side, size)
             return
 
-        # Otherwise rest a passive order a tick or two behind the touch, and let
-        # it expire rather than linger -- an uninformed trader who leaves stale
-        # orders in the book would become a free option for everyone else.
+        # Otherwise rest a passive order a tick or two behind the touch, and
+        # let it expire rather than linger: an uninformed trader who leaves
+        # stale orders in the book would become a free option for everyone
+        # else.
         instrument = self.instruments[symbol]
         offset = rng.randint(1, 3)
         if side is Side.BUY:

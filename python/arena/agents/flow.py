@@ -1,4 +1,4 @@
-"""Order flow with the shape real order flow has -- and a warning about it.
+"""Order flow with the shape real order flow has, and a warning about it.
 
 Real limit order books do not look like a stream of uniform orders arriving on
 a Poisson clock. Four regularities are robust across markets and decades:
@@ -8,11 +8,11 @@ a Poisson clock. Four regularities are robust across markets and decades:
   tail exponent for market-order volume around 2.3-2.5.
 * **Limit orders are placed a power-law distance from the touch.** Zovko &
   Farmer (2002) find the relative-limit-price distribution decaying with an
-  exponent near 1.5 -- most orders near the touch, a long tail placed far away.
+  exponent near 1.5: most orders near the touch, a long tail placed far away.
 * **Books are dominated by cancellation.** Well above 90% of orders in a modern
   equity book are cancelled rather than filled, and queue dynamics depend
   entirely on that churn. **This market reaches about 60%, not 90%**, measured
-  across every agent -- and adding these traders barely moves it (58.8% without,
+  across every agent, and adding these traders barely moves it (58.8% without,
   60.4% with). The missing 30 points are not this agent's to supply: real
   cancellation is dominated by market makers requoting on every tick at
   microsecond scale, and nothing here requotes faster than 300ms. Recorded as a
@@ -20,10 +20,10 @@ a Poisson clock. Four regularities are robust across markets and decades:
   agent's churn would be the number without the mechanism behind it.
 * **Arrivals cluster.** Order flow comes in bursts. Self-exciting (Hawkes)
   models fit it well: each event raises the intensity of the next. Fitted
-  branching ratios for equity order flow sit high -- Filimonov & Sornette
-  (2012) and Hardiman, Bercot & Bouchaud (2013) report values near 0.8-0.95,
-  the latter arguing order flow is close to critical -- with kernels decaying
-  over sub-second to second timescales.
+  branching ratios for equity order flow sit high, with kernels decaying over
+  sub-second to second timescales: Filimonov & Sornette (2012) and Hardiman,
+  Bercot & Bouchaud (2013) report values near 0.8-0.95, the latter arguing
+  order flow is close to critical.
 
 The warning
 -----------
@@ -47,9 +47,9 @@ in the opposite direction:**
 
 The mechanism appears to be that the extra population deepens the book faster
 than heavy order sizes can move it, and dilution wins. So the emergence result
-survives this population rather than being undermined by it -- and the bid-ask
-bounce, which had the wrong sign entirely without these agents, becomes negative
-as a real tape's does, because they both post and take.
+survives this population rather than being undermined by it. And the bid-ask
+bounce, which had the wrong sign entirely without these agents, becomes
+negative as a real tape's does, because they both post and take.
 
 Three seeds is not many, and the honest reading is "did not inflate the tails"
 rather than "provably reduced them". The reason to keep this **off by default**
@@ -86,8 +86,8 @@ def power_law_size(rng, exponent: float, minimum: int, maximum: int) -> int:
     ``exponent`` is the **survival** exponent: P(X > x) decays as x**-exponent.
     That is the convention the microstructure literature quotes its numbers in,
     so a value read from a paper can be passed here unchanged. Getting this
-    wrong is silent -- the draws still look heavy-tailed, just with the wrong
-    tail -- so the property test measures the realised exponent back out.
+    wrong is silent (the draws still look heavy-tailed, just with the wrong
+    tail), so the property test measures the realised exponent back out.
 
     Inverse-transform on the continuous Pareto, then floored. Truncation is not
     cosmetic: an untruncated power law with an exponent near 2 has infinite
@@ -150,7 +150,7 @@ class FlowTrader(TradingAgent):
         self.cancel_rate = cancel_rate
         # Hawkes self-excitation. This is the *branching ratio*: the expected
         # number of further orders each order triggers. It must stay below one,
-        # and that is not a matter of taste -- at one or above the process is
+        # and that is not a matter of taste: at one or above the process is
         # explosive. A first attempt here added excitation in the wrong units
         # with no stability condition, and one agent reached 26,000 times its
         # baseline intensity and emitted 6,000 orders a second forever.
@@ -162,9 +162,9 @@ class FlowTrader(TradingAgent):
         self.branching_ratio = branching_ratio
         # How long a burst stays hot: the excitation decays by 1/e over this
         # interval. Measured against the clock rather than per wakeup, because
-        # tying decay to wakeups would make burst length depend on how often the
-        # agent happened to be scheduled, which is circular -- and was exactly
-        # how the explosive version failed to decay at all.
+        # tying decay to wakeups would make burst length depend on how often
+        # the agent happened to be scheduled, which is circular, and was
+        # exactly how the explosive version failed to decay at all.
         self.decay = max(1, int(decay))
         self.position_limit = position_limit
         self._intensity = 0.0
@@ -186,7 +186,7 @@ class FlowTrader(TradingAgent):
         this clusters; at one or above it explodes, which is why the constructor
         refuses to build it.
 
-        The long-run mean rate is ``mu / (1 - branching_ratio)`` -- bursty, and
+        The long-run mean rate is ``mu / (1 - branching_ratio)``: bursty, and
         bounded, which is the combination a Poisson clock cannot give.
         """
         elapsed = max(0, int(ctx.now) - self._last_wake)

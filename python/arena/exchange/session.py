@@ -2,18 +2,18 @@
 
 A continuous book cannot start itself. At the open there is no price, no
 reference and no liquidity, so the first order to arrive would trade against
-whatever happened to be resting -- which is how a market opens at a number that
+whatever happened to be resting, which is how a market opens at a number that
 means nothing. Real venues solve this by accumulating orders without matching
 and then clearing them all at a single price, and so does this.
 
 The same machinery does three jobs, which is why it is one module:
 
-* **the open** -- orders accumulate in ``PRE_OPEN``, then one uncross sets the
+* **the open**: orders accumulate in ``PRE_OPEN``, then one uncross sets the
   first price of the day
-* **a halt** -- trading stops, orders keep arriving into ``AUCTION``, and the
+* **a halt**: trading stops, orders keep arriving into ``AUCTION``, and the
   reopen is an uncross rather than a free-for-all. A halt that resumed straight
   into continuous trading would hand the first arrival the whole dislocation.
-* **the close** -- the last price of the day is a cleared price rather than
+* **the close**: the last price of the day is a cleared price rather than
   whatever the final trade happened to be, which is why closing auctions exist
   at all: index funds and settlement prices need a price that size can actually
   transact at.
@@ -21,7 +21,7 @@ The same machinery does three jobs, which is why it is one module:
 The clearing rule
 -----------------
 
-Standard, and standard for a reason -- each tie-break exists because the one
+Standard, and standard for a reason. Each tie-break exists because the one
 before it can leave more than one answer:
 
 1. **maximum executable volume.** The auction's purpose is to trade as much as
@@ -49,7 +49,7 @@ __all__ = ["SessionState", "AuctionResult", "indicative_auction", "SENTINEL"]
 
 # Market orders rest at a price that crosses everything. Anything at or beyond
 # this magnitude is a market order rather than a genuine limit, and is excluded
-# from the candidate prices -- clearing "at" 2^62 would be nonsense.
+# from the candidate prices: clearing "at" 2^62 would be nonsense.
 SENTINEL = 1 << 61
 
 
@@ -110,7 +110,7 @@ def indicative_auction(book, reference: Price | None = None) -> AuctionResult | 
     indicative-price feed during the call phase as real venues do, and tested
     without an engine.
 
-    Returns ``None`` when nothing would trade -- an uncrossed book, or one side
+    Returns ``None`` when nothing would trade: an uncrossed book, or one side
     empty. That is not an error; most of a call phase looks like that.
     """
     snapshot = book.snapshot(levels=1 << 20)
@@ -125,7 +125,7 @@ def indicative_auction(book, reference: Price | None = None) -> AuctionResult | 
     )
     if not candidates:
         # Only market orders on both sides. There is no price they imply, so the
-        # reference is the only defensible answer -- and without one, no auction.
+        # reference is the only defensible answer, and without one, no auction.
         if reference is None:
             return None
         candidates = [int(reference)]

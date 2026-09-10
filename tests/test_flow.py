@@ -7,8 +7,8 @@ entirely plausible in every plot and would quietly misstate the one number these
 agents exist to control.
 
 So the exponent is measured back out with a Hill estimator rather than trusted.
-It comes back slightly high -- flooring a continuous draw moves mass down, which
-shortens the log-distances the estimator sums -- and the tolerance is set to
+It comes back slightly high (flooring a continuous draw moves mass down, which
+shortens the log-distances the estimator sums) and the tolerance is set to
 admit that known bias and nothing larger.
 """
 
@@ -44,8 +44,8 @@ def _hill(sample: np.ndarray, threshold: float) -> float:
 def test_the_sampler_delivers_the_exponent_it_was_given(exponent):
     """Measured back out, not assumed. The convention is the survival exponent.
 
-    Had the parameter meant something else -- the density exponent, say, which
-    differs by one -- every draw would still look heavy-tailed and the number
+    Had the parameter meant something else (the density exponent, say, which
+    differs by one), every draw would still look heavy-tailed and the number
     would be wrong by 40%.
     """
     estimate = _hill(_draws(exponent), threshold=10)
@@ -65,7 +65,7 @@ def test_volume_concentration_matches_the_pareto_prediction(exponent):
     """The point of a power law, checked against theory rather than a guess.
 
     For a Pareto with tail index a, the share of total mass held by the top
-    fraction q is exactly ``q ** (1 - 1/a)`` -- about 21% for a = 1.5 and 6.8%
+    fraction q is exactly ``q ** (1 - 1/a)``, about 21% for a = 1.5 and 6.8%
     for a = 2.4 at q = 1%. Flooring the draws lifts that slightly, because
     rounding costs a small order proportionally far more than a large one, and
     the tolerance admits that and nothing bigger.
@@ -107,7 +107,7 @@ def test_an_unstable_branching_ratio_is_refused(bad):
     A first version added excitation in the wrong units with no stability
     condition. One agent reached 26,000 times its baseline intensity, its
     inter-arrival time collapsed to microseconds, and it emitted roughly 6,000
-    orders a second forever -- the test suite simply stopped returning. At a
+    orders a second forever: the test suite simply stopped returning. At a
     branching ratio of one or above the process is explosive by construction,
     so the constructor refuses rather than leaving it to be discovered.
     """
@@ -174,7 +174,7 @@ def test_the_flow_traders_are_active(flow_market):
 
 
 def test_the_book_is_cancel_dominated(flow_market):
-    """More orders pulled than filled -- which is the direction, not the level.
+    """More orders pulled than filled, which is the direction, not the level.
 
     Real equity books cancel well above 90% of orders. This market reaches
     about 60%, and adding these agents barely moves it, because real

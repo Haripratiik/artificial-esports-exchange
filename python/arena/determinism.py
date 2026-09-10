@@ -1,9 +1,10 @@
 """Primitives that make settlement byte-for-byte reproducible.
 
-Every settlement artifact in Artificial Brawl Stars Exchange is content-addressed. If two runs
-disagree about a contract's settlement value, the digests must disagree too --
-otherwise a silent change in a metric definition, a reference weight set, or a
-data source could rewrite history without leaving a trace.
+Every settlement artifact in the Artificial Esports Exchange is
+content-addressed. If two runs disagree about a contract's settlement value,
+the digests must disagree too. Otherwise a silent change in a metric
+definition, a reference weight set, or a data source could rewrite history
+without leaving a trace.
 
 Three rules are enforced here and relied on everywhere else:
 

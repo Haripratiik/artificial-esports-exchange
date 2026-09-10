@@ -131,7 +131,7 @@ def test_an_agent_with_overwhelming_evidence_forecasts_the_truth():
 
 
 def test_an_agent_with_no_evidence_forecasts_the_prior():
-    """Zero battles means the prior, and the prior alone -- no leaked truth.
+    """Zero battles means the prior, and the prior alone: no leaked truth.
 
     If an uninformed agent's forecast moved with p*, information would be
     reaching agents through some channel other than the battles they observed,
@@ -148,9 +148,9 @@ def test_an_agent_with_no_evidence_forecasts_the_prior():
 def test_more_evidence_forecasts_better_on_average():
     """The whole information model in one assertion.
 
-    Not true trial by trial -- a poorly-informed agent gets lucky sometimes --
-    so it is checked as an average over many draws, which is the sense in which
-    it is actually claimed.
+    Not true trial by trial (a poorly-informed agent gets lucky sometimes), so
+    it is checked as an average over many draws, which is the sense in which it
+    is actually claimed.
     """
     truth, window, threshold = 0.52, 1_000, 0.515
     target = settlement_probability(truth, window, threshold)
@@ -249,7 +249,7 @@ def test_the_two_mechanisms_see_identical_agents():
     """The control that makes Experiment 2 a comparison rather than two runs.
 
     Agents draw their evidence from their own seeded streams, so swapping the
-    venue must not change what any of them believes -- only what the price does
+    venue must not change what any of them believes, only what the price does
     with those beliefs.
     """
     clob = run_trial(_config(seed=88, venue_kind="clob"))
@@ -267,8 +267,8 @@ def test_the_outcome_draw_does_not_disturb_the_simulation():
     """The sampled outcome comes from its own stream.
 
     It is only used for the secondary metric, so it must not be able to shift
-    the market -- otherwise reporting a secondary number would change the
-    primary one.
+    the market; otherwise reporting a secondary number would change the primary
+    one.
     """
     config = _config(seed=101)
     result = run_trial(config)

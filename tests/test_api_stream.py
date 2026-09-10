@@ -26,7 +26,7 @@ server sends without bound, so a test client that stops reading applies no
 backpressure at all and cannot exercise the path that matters. The conflation
 test therefore drives the endpoint directly with a socket whose ``send_json``
 can be stalled on demand, and steps the market from the same event loop while
-it is stalled -- which is the actual question: does a client that has stopped
+it is stalled, which is the actual question: does a client that has stopped
 reading stop the market, and does it lose anything when it comes back.
 """
 
@@ -152,10 +152,10 @@ def build_app(runner: MarketRunner, keys: KeyStore) -> FastAPI:
 
     # Where each of this application's people is sitting, by seat token. The
     # same shape ``dashboard.server`` has and hands to both halves of the API:
-    # a token that outlives the market, an account that does not, and a
-    # re-seat whenever the generation moves. Both halves must be given the
-    # same one or a credential ends up on two accounts -- placing orders on
-    # one and watching the other's fills.
+    # a token that outlives the market, an account that does not, and a re-seat
+    # whenever the generation moves. Both halves must be given the same one or
+    # a credential ends up on two accounts, placing orders on one and watching
+    # the other's fills.
     seats: dict[str, tuple[str, AgentId]] = {}
 
     def seat_now(token: str) -> AgentId | None:
@@ -196,9 +196,9 @@ def build_app(runner: MarketRunner, keys: KeyStore) -> FastAPI:
         """The busiest contract a market order can actually trade in right now.
 
         Ranked by how much it has printed rather than by resting depth. A
-        contract can show a fat ladder and hardly ever trade -- an option
-        nobody is taking, a spread quoted wide -- and a test that waits for a
-        print on one of those is waiting for the wrong thing.
+        contract can show a fat ladder and hardly ever trade (an option nobody
+        is taking, a spread quoted wide) and a test that waits for a print on
+        one of those is waiting for the wrong thing.
         """
         venue = runner.market.venue
         best: tuple[str, int] | None = None
@@ -308,17 +308,17 @@ def receive(socket: Any, *, seconds: float = 15.0) -> dict[str, Any]:
     """One frame, or a failure. Never an indefinite wait.
 
     ``TestClient``'s websocket has no receive timeout, so a frame that never
-    arrives hangs the whole suite until somebody kills it -- and a hang says
-    far less about what broke than a failure does. The read runs on a worker
-    thread so the deadline can be enforced; the thread left behind on a timeout
-    goes away with the process, and by then the test has already failed.
+    arrives hangs the whole suite until somebody kills it, and a hang says far
+    less about what broke than a failure does. The read runs on a worker thread
+    so the deadline can be enforced; the thread left behind on a timeout goes
+    away with the process, and by then the test has already failed.
     """
     future = _READS.submit(socket.receive_json)
     try:
         return future.result(timeout=seconds)
     except FutureTimeout:
         raise AssertionError(
-            f"the stream sent nothing for {seconds:.0f}s -- it has stopped answering"
+            f"the stream sent nothing for {seconds:.0f}s. It has stopped answering"
         ) from None
 
 
@@ -405,7 +405,7 @@ def released(venue: Venue, session: str, *, seconds: float = 20.0) -> dict[str, 
     """Wait until the server has noticed the socket carrying a session is gone.
 
     A session only becomes resumable once the connection holding it has let go,
-    and the client learns nothing about when that happens -- it closed its end
+    and the client learns nothing about when that happens: it closed its end
     and the server finds out afterwards. A test that reconnected immediately
     would be racing the server's own bookkeeping and measuring how fast
     ``TestClient`` closes rather than whether resume works.
@@ -425,7 +425,7 @@ def tradeable(venue: Venue, *, seconds: float = 20.0) -> str:
 
     Polled rather than read once. Straight after a rebuild the books are empty
     and the phases have not settled, so there is a window in which the honest
-    answer is "none yet" -- and a test that took that answer would be asserting
+    answer is "none yet", and a test that took that answer would be asserting
     something about the calendar rather than about the feed.
     """
     deadline = time.monotonic() + seconds
@@ -588,7 +588,7 @@ def test_the_wildcard_follows_the_registry_across_every_asset_class(venue):
     assert len(classes) >= 5
     labels = {frame["channel"] for frame in seen if frame["type"] == "ticker"}
     # Frames are labelled with the concrete channel, never with the wildcard a
-    # client happened to ask by -- otherwise routing on the label is impossible.
+    # client happened to ask by; otherwise routing on the label is impossible.
     assert labels == {f"ticker.{s}" for s in streamed}
 
 
@@ -710,11 +710,11 @@ def test_a_print_carries_the_exchange_sequence_not_the_order_ids(venue):
 def test_the_lifecycle_channel_reports_a_session_change_and_a_halt(venue):
     """What an unattended algorithm cannot work out from prices alone.
 
-    A halted book looks exactly like a quiet one from the outside: no prints,
-    a ladder that stops moving. A maker that cannot tell them apart keeps
-    quoting into a market that is not going to trade, and a taker waits for a
-    fill that cannot arrive. So the venue says it, and says why -- the reason
-    the breaker or the operator gave -- and then says when it comes back.
+    A halted book looks exactly like a quiet one from the outside: no prints, a
+    ladder that stops moving. A maker that cannot tell them apart keeps quoting
+    into a market that is not going to trade, and a taker waits for a fill that
+    cannot arrive. So the venue says it, and says why (the reason the breaker
+    or the operator gave) and then says when it comes back.
     """
     symbol = tradeable(venue)
     with venue.client.websocket_connect(STREAM_PATH) as socket:
@@ -722,7 +722,7 @@ def test_the_lifecycle_channel_reports_a_session_change_and_a_halt(venue):
         # The cursor opens at the present, so the contracts already listed are
         # not announced as though they were new. Two drains, because the first
         # only proves the subscribe was seen. The breaker is free to say
-        # something about this symbol in the meantime -- that is the channel
+        # something about this symbol in the meantime; that is the channel
         # working, not the channel replaying.
         drain(socket)
         time.sleep(0.2)
@@ -959,8 +959,8 @@ def test_a_signed_socket_streams_its_own_orders_and_fills(venue):
     A key names a seat *token*, not an account, and the application resolves
     the token. If the stream resolved it any other way it would seat the
     credential a second time, and the client would place orders through the
-    signed REST surface on one account while watching another account's fills
-    -- which looks exactly like a feed that is simply not working.
+    signed REST surface on one account while watching another account's fills,
+    which looks exactly like a feed that is simply not working.
     """
     seat = venue.control("/control/do/seat", name="blotter-test")
     key = venue.keys.issue(agent_id=seat["token"], label="blotter-test")
@@ -1041,7 +1041,7 @@ def test_get_snapshot_returns_a_book_without_changing_the_subscription(venue):
 
     A sequence number that reveals a gap is worth nothing on its own. Before
     this the only remedy was to tear the subscription down and rebuild it,
-    which costs a client its place on every *other* contract it was watching --
+    which costs a client its place on every *other* contract it was watching,
     so repairing one book meant re-synchronising twenty-seven.
     """
     watched = tradeable(venue)
@@ -1076,8 +1076,8 @@ def test_get_snapshot_returns_a_book_without_changing_the_subscription(venue):
         assert book["channel"] == f"book.{other}"
         assert book["symbol"] == other
         # Marked, because Bybit's half of this contract is that a new snapshot
-        # means discard the local book -- and a client can only act on that if
-        # a solicited full state is distinguishable from a live update.
+        # means discard the local book, and a client can only act on that if a
+        # solicited full state is distinguishable from a live update.
         assert book["snapshot"] is True
         assert tickers[0]["snapshot"] is True
         assert book["seq"] > ack["seq"]
@@ -1140,13 +1140,13 @@ def test_resume_replays_exactly_the_frames_that_were_missed(venue):
 
     So the client here deliberately pretends it processed only the first half
     of what it was sent, reconnects, and asks for the rest. What comes back
-    must be exactly the frames it did not process -- byte for byte, in order,
-    with their original numbers, no gap and no duplicate -- and the live feed
+    must be exactly the frames it did not process (byte for byte, in order,
+    with their original numbers, no gap and no duplicate) and the live feed
     must then continue from the next number with the tape cursor still where
     the dead connection left it. That last part is the one that is easy to get
     wrong and impossible for a client to notice: a resume that reopened the
-    tape at *now* would skip every print that landed while it was away, and
-    the sequence would run straight across the hole.
+    tape at *now* would skip every print that landed while it was away, and the
+    sequence would run straight across the hole.
     """
     symbol = tradeable(venue)
     with venue.client.websocket_connect(STREAM_PATH) as socket:
@@ -1195,7 +1195,7 @@ def test_resume_replays_exactly_the_frames_that_were_missed(venue):
         # At least everything the client missed, and possibly one frame more.
         # More is correct: the server retains a frame the moment it numbers it,
         # whether or not the write got out, so a frame lost to a socket that
-        # was already dying is replayable -- and that is exactly the frame a
+        # was already dying is replayable, and that is exactly the frame a
         # reconnecting client comes back for. Fewer would be the bug.
         assert ack["replayed"] >= len(missed)
         assert set(ack["subscriptions"]) == {f"trades.{symbol}", f"book.{symbol}"}
@@ -1221,8 +1221,8 @@ def test_resume_replays_exactly_the_frames_that_were_missed(venue):
     assert numbers == list(range(from_seq, from_seq + len(numbers)))
 
     # And the cursor came back with the session. Every print this client saw,
-    # across both connections, is a contiguous run of the venue's own tape --
-    # so nothing traded into the hole while it was disconnected.
+    # across both connections, is a contiguous run of the venue's own tape, so
+    # nothing traded into the hole while it was disconnected.
     tape = venue.control("/control/tape", symbol=symbol)["sequences"]
     streamed = [
         f["exchange_seq"]
@@ -1283,12 +1283,12 @@ def test_a_resume_that_cannot_be_honoured_is_refused_and_never_silent(venue):
 def test_a_resume_past_the_retained_bound_is_refused_rather_than_restarted():
     """The bound is published, and past it the answer is no.
 
-    Every venue draws this line somewhere -- Nasdaq caps a retransmission at
-    what fits one packet, CME MDP caps a TCP replay at 2,000 packets -- and the
-    only wrong answer is a partial replay, which hands the client a hole it has
-    been given no way to notice. Run against an endpoint whose bound is eight
-    frames, so the overflow is a fact of the test rather than a wait for two
-    thousand.
+    Every venue draws this line somewhere (Nasdaq caps a retransmission at
+    what fits one packet, CME MDP caps a TCP replay at 2,000 packets) and
+    the only wrong answer is a partial replay, which hands the client a hole
+    it has been given no way to notice. Run against an endpoint whose bound
+    is eight frames, so the overflow is a fact of the test rather than a
+    wait for two thousand.
     """
     runner = MarketRunner(
         MarketConfig(seed=13, speed=1.0, makers=2, flow_traders=1, opening_auction=False)
@@ -1400,9 +1400,9 @@ def test_a_reset_says_the_client_must_discard_after_a_rebuild_it_resumed_across(
     venue that no longer exists: the accounts are gone, the contract set may
     not even be the same, and every cursor the session carried indexes
     something ``reconfigure`` threw away. So the resume is honoured and then a
-    ``reset`` is pushed -- Bybit's contract, that a client receiving one resets
-    its local state -- rather than leaving the client to work out on its own
-    that the numbers it just caught up on are about a different market.
+    ``reset`` is pushed (Bybit's contract, that a client receiving one resets
+    its local state) rather than leaving the client to work out on its own that
+    the numbers it just caught up on are about a different market.
     """
     runner = MarketRunner(
         MarketConfig(seed=29, speed=1.0, makers=2, flow_traders=1, opening_auction=False)
@@ -1458,7 +1458,7 @@ def test_a_reset_arrives_when_the_private_cursor_is_invalidated():
 
     ``HumanAgent`` keeps the last two hundred entries, so a client that stops
     reading for long enough is behind a window that has moved. Nothing can
-    recover those events -- they are gone from the agent too -- so the honest
+    recover those events (they are gone from the agent too) so the honest
     answer is to say the private view is wrong and must be re-read.
 
     This used to be an ``invalid_request`` error, which was the wrong thing to
@@ -1468,14 +1468,14 @@ def test_a_reset_arrives_when_the_private_cursor_is_invalidated():
     """
     # The quietest market this venue will build, and both halves of that
     # matter. ``MarketRunner.step`` scales the wall-clock slice by the speed
-    # multiple, and ``Kernel.advance`` runs at most 20,000 events per slice --
-    # so on a busy market a starved process falls behind, spends its whole
-    # event budget on the other agents, and the one participant this test is
-    # driving never gets its orders through. Measured: at speed 3.0 with the
-    # default population this test pushed orders for thirty seconds and moved
-    # the blotter by about a hundred entries; stripped to one maker it turns
-    # the window over in a couple of rounds. The market's behaviour is not
-    # under test here -- the cursor is.
+    # multiple, and ``Kernel.advance`` runs at most 20,000 events per slice, so
+    # on a busy market a starved process falls behind, spends its whole event
+    # budget on the other agents, and the one participant this test is driving
+    # never gets its orders through. Measured: at speed 3.0 with the default
+    # population this test pushed orders for thirty seconds and moved the
+    # blotter by about a hundred entries; stripped to one maker it turns the
+    # window over in a couple of rounds. The market's behaviour is not under
+    # test here; the cursor is.
     runner = MarketRunner(
         MarketConfig(
             seed=31,
@@ -1544,10 +1544,10 @@ def test_a_reset_arrives_when_the_private_cursor_is_invalidated():
         #
         # It was a 30 second deadline, and that made the test a measurement of
         # how busy the machine was rather than of whether the window slides.
-        # Every round here does a deterministic amount of work -- `push` queues
-        # a fixed number of orders and `step_market` advances the kernel by
-        # simulated time, neither of which cares how long a second takes -- so
-        # a slow machine needs the same number of rounds, just more seconds to
+        # Every round here does a deterministic amount of work (`push` queues a
+        # fixed number of orders and `step_market` advances the kernel by
+        # simulated time, neither of which cares how long a second takes) so a
+        # slow machine needs the same number of rounds, just more seconds to
         # run them. Under the full suite it ran out of seconds and failed while
         # making perfectly good progress. Passing alone and failing in the
         # suite is the signature of exactly this, and never of a real defect.
@@ -1629,7 +1629,7 @@ class StallableSocket:
 
 
 def test_a_stalled_client_neither_stops_the_market_nor_loses_a_print():
-    """Conflation, not dropping -- the failure that deadlocked this market.
+    """Conflation, not dropping: the failure that deadlocked this market.
 
     An earlier feed discarded an update when a subscriber was behind. A maker
     that has not moved its quote sends no order, so nothing republishes, and
@@ -1637,7 +1637,7 @@ def test_a_stalled_client_neither_stops_the_market_nor_loses_a_print():
     times traded 0. So this asserts both halves. The market keeps stepping
     while the connection is stuck mid-write, and when the connection comes back
     every print that happened while it was stuck is delivered, in order and
-    exactly once -- while the book, which is state rather than event, is
+    exactly once, while the book, which is state rather than event, is
     conflated to the latest rather than replayed.
     """
     runner = MarketRunner(
@@ -1747,10 +1747,10 @@ def test_a_rebuild_reseats_the_stream_instead_of_following_a_reused_id(venue):
     """The bug this is built against, reproduced and then refused.
 
     ``reconfigure`` discards the market and every account in it, and the next
-    caller to seat gets ``you-1`` -- the id this connection was holding a
-    moment ago. So the decoy below is deliberately seated first: a stream that
-    had captured its account id once would now be reading the decoy's blotter,
-    and a stream that fell back to ``LiveMarket.trader`` would be reading the
+    caller to seat gets ``you-1``, the id this connection was holding a moment
+    ago. So the decoy below is deliberately seated first: a stream that had
+    captured its account id once would now be reading the decoy's blotter, and
+    a stream that fell back to ``LiveMarket.trader`` would be reading the
     shared account that every unseated caller shares. Both are silent; both
     accounts exist and have a blotter.
     """
@@ -1811,8 +1811,8 @@ def test_a_rebuild_reseats_the_stream_instead_of_following_a_reused_id(venue):
 def test_with_no_application_resolver_the_stream_reseats_by_name():
     """The same guarantee when nobody has told the stream where anyone sits.
 
-    An application that does not answer for a token -- or does not supply a
-    resolver at all -- leaves the stream to bind the credential itself, and it
+    An application that does not answer for a token (or does not supply a
+    resolver at all) leaves the stream to bind the credential itself, and it
     must still not follow a reused id into somebody else's account. So the same
     trap: rebuild, let a decoy take the id this connection held, and check that
     the connection is seated afresh under its own name.

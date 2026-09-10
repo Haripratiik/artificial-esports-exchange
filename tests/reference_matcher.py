@@ -1,7 +1,7 @@
 """A deliberately naive matching engine, for differential testing.
 
 Written to be obviously correct rather than fast. No heaps, no price-level
-buckets, no lazy deletion, no tombstoning -- just a flat list of orders that is
+buckets, no lazy deletion, no tombstoning, just a flat list of orders that is
 sorted from scratch on every operation. It would be hopeless in production and
 that is the point: it has nowhere to hide a bug.
 
@@ -76,8 +76,8 @@ class ReferenceMatcher:
         """Resting orders on one side, best first.
 
         Sorted from scratch every time. A bid's priority rises with price, an
-        offer's falls with it, and ties break on arrival -- which is the whole
-        of price-time priority, written out.
+        offer's falls with it, and ties break on arrival, which is the whole of
+        price-time priority, written out.
         """
         live = [o for o in self.orders if o.side is side and not o.dead and o.remaining > 0]
         return sorted(
@@ -148,13 +148,13 @@ class ReferenceMatcher:
         for resting in self._live(order.side.opposite):
             if not self._crosses(order.side, resting.price, order.price):
                 break
-            # The taker's own resting quantity is not liquidity it can have.
-            # `_match` cancels it under self-match prevention rather than
-            # printing against it, so counting it here admits a fill-or-kill
-            # that then partially fills -- the one outcome the term exists to
-            # make impossible. Modelled here as well as in the engine because
-            # a differential harness that agrees on the wrong answer reports
-            # nothing.
+            # The taker's own resting quantity is not liquidity it can
+            # have. `_match` cancels it under self-match prevention rather
+            # than printing against it, so counting it here admits a
+            # fill-or-kill that then partially fills, the one outcome the
+            # term exists to make impossible. Modelled here as well as in
+            # the engine because a differential harness that agrees on the
+            # wrong answer reports nothing.
             if resting.agent_id == order.agent_id:
                 continue
             available += resting.remaining
@@ -213,11 +213,11 @@ class ReferenceMatcher:
             return
 
         # Mutated in place rather than tombstoned-and-recreated. The engine
-        # keeps the order id across a replace, so appending a second entry under
-        # the same id leaves two orders answering to it -- and the next lookup
-        # finds the dead one and silently discards the command. Losing priority
-        # is expressed by taking a fresh arrival number, which is what priority
-        # actually is.
+        # keeps the order id across a replace, so appending a second entry
+        # under the same id leaves two orders answering to it, and the next
+        # lookup finds the dead one and silently discards the command. Losing
+        # priority is expressed by taking a fresh arrival number, which is what
+        # priority actually is.
         self._arrival += 1
         order.price = new_price
         order.remaining = int(command.new_quantity)

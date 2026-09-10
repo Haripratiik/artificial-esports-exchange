@@ -8,10 +8,10 @@ constructed to reach it:
 
 **A damaged length prefix reported as a torn tail.** This is the sharpest one
 and it is the reason this file exists in the shape it does. A torn tail is
-expected wear -- the process died mid-write -- and is dropped with a warning
-while the load reports success. Corruption is unrecoverable and must raise. The
-two are physically identical from the outside: a frame asking for more bytes
-than the file can supply. Measured against the reader before the fix, on the
+expected wear (the process died mid-write) and is dropped with a warning while
+the load reports success. Corruption is unrecoverable and must raise. The two
+are physically identical from the outside: a frame asking for more bytes than
+the file can supply. Measured against the reader before the fix, on the
 8-record journal these tests build, with the final record's 41-byte length
 prefix bumped to 42, 43, 1041 and 4194345: all four returned 7 records and
 success, warning "truncated final record at offset 923; dropping 49 trailing
@@ -20,7 +20,7 @@ nobody. See ``test_damaged_length_prefix_*``.
 
 **A version mismatch replayed anyway.** Agent behaviour is regenerated from the
 seed rather than journalled, so changing the number or order of RNG draws makes
-every prior journal replay into a *different but entirely plausible* market --
+every prior journal replay into a *different but entirely plausible* market:
 right accounts, sensible prices, no error anywhere. No checksum can catch it,
 because every byte on disk is still correct. Only the version can.
 
@@ -35,7 +35,7 @@ here means anything, so it is asserted directly rather than assumed.
 
 The state machine below is deliberately a toy. This module takes bytes and
 callbacks and knows nothing about the venue, which is the property that lets
-recovery be tested without building a market -- and
+recovery be tested without building a market, and
 ``test_journal_does_not_import_the_venue`` keeps it that way.
 """
 
@@ -240,8 +240,8 @@ def test_round_trip_of_every_record_kind():
     """Each kind survives the encoder byte for byte, payload included.
 
     Compared field by field rather than by count, because the encoding failure
-    worth catching is a payload that comes back a *different type* -- a tuple as
-    a list, an int key as a string -- which a count would never see.
+    worth catching is a payload that comes back a *different type* (a tuple as
+    a list, an int key as a string), which a count would never see.
     """
     inputs = sample_inputs()
     kinds_used = {kind for kind, _, _ in inputs}
@@ -259,7 +259,7 @@ def test_round_trip_of_every_record_kind():
 
 
 def test_records_are_self_delimiting_with_a_length_and_a_checksum():
-    """The frame is length, crc, body -- and the crc covers the length prefix.
+    """The frame is length, crc, body. And the crc covers the length prefix.
 
     Covering the length is what makes a damaged prefix a checksum failure rather
     than a wander into the middle of the next record.
@@ -276,8 +276,8 @@ def test_the_header_carries_the_engine_version_and_the_seed():
     """The seed is the other half of the recording: without it, no market.
 
     Agent draws regenerate from the seed, so a journal that does not carry it
-    records inputs to a market nobody can reconstruct. The module cannot enforce
-    this -- it knows nothing about the venue -- so it is checked here.
+    records inputs to a market nobody can reconstruct. The module cannot
+    enforce this (it knows nothing about the venue) so it is checked here.
     """
     data = build_journal(metadata={"seed": 20260830, "build": "three-maker"})
     header = header_of(data)
@@ -334,11 +334,12 @@ def test_one_sweeping_order_is_one_record():
 def test_persisted_records_refuse_lossy_values(payload, needle):
     """Rejected at write time, where the cost is one conversion.
 
-    A float in a journal makes the rounding permanent at the one place it cannot
-    be undone, and this project's conservation check returns an exact integer
-    zero. A ``Decimal`` or a ``tuple`` is worse than wrong: it round-trips
-    without complaint as a ``str`` or a ``list``, which is bug class 1 in
-    CONTRIBUTING.md -- a value crossing a boundary in a form its label does not claim.
+    A float in a journal makes the rounding permanent at the one place it
+    cannot be undone, and this project's conservation check returns an exact
+    integer zero. A ``Decimal`` or a ``tuple`` is worse than wrong: it
+    round-trips without complaint as a ``str`` or a ``list``, which is bug
+    class 1 in CONTRIBUTING.md, a value crossing a boundary in a form its label
+    does not claim.
     """
     journal = Journal.in_memory(engine_version=ENGINE)
     with pytest.raises(TypeError, match=needle):
@@ -371,7 +372,7 @@ def test_torn_final_record_is_dropped_and_everything_before_it_survives(cut, cap
     assert any("truncated final record" in message for message in result.warnings)
     assert any("truncated final record" in r.getMessage() for r in caplog.records)
 
-    # The state is the state at record 7 -- ann's two orders still working,
+    # The state is the state at record 7: ann's two orders still working,
     # because the cancel_all that removed them is the record that was torn off.
     assert sorted(book.working) == ["c-1", "c-3"]
     assert book.applied == [1, 2, 3, 4, 5, 6, 7]
@@ -409,7 +410,7 @@ def test_open_for_append_truncates_the_tear_then_continues(tmp_path):
     """Appending after a torn record would wedge garbage into the middle.
 
     Where the next replay classifies it as unrecoverable corruption rather than
-    a droppable tail -- the file goes from "lost one order" to "unloadable".
+    a droppable tail: the file goes from "lost one order" to "unloadable".
     """
     path = tmp_path / "resume.journal"
     data = build_journal()
@@ -538,7 +539,7 @@ def test_absurd_length_prefix_is_corruption_wherever_it_sits(index):
 def test_length_prefix_damaged_downward_is_corruption(shrink):
     """Shrinking the prefix keeps the read inside the file, so the crc catches it.
 
-    The complementary half of the case above, and the one that already worked --
+    The complementary half of the case above, and the one that already worked,
     kept so a future change to the upward path cannot quietly break this one.
     """
     data = bytearray(build_journal())
@@ -587,7 +588,7 @@ def test_replay_refuses_a_journal_from_a_different_engine_version():
     """The sharpest risk in the design, because its failure is silent.
 
     Change the number or order of RNG draws and every earlier journal still
-    replays cleanly -- into a different market with the right accounts and
+    replays cleanly, into a different market with the right accounts and
     sensible prices. Every byte on disk is still correct, so no checksum can
     catch it. Only the version can, and only by refusing.
     """
@@ -624,7 +625,7 @@ def test_every_entry_point_checks_the_version(tmp_path):
 
 def test_a_matching_version_replays_and_an_unversioned_read_is_still_possible():
     """``read_records`` without a version is for tools, and must not become the
-    convenient way to skip the check in recovery -- so ``replay`` has no such
+    convenient way to skip the check in recovery, so ``replay`` has no such
     mode and ``engine_version`` is required there."""
     data = build_journal(engine_version="arena-engine-0")
 
@@ -725,7 +726,7 @@ def test_a_snapshot_without_its_sequence_is_unloadable():
     """Raft's lastIncludedIndex, and it is not decoration.
 
     Without it there is no way to tell which inputs the state already contains,
-    so there is no way to know where to resume -- the state is not partially
+    so there is no way to know where to resume: the state is not partially
     useful, it is unusable. Rejected by name rather than by KeyError so the
     operator is told what is actually wrong.
     """
@@ -761,7 +762,7 @@ def test_a_corrupt_snapshot_fails_its_checksum():
 
 
 def test_snapshot_write_leaves_no_temporary_file_behind(tmp_path):
-    """Temporary file, fsync, os.replace -- atomic on Windows as well as POSIX,
+    """Temporary file, fsync, os.replace: atomic on Windows as well as POSIX,
     so a reader sees the whole previous snapshot or the whole new one."""
     path = tmp_path / "s.snapshot"
     write_snapshot(path, Snapshot({"v": 1}, last_applied_sequence=1, engine_version=ENGINE))
@@ -809,8 +810,9 @@ def test_snapshot_plus_tail_lands_where_a_full_replay_lands(tmp_path, boundary):
 def test_recovery_still_checksums_the_records_the_snapshot_already_contains():
     """Skipping them would cost nothing and catch nothing.
 
-    Verifying them costs one scan and catches a journal that has quietly lost its
-    middle -- which is exactly the journal you are about to keep appending to.
+    Verifying them costs one scan and catches a journal that has quietly lost
+    its middle, which is exactly the journal you are about to keep appending
+    to.
     """
     data = bytearray(build_journal())
     offset, length = frame_spans(bytes(data))[1]
@@ -954,11 +956,11 @@ def test_a_hundred_thousand_records_round_trip(tmp_path):
     """Measured on this machine: 100,000 records write in 363ms and replay in
     245ms, a 605ms round trip, over a 10.9MB file at 109.3 bytes per record.
 
-    That is 276,000 appends and 400,000 replayed records per second, so a session
-    of any length this simulator produces recovers in well under a second. The
-    assertion is deliberately loose at 60 seconds -- it is there to catch an
-    accidental O(n^2), not to fail on a slow machine, and the number that means
-    something is the one in this docstring.
+    That is 276,000 appends and 400,000 replayed records per second, so a
+    session of any length this simulator produces recovers in well under a
+    second. The assertion is deliberately loose at 60 seconds: it is there to
+    catch an accidental O(n^2), not to fail on a slow machine, and the number
+    that means something is the one in this docstring.
     """
     path = tmp_path / "big.journal"
     total = 100_000
@@ -1015,9 +1017,9 @@ def test_durability_costs(tmp_path):
 
     Measured on this machine over 2,000 appends: durability="none" 353,000/s,
     "flush" 205,000/s, "fsync" 9,100/s. An fsync per order is a real disk round
-    trip and costs roughly 22x, which is the price of surviving power loss rather
-    than merely surviving the process dying -- and the process dying is the
-    failure this module exists for.
+    trip and costs roughly 22x, which is the price of surviving power loss
+    rather than merely surviving the process dying. And the process dying is
+    the failure this module exists for.
 
     Asserted only on ordering, not on the ratio, because the ratio is a property
     of the disk under the test runner and would be a flaky assertion on anyone

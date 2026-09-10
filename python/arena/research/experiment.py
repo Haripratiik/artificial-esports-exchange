@@ -9,14 +9,14 @@ one population, one question.
 What a trial asks
 -----------------
 
-A contract pays 1 if a Brawler's measured win rate over the observation window
+A contract pays 1 if a competitor's measured win rate over the observation window
 exceeds a threshold. The true rate ``p*`` is fixed by the trial. The window
 holds ``window_battles`` battles, so the *measured* rate is a draw, and
 
     truth = P(Binomial(N, p*) / N > theta)
 
 is a genuine probability in (0, 1) that is known exactly. Every forecast in the
-experiment -- the market's and each baseline's -- is scored against this number.
+experiment (the market's and each baseline's) is scored against this number.
 
 Real prediction-market studies cannot do this. They score against a single
 realised outcome, so most of what they measure is Bernoulli noise rather than
@@ -26,7 +26,7 @@ kept only as a secondary, deliberately noisier check that the primary metric is
 not an artefact of knowing the answer.
 
 Each informed agent sees ``n_j`` battles drawn from the same process, forms a
-Beta posterior, and forecasts the Beta-Binomial tail -- which is *exactly*
+Beta posterior, and forecasts the Beta-Binomial tail, which is *exactly*
 Bayes-optimal for what it has seen. So the population the market is scored
 against is not a crowd of sloppy forecasters. Every one of them is individually
 optimal, and the only thing left for the market to add is aggregation.
@@ -103,7 +103,7 @@ class TrialConfig:
     venue_kind: str = "clob"
     # What the scoring-rule venue is willing to lose making the market.
     # Calibrated so a fresh scoring-rule book shows the same depth at the touch
-    # as the order-book maker quotes -- 40 lots a tick. Depth decides how far a
+    # as the order-book maker quotes: 40 lots a tick. Depth decides how far a
     # given amount of informed trading moves the price, so two venues quoting
     # different depth are not being compared on mechanism at all. Derived by
     # subsidy_for_depth(40, 0.01, 1.0) rather than chosen.
@@ -172,10 +172,11 @@ class TrialResult:
 def _spec(threshold: float, window_battles: int) -> ContractSpec:
     """A binary on a synthetic subject.
 
-    The subject is synthetic on purpose. Reading a real Brawler's rate out of
-    the fixture would fix ``p*`` to one value, and the experiment needs it to
-    vary across trials so the forecasts span the probability range instead of
-    clustering wherever that Brawler happens to sit.
+    The subject is invented for the trial on purpose. Reading a roster
+    competitor's rate out of the world would fix ``p*`` to one value, and the
+    experiment needs it to vary across trials so the forecasts span the
+    probability range instead of clustering wherever that competitor happens to
+    sit.
     """
     start = datetime(2026, 8, 31, tzinfo=UTC)
     return ContractSpec(
@@ -369,7 +370,7 @@ def draw_trials(
 
     Thresholds are chosen to place the truth roughly uniformly over [0.05,
     0.95] rather than at random. Random thresholds would put almost every trial
-    at 0 or 1 -- a window of 2,000 battles measures a rate tightly, so a
+    at 0 or 1: a window of 2,000 battles measures a rate tightly, so a
     threshold even slightly away from ``p*`` makes the answer a foregone
     conclusion. A set of foregone conclusions cannot separate any two
     forecasters, so it would be a null experiment dressed as a real one.

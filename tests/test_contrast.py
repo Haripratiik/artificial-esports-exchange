@@ -1,7 +1,7 @@
 """Colour contrast, as arithmetic against the real stylesheet.
 
 A dark palette drifts under the WCAG thresholds very easily and never looks
-obviously wrong while doing it -- which is exactly why this is computed rather
+obviously wrong while doing it, which is exactly why this is computed rather
 than judged. The values are parsed out of ``terminal.css`` itself, so editing a
 token to something prettier fails here rather than shipping.
 
@@ -85,7 +85,7 @@ def test_contrast_meets_wcag(token, surfaces, minimum, role):
 
 
 def test_the_primary_button_label_is_readable():
-    """Amber is bright, so its label must be dark -- white on it is 2.0:1."""
+    """Amber is bright, so its label must be dark; white on it is 2.0:1."""
     palette = tokens()
     assert ratio("#16120a", palette["amber"]) >= SMALL_TEXT
     assert ratio("#ffffff", palette["amber"]) < SMALL_TEXT, (
@@ -111,8 +111,8 @@ def test_every_palette_token_is_a_six_digit_hex():
 
     # The type scale lives in the same block, under a `t-` namespace. Adding
     # those seven names to `non_colour` would widen the very hole this test
-    # exists to close, so they are checked rather than skipped -- just against
-    # a different rule. Every one has to be a whole-pixel length, which is what
+    # exists to close, so they are checked rather than skipped, just against a
+    # different rule. Every one has to be a whole-pixel length, which is what
     # stops the half-pixel steps creeping back: the stylesheet used to carry
     # 8.5, 9.5, 10.5, 11.5 and 13.5px, and a half-pixel difference is not
     # hierarchy a reader can perceive, only noise they cannot name.
@@ -134,10 +134,10 @@ def test_no_text_is_smaller_than_the_scale_allows():
     values, nine of them below 12px and the smallest at 8px. Measured in the
     browser on the static shell alone, sixteen elements rendered under 12px,
     including the primary navigation at 11px and every header stat label at
-    8.5px -- while the largest text on the page was the 15px brand. An
-    interface whose entire type range is 8 to 15px has no hierarchy available
-    to it: everything arrives at the reader with the same weight, and half of
-    it is too small to read without leaning in.
+    8.5px, while the largest text on the page was the 15px brand. An interface
+    whose entire type range is 8 to 15px has no hierarchy available to it:
+    everything arrives at the reader with the same weight, and half of it is
+    too small to read without leaning in.
 
     Density on a trading screen comes from tight spacing and hairline rules,
     not from shrinking the text until it fits.
@@ -256,6 +256,88 @@ def test_the_interface_carries_no_em_dashes():
         if hits:
             offenders[path.name] = len(hits)
     assert not offenders, f"em dashes in the interface: {offenders}"
+
+
+# The three shapes the stand-in takes. Built from pieces rather than written
+# out, because a literal one here would be a violation of the rule this test
+# exists to enforce, and the file would flag itself.
+_GAP = " " + "-" * 2 + " "
+_STANDIN = (
+    re.compile(re.escape(_GAP)),
+    re.compile(re.escape(_GAP.rstrip()) + "$"),
+    re.compile(r"^\s*(?:#\s*)?" + re.escape(_GAP.lstrip())),
+)
+_DIVIDER = re.compile("-" * 4)
+_SWEPT = ("python", "tests", "dashboard", "experiments", "docs")
+_ALSO = ("README.md", "AGENTS.md", "CONTRIBUTING.md")
+_SUFFIXES = {".py", ".md", ".js", ".css", ".html"}
+
+
+def _is_divider(line: str) -> bool:
+    """A dash drawing a rule across the page, not punctuating a sentence.
+
+    Two forms, and both are layout. The ordinary one rules off a section and is
+    recognised by its run of hyphens. The second is the same idiom with a label
+    too long to leave room for the run: `match_book.py` carries a series of
+    twelve headings, and the three with the longest labels trail two hyphens,
+    three, and none at all. A comment that *opens* with the pair is heading its
+    section either way, so it is read as one.
+    """
+    return bool(_DIVIDER.search(line)) or line.strip().startswith("# --")
+
+
+def _house_style_files():
+    """Everything this repository wrote, and nothing it merely vendored."""
+    root = Path(__file__).resolve().parents[1]
+    seen = []
+    for name in _SWEPT:
+        for path in sorted((root / name).rglob("*")):
+            if path.suffix not in _SUFFIXES or not path.is_file():
+                continue
+            parts = set(path.parts)
+            if "__pycache__" in parts or "vendor" in parts or ".agents" in parts:
+                continue
+            seen.append(path)
+    seen.extend(root / name for name in _ALSO if (root / name).exists())
+    # This file holds the patterns it searches for, so it cannot search itself.
+    return [p for p in seen if p != Path(__file__).resolve()]
+
+
+def test_nothing_in_the_repository_stands_in_for_an_em_dash():
+    """The same house style rule, over everything rather than over the front end.
+
+    The interface was swept first and the test above only ever watched the
+    interface, so the rule was enforced across four thousand lines of it and
+    unenforced across seventy thousand of everything else. Measured when the
+    scope was widened: **1,022** spaced double hyphens doing a dash's job, in
+    83 files, against zero em dashes. The character had been kept out and the
+    habit had not.
+
+    Three shapes, because a search for the obvious one finds about nine in ten:
+    the stand-in also turns up at the end of a line, and at the start of the
+    line that continues it, whenever a paragraph was rewrapped around it. That
+    last shape is the one that has to be told apart from a section heading, and
+    `_is_divider` is where that judgement lives.
+
+    Written to name the file and the line, because a bare count tells you the
+    rule broke and not where, and this is a rule that breaks a paragraph at a
+    time.
+    """
+    offenders = []
+    for path in _house_style_files():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:  # pragma: no cover - not a text file after all
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            if _is_divider(line):
+                continue
+            if any(pattern.search(line) for pattern in _STANDIN):
+                offenders.append(f"{path.name}:{number}")
+    assert not offenders, (
+        f"{len(offenders)} double hyphens standing in for a dash: "
+        f"{offenders[:12]}"
+    )
 
 
 def test_the_narrow_layout_reaches_every_view():

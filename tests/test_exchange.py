@@ -5,8 +5,8 @@ subtle bug here would be transcribed into the port and validated into looking
 correct. The suite is therefore built around invariants that must hold for *any*
 command stream, not only around hand-picked scenarios:
 
-    * quantity is conserved -- matching neither creates nor destroys it
-    * the book never crosses -- best bid is always below best ask
+    * quantity is conserved: matching neither creates nor destroys it
+    * the book never crosses: best bid is always below best ask
     * price-time priority is respected
     * identical command streams produce identical event streams
 """
@@ -219,7 +219,7 @@ def test_fok_fills_completely_or_not_at_all(engine):
         isinstance(e, Rejected) and e.reason is RejectReason.FOK_NOT_FILLABLE
         for e in rejected
     )
-    # The resting sell is untouched -- nothing was consumed and unwound.
+    # The resting sell is untouched: nothing was consumed and unwound.
     assert engine.book.snapshot().best_ask == 100
 
     filled = engine.apply(limit(C, Side.BUY, 100, 4, TimeInForce.FOK))
@@ -256,9 +256,9 @@ def test_cancelled_orders_do_not_inflate_reported_depth(engine):
 def test_fill_or_kill_is_not_fooled_by_dead_liquidity(engine):
     """The consequence of over-reported depth, and why it mattered.
 
-    ``_fillable`` reads the level totals. If a cancelled order still counted,
-    a FOK order would be accepted as satisfiable and then partially fill --
-    exactly what fill-or-kill exists to prevent.
+    ``_fillable`` reads the level totals. If a cancelled order still counted, a
+    FOK order would be accepted as satisfiable and then partially fill, exactly
+    what fill-or-kill exists to prevent.
     """
     engine.apply(limit(A, Side.SELL, 100, 5))
     doomed = acked(engine.apply(limit(B, Side.SELL, 100, 20)))
@@ -288,7 +288,7 @@ def test_fill_or_kill_is_not_admitted_by_the_taker_s_own_liquidity(engine):
     Both the engine and ``tests/reference_matcher.py`` counted it, so both had
     to move in the same step. Correcting one alone made twelve differential
     tests disagree, and a harness that disagrees is a worse failure than the
-    one it reports -- while a harness that agrees on the wrong answer reports
+    one it reports, while a harness that agrees on the wrong answer reports
     nothing at all.
     """
     engine.apply(limit(A, Side.SELL, 100, 5))
@@ -404,9 +404,9 @@ def test_shrinking_is_not_a_fill(engine):
     """Nothing traded, so nothing may claim to have traded.
 
     The shrink used to be routed through the same book operation as a fill,
-    which reduces ``remaining`` and leaves ``quantity`` alone. On an order for a
-    hundred shrunk to sixty that read as forty lots filled and a status of
-    partially-filled, against an empty tape -- and every reconciliation
+    which reduces ``remaining`` and leaves ``quantity`` alone. On an order for
+    a hundred shrunk to sixty that read as forty lots filled and a status of
+    partially-filled, against an empty tape. And every reconciliation
     downstream computes what an order traded from exactly those two numbers.
     """
     ack = acked(engine.apply(limit(A, Side.SELL, 50, 100)))
@@ -441,7 +441,7 @@ def test_a_post_only_order_stays_post_only_through_a_replace(engine):
     """A replace is the same order at a new price, and the promise travels with it.
 
     Post-only exists so that an order can never pay the taker fee, and the
-    promise lived only in the time-in-force of the command that created it --
+    promise lived only in the time-in-force of the command that created it,
     which has been processed and thrown away by the time a replace arrives. A
     post-only offer resting at 105 over a bid of 100, replaced to 100, printed
     ten lots as the aggressor: exactly the thing the order type forbids.
@@ -553,8 +553,8 @@ def rich_commands(seed: int, count: int = 250) -> list:
     ``random_commands`` above sends limits, markets and immediate-or-cancels,
     which is the matching core and none of the machinery layered on top of it.
     Every defect this file's newest tests were written for was found by adding
-    the rest -- icebergs, stops, pegs, minimum quantities, post-only, and
-    cancels and replaces against whatever happens to be resting -- and then
+    the rest (icebergs, stops, pegs, minimum quantities, post-only, and
+    cancels and replaces against whatever happens to be resting) and then
     asserting the same structural invariants after every single command. A
     generator that only sends the easy order types is a generator that only
     finds bugs in the easy paths.
@@ -701,12 +701,12 @@ def test_no_order_leaves_the_engine_without_saying_so(seed):
 
     Two ways out were found by asking. A stop is taken off the parked list the
     moment a cascade claims it, so when the cascade hit its depth bound the
-    stops it had claimed and not yet run were simply dropped -- no order, no
-    cancellation, and a later cancel answered ``unknown_order``. And a stop that
-    *did* run was minted a fresh order id on the way through, so the id it was
-    acknowledged under, the one its owner holds and the venue reserves against,
-    referred to nothing: acknowledged as **4**, traded as **6**, and a cancel of
-    4 rejected as unknown.
+    stops it had claimed and not yet run were simply dropped: no order, no
+    cancellation, and a later cancel answered ``unknown_order``. And a stop
+    that *did* run was minted a fresh order id on the way through, so the id it
+    was acknowledged under, the one its owner holds and the venue reserves
+    against, referred to nothing: acknowledged as **4**, traded as **6**, and a
+    cancel of 4 rejected as unknown.
 
     Working here means one of the four places an order can legitimately be: in
     the book, parked as a stop, waiting as a peg with no price yet, or finished
@@ -723,7 +723,7 @@ def test_no_order_leaves_the_engine_without_saying_so(seed):
     working = {o.order_id for o in engine.book.resting_orders}
     parked = {stop.order_id for stop in engine._stops}
     # A peg whose reference has gone is live and has no price, so it is in no
-    # level and no book query can find it. Not lost -- waiting.
+    # level and no book query can find it. Not lost: waiting.
     waiting = {peg.order.order_id for peg in engine._pegs}
     for event in events:
         if not isinstance(event, Acknowledged):
@@ -803,7 +803,7 @@ def test_an_agent_cannot_trade_with_itself(engine):
     """Wash trades net to zero, which is exactly why they are dangerous.
 
     A market maker quoting both sides crosses with itself every time it
-    requotes -- its cancels are still in flight when the new quote arrives. The
+    requotes; its cancels are still in flight when the new quote arrives. The
     position nets, the PnL nets, and nothing looks wrong. What it destroys is
     the tape: before this was fixed, 90% of the live market's volume was one
     agent trading with itself, so every price, every volume figure and every
@@ -867,10 +867,10 @@ def test_a_prevented_order_is_cancelled_rather_than_filled(policy):
 
     Prevention finishes the incoming order mid-walk, and the arithmetic that
     settles an order afterwards read "nothing left" as "completely filled". The
-    tape was empty, a ``Cancelled`` event had gone out for all ten lots, and the
-    order's own record said status **filled** with ``filled`` of **10** -- the
-    two numbers every position reconciliation is built on, both describing a
-    trade that never printed.
+    tape was empty, a ``Cancelled`` event had gone out for all ten lots, and
+    the order's own record said status **filled** with ``filled`` of **10**,
+    the two numbers every position reconciliation is built on, both describing
+    a trade that never printed.
     """
     engine = MatchingEngine("X", self_trade_prevention=policy)
     engine.apply(limit(A, Side.SELL, 100, 10))

@@ -15,7 +15,7 @@ data-generating process the contract settles on:
     posterior = Beta(a0 + k_j, b0 + n_j - k_j)
 
 with the prior (a0, b0) coming from the reference snapshot's own mode prior and
-shrinkage strength -- the same kappa and m already estimated from data in
+shrinkage strength: the same kappa and m already estimated from data in
 :mod:`arena.worlds.circuit.metrics`, rather than a second set of constants
 invented here.
 
@@ -30,9 +30,11 @@ Four things follow, none of which the noise knob could give:
   * Error must fall as 1/sqrt(n). That is a hard, checkable property, and the
     test suite checks it. A noise knob has no such constraint, so nothing
     about it could ever be wrong.
-  * It maps onto the real collector. An agent's n_j is literally "how much of
-    the crawl has this fund seen", so the synthetic experiment and the eventual
-    historical replay describe the same quantity.
+  * It maps onto how evidence actually reaches a participant here. An agent's
+    n_j is literally "how many of the season's matches has this fund seen",
+    and the season is drawn from the world seed rather than collected, so the
+    quantity is re-derivable by anyone holding that seed. There is no crawl
+    waiting to replace it and none is owed.
 
 Valuation is **E[payoff(theta)]** under the posterior, never
 ``payoff(E[theta])``. For a linear future the two coincide; for an option the
@@ -86,8 +88,8 @@ def binary_probability(a: float, b: float, threshold: float, comparison: str) ->
     """P(theta > threshold) and friends under Beta(a, b), analytically.
 
     Exact rather than sampled, because a binary's whole value *is* this tail
-    probability -- estimating it by Monte Carlo would put sampling noise
-    directly into the quantity the experiment measures.
+    probability. Estimating it by Monte Carlo would put sampling noise directly
+    into the quantity the experiment measures.
     """
     from scipy.stats import beta as beta_dist
 
@@ -130,7 +132,7 @@ def predictive_probability(
 
     Integrating the Binomial tail over the posterior gives a Beta-Binomial
     tail, which is the *Bayes-optimal* forecast for an agent holding this
-    posterior -- not an approximation of it.
+    posterior, not an approximation of it.
 
     This matters for the experiment's central claim. If agents forecast the
     posterior tail over the true rate instead, they are systematically
@@ -174,16 +176,16 @@ class BayesianFundamental(TradingAgent):
         # How many battles the settlement window itself will contain. Set, the
         # agent knows the contract settles on a *measurement* and prices the
         # Beta-Binomial tail, which is Bayes-optimal. Left None, it prices the
-        # posterior tail over the true rate -- the infinite-window limit.
+        # posterior tail over the true rate: the infinite-window limit.
         self.window_battles = window_battles
         self.max_position = max_position
         self.base_size = base_size
         self.patience = patience
         self.draws = max(16, draws)
         # Keyed by what the contract is written on, not by symbol. An agent
-        # holding a different posterior for SPIKE per contract on SPIKE does
-        # not have a posterior for SPIKE, and the ladder it quotes off those
-        # is not the ladder of any distribution.
+        # holding a different posterior per contract on one competitor does
+        # not have a posterior for that competitor, and the ladder it quotes
+        # off those is not the ladder of any distribution.
         self._posterior: dict[str, tuple[float, float]] = {}
         self._levels: dict[str, list[float]] = {}
         self._value: dict[str, float] = {}
@@ -196,7 +198,7 @@ class BayesianFundamental(TradingAgent):
         agent always trades, and wrong the moment one does not: the draw then
         happens whenever the harness reads the forecast instead, at a different
         point in the agent's random stream. Two runs that differ only in the
-        venue -- which is exactly Experiment 2's control -- came back with
+        venue (which is exactly Experiment 2's control) came back with
         different *beliefs*, and the comparison stopped being a comparison.
 
         Evidence is something an agent has, not something it produces on
@@ -211,9 +213,9 @@ class BayesianFundamental(TradingAgent):
     def posterior(self, ctx: SimulationContext, symbol: str) -> tuple[float, float] | None:
         """This agent's Beta posterior over the metric, drawn once and held.
 
-        Once per *underlying*: the battles it observed are battles involving a
-        Brawler, not battles involving a contract, so every contract written on
-        that Brawler is priced off the same sample.
+        Once per *underlying*: the battles it observed are matches involving a
+        competitor, not matches involving a contract, so every contract written
+        on that competitor is priced off the same sample.
         """
         key = underlying_key(self.instruments[symbol])
         if key not in self._posterior:
@@ -230,8 +232,8 @@ class BayesianFundamental(TradingAgent):
 
         Common random numbers, and the reason is not efficiency. Drawing fresh
         each time gives each strike its own Monte Carlo error, so the agent's
-        own option ladder is neither monotone nor convex -- and then it trades
-        on the difference. With one sample path per underlying, ``max(F - K, 0)``
+        own option ladder is neither monotone nor convex, and then it trades on
+        the difference. With one sample path per underlying, ``max(F - K, 0)``
         is decreasing in ``K`` draw by draw, so the average is too, and the
         agent's surface is a real surface.
         """
@@ -298,10 +300,10 @@ class BayesianFundamental(TradingAgent):
         else:
             # Kinked, otherwise non-linear, or paying as it goes: sample the
             # posterior. E[payoff] and payoff(E) differ for a kinked payoff,
-            # and the difference is the option's time value. A share takes
-            # this path because what it is worth is the stream plus the end,
-            # which is what claim_value adds up -- valuing only the payoff
-            # would price a pure strip at nothing.
+            # and the difference is the option's time value. A share takes this
+            # path because what it is worth is the stream plus the end, which
+            # is what claim_value adds up; valuing only the payoff would price
+            # a pure strip at nothing.
             claim = instrument.spec.claim_value
             samples = [claim(level) for level in self.levels(ctx, symbol, a, b)]
             value = sum(samples) / len(samples)

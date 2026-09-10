@@ -63,8 +63,8 @@ HEADER_SIGNATURE = "arena-signature"
 class SignatureError(ValueError):
     """A request did not prove it came from the key it claims.
 
-    Deliberately one exception for every failure -- unknown key, bad signature,
-    stale timestamp, revoked key -- and one message for all of them. Saying
+    Deliberately one exception for every failure (unknown key, bad signature,
+    stale timestamp, revoked key) and one message for all of them. Saying
     *which* of those went wrong tells a caller holding no valid key which key
     ids exist, and a caller holding a valid one never needs the difference.
     """

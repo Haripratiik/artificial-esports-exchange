@@ -1,8 +1,8 @@
 """The exchange's own operations: opening the market, and reopening it.
 
-Everything a venue does to *itself* rather than in response to an order --
-running the opening call, watching a paused symbol until its pause has run,
-uncrossing it back into continuous trading -- happens on a schedule, and a
+Everything a venue does to *itself* rather than in response to an order
+(running the opening call, watching a paused symbol until its pause has run,
+uncrossing it back into continuous trading) happens on a schedule, and a
 schedule needs a participant in the simulation to keep it. That is this.
 
 It is a participant rather than a method on the venue for the same reason the
@@ -22,7 +22,7 @@ Two jobs, both of them things real venues do and this one could not:
   auction once its pause has run, never straight into continuous trading.
 
 Neither of these is a market participant. It holds no position, posts no
-quotes, and its account never moves -- so it does not appear in the conservation
+quotes, and its account never moves, so it does not appear in the conservation
 check as anything but a zero.
 """
 

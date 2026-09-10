@@ -5,7 +5,7 @@ of them fails the comparison against the order book is meaningless, because the
 thing being compared would not be an LMSR market.
 
 The bounded-loss test is the important one. It is the reason a scoring-rule
-market can be run at all -- the venue is knowingly spending money to make a
+market can be run at all. The venue is knowingly spending money to make a
 market, and it can only do that if the amount is knowable in advance. The test
 searches adversarially over trade paths rather than checking a formula against
 itself.
@@ -84,7 +84,7 @@ def test_a_round_trip_is_exactly_free():
 
     It is also why real scoring-rule venues charge an explicit fee, and why the
     venue built on this one quantises prices to the tick grid in the maker's
-    favour -- that rounding is where this market's spread actually comes from,
+    favour: that rounding is where this market's spread actually comes from,
     and it is a property of the venue rather than of the rule.
     """
     market = _market()

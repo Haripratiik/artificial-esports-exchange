@@ -19,7 +19,7 @@ lands at the sub-unit level is arbitrary; that it conserves is not.
 
 So all money is counted in **minor units**, a fixed fraction of one price unit.
 Conversion to a human-readable Decimal happens at the reporting boundary and
-nowhere else -- exactly as tick-to-price conversion happens at the exchange
+nowhere else, exactly as tick-to-price conversion happens at the exchange
 boundary and nowhere else.
 """
 

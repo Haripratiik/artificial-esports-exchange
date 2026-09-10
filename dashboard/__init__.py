@@ -4,8 +4,8 @@ Puts the simulator's own package directory on the import path, because the
 project is laid out with ``arena`` under ``python/`` and is not installed. Under
 pytest that is handled by ``pythonpath`` in ``pyproject.toml``, which is exactly
 why it went unnoticed: every test passed while ``python -m dashboard.server``
--- the command in the module docstring, and the only way anyone actually opens
-this thing -- died on ``ModuleNotFoundError: No module named 'arena'``.
+(the command in the module docstring, and the only way anyone actually opens
+this thing) died on ``ModuleNotFoundError: No module named 'arena'``.
 
 Doing it here rather than in ``server.py`` covers every entry into the package,
 including importing ``dashboard.state`` directly from a REPL or a script.

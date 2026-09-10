@@ -235,7 +235,7 @@ def test_a_share_relates_to_the_weeks_it_pays():
 def test_two_contracts_differing_only_by_window_are_not_confused():
     """The lookup key includes the period, and it has to.
 
-    Without it a relation can be formed against the wrong week -- an identity
+    Without it a relation can be formed against the wrong week: an identity
     between two things that are not the same thing, traded as though it were
     free money. Nothing was mispriced by it while no composite referenced a
     weekly contract; listing weekly futures is what would have made it wrong.
@@ -269,9 +269,9 @@ def test_the_live_chain_carries_no_tradeable_arbitrage_worth_the_name():
     directly. What the *mark* shows is that ladder mixed with everyone else's
     resting orders, and nothing makes a mixture of two consistent surfaces
     consistent. Small violations therefore appear and persist, exactly as they
-    do in real markets, because closing one costs the spread on every leg.
-    That gap is the no-arbitrage band, and it is what the arbitrageur measures
-    against before acting -- so it is what this measures against too.
+    do in real markets, because closing one costs the spread on every leg. That
+    gap is the no-arbitrage band, and it is what the arbitrageur measures
+    against before acting. So it is what this measures against too.
 
     Monotonicity is the exception and is asserted flat. A call struck higher
     marking above one struck lower is not a small pricing error, it is a free
@@ -280,14 +280,14 @@ def test_the_live_chain_carries_no_tradeable_arbitrage_worth_the_name():
     **The arbitrageur has to be in the market for this to be a fair question.**
     It was not, and the test was quietly asserting that a chain stays
     consistent with nobody in the population whose job is to keep it that way.
-    The maker's own ladder is coherent by construction -- one forward, one
-    volatility, one width across every strike -- but a *mark* is the mid of the
+    The maker's own ladder is coherent by construction (one forward, one
+    volatility, one width across every strike), but a *mark* is the mid of the
     touch, and the touch belongs to whoever is at it. Measured at t=540 on seed
     7: the lowest strike's offer was set by a **noise trader** sitting inside
     the maker's quote, which dragged that strike's mid down and left the three
     marks at 120.38 / 71.12 / 10.12. That is concave by 11.74, and a butterfly
-    costs 6.00 to put on, so 5.74 of it was free to anyone who would take it --
-    and nobody in that market would.
+    costs 6.00 to put on, so 5.74 of it was free to anyone who would take it.
+    And nobody in that market would.
 
     With the arbitrageur listed the same measurement gives **0.00**. So this
     now tests the thing its name claims, and tests something that had no
@@ -303,8 +303,8 @@ def test_the_live_chain_carries_no_tradeable_arbitrage_worth_the_name():
 
     # Measured on a settled market. Evidence arrives over the session, so the
     # first minutes are a violent repricing in which different strikes lag by
-    # different amounts and the chain is momentarily inconsistent -- measured
-    # at t=100, the middle call marked 45 below the top one. Real option markets
+    # different amounts and the chain is momentarily inconsistent: measured at
+    # t=100, the middle call marked 45 below the top one. Real option markets
     # do this too, which is why exchanges have obvious-error rules, and it is
     # recorded in docs/GAPS.md rather than asserted away here.
     market.kernel.advance(until=seconds(180))
@@ -330,8 +330,8 @@ def test_the_live_chain_carries_no_tradeable_arbitrage_worth_the_name():
         # available at once. Requiring three strikes to be trading and
         # two-sided at the same instant is a conjunction of three events that
         # each hold about three quarters of the time, and on some seeds it
-        # never happens at all -- so the test measured nothing and reported
-        # that as a failure of the market.
+        # never happens at all, so the test measured nothing and reported that
+        # as a failure of the market.
         usable = [
             symbol
             for _k, symbol in strikes
@@ -396,10 +396,10 @@ def test_the_live_chain_carries_no_tradeable_arbitrage_worth_the_name():
 
     assert scored >= 8, f"only {scored} moments had two quotable strikes"
     # Rare and tiny, or the maker is not doing its job. Measured at the time of
-    # writing: breached beyond the band at 2 of 14 moments, worst 0.38 -- one
-    # and a half ticks on a fifty-point spread. Re-measured once digitals
-    # joined the chain, the worst breach is 0.50, on two calls both marking
-    # under three points, with an outsider inside the maker's quote.
+    # writing: breached beyond the band at 2 of 14 moments, worst 0.38 (one and
+    # a half ticks on a fifty-point spread). Re-measured once digitals joined
+    # the chain, the worst breach is 0.50, on two calls both marking under
+    # three points, with an outsider inside the maker's quote.
     assert outside_band <= scored // 3, (
         f"{outside_band}/{scored} moments carried a tradeable violation"
     )

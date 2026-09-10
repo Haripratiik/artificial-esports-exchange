@@ -134,16 +134,16 @@ class DistributionSchedule:
     this is a field on the spec rather than a new kind of contract.
 
     Each window is measured separately, so the amount paid in one period is a
-    different number from the amount paid in the next -- the point of a
-    dividend, and the reason a share's price moves on news about one quarter
-    rather than only on news about the end of its life.
+    different number from the amount paid in the next: the point of a dividend,
+    and the reason a share's price moves on news about one quarter rather than
+    only on news about the end of its life.
 
     What this deliberately is *not* is a perpetual claim. Every contract here
     settles inside a known interval, which is what makes collateral arithmetic
     rather than a value-at-risk estimate, and a claim that never settles has no
     such interval. The honest finite version is this: a stream with a last
     payment, after which the contract is worth whatever its terminal payoff
-    says -- zero, for a pure strip. Perpetuity would need funding rates and
+    says: zero, for a pure strip. Perpetuity would need funding rates and
     margin calls, which is a different risk model from the one this venue is
     built on, and adopting it silently would weaken the guarantee everything
     else here depends on.
@@ -207,7 +207,7 @@ class ContractSpec:
     # is the wrong one at 4,000, so the increment scales with the price.
     #
     # ``tick_size`` remains the finest increment and the unit everything is
-    # represented in -- the engine matches on integer ticks and a variable unit
+    # represented in: the engine matches on integer ticks and a variable unit
     # would make a tick index mean different prices at different levels. The
     # table is a rule about which prices may be *quoted*, enforced by the
     # venue, and every increment in it has to be a whole multiple of the base
@@ -296,8 +296,8 @@ class ContractSpec:
         The same thing as :attr:`settlement_bounds` for every contract that
         pays once. For a contract that pays as it goes, a short can be asked
         for the stream as well as for the settlement, so this is what
-        collateral has to cover -- and it is still arithmetic, because a
-        bounded metric paid a fixed number of times is bounded too.
+        collateral has to cover, and it is still arithmetic, because a bounded
+        metric paid a fixed number of times is bounded too.
         """
         low, high = self.settlement_bounds
         if self.distribution is None:
@@ -312,7 +312,7 @@ class ContractSpec:
         """What the whole claim pays, at one level of the underlying.
 
         Every payment priced off the same level, which is what someone holding
-        a single view of the underlying can do -- and a single view is what an
+        a single view of the underlying can do, and a single view is what an
         agent here has. Settlement resolves each window separately, so the
         realised stream will not be flat; this is the expectation, not the
         path.
@@ -332,8 +332,8 @@ class ContractSpec:
         Kalshi uses: the holder can lose it all, and can never owe more.
 
         Floored at zero. A position opened outside the range the claim can
-        settle in cannot lose anything at all -- a short above the top of the
-        range makes money whatever happens -- and the arithmetic ran negative
+        settle in cannot lose anything at all (a short above the top of the
+        range makes money whatever happens), and the arithmetic ran negative
         there rather than stopping at nothing. Measured: a short of one lot at
         12,000 on a contract bounded by [0, 10000] returned -2,000. That figure
         is summed with the rest of a portfolio's requirement, so a negative one

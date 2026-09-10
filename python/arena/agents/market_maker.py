@@ -87,23 +87,23 @@ class MarketMaker(TradingAgent):
         # price, and the market's subsequent walk to fair value is a 6% move
         # that trips the circuit breaker. Measured: every one of 26 symbols
         # paused inside the first minute. A real maker does not name the
-        # opening price -- the interest in the auction does, and the maker
-        # quotes around the print.
+        # opening price: the interest in the auction does, and the maker quotes
+        # around the print.
         self.quote_without_reference = quote_without_reference
         # A slow average of where trades actually print. This, not the book's
-        # mid, is what the maker anchors on -- and the distinction is the whole
+        # mid, is what the maker anchors on, and the distinction is the whole
         # reason the market can discover a price at all.
         self._anchor: dict[str, float] = {}
 
     def on_print(self, ctx: SimulationContext, print_: TradePrint) -> None:
         """Drag the anchor toward wherever trades are happening.
 
-        Anchoring on the book's mid instead is the obvious thing to do and it is
-        badly wrong: the maker *is* both sides of that mid, so it would be
+        Anchoring on the book's mid instead is the obvious thing to do and it
+        is badly wrong: the maker *is* both sides of that mid, so it would be
         quoting around its own quotes and the price could never move however
         one-sided the flow got. Anchoring on executions makes the maker follow
-        the flow that is actually lifting or hitting it -- which is precisely
-        the adverse-selection channel these experiments exist to measure, and it
+        the flow that is actually lifting or hitting it, which is precisely the
+        adverse-selection channel these experiments exist to measure, and it
         should be visible rather than assumed away.
 
         The gain is fixed, and one adaptive alternative was measured and

@@ -4,17 +4,17 @@ There are two clocks in this simulator and they were never connected, which is
 why nothing ever settled in a running server.
 
 The kernel counts simulated nanoseconds from zero. A contract's window closes
-on a *calendar date* -- `2026-09-28` for the listings in `build_market`. So
+on a *calendar date* (`2026-09-28` for the listings in `build_market`). So
 `Venue._enforce_lifecycle` asks `self._clock() >= instrument.expiry`, and in
 the live market `_clock` was `None`, which means the question was never asked.
 Even wired to a wall clock it would not have helped: the kernel would have had
 to run for a month of real time to reach the date.
 
-Measured before this existed: after a simulated hour every one of the 47
-listed contracts was still `continuous` and the settled set was empty. Positions
-were marked forever and realised never, so a systematic trader's P&L had no
-terminal event to resolve against. The settlement machinery was complete and
-heavily tested -- it simply was not reachable from the live path.
+Measured before this existed: after a simulated hour every one of the 47 listed
+contracts was still `continuous` and the settled set was empty. Positions were
+marked forever and realised never, so a systematic trader's P&L had no terminal
+event to resolve against. The settlement machinery was complete and heavily
+tested; it simply was not reachable from the live path.
 
 **The mapping is the one this venue already uses.** `build_market` computes
 ``scale = session_seconds / trading_day`` with a 6.5 hour trading day, and
@@ -26,7 +26,7 @@ second notion of time: one trading day of contract life costs
 course in twenty-eight of them.
 
 That is a compression, and it is stated rather than hidden. Nothing about the
-settlement arithmetic changes -- the oracle answers from the same dataset over
+settlement arithmetic changes: the oracle answers from the same dataset over
 the same window, and `settle()` returns exactly what it returns today when
 `prior_levels` calls it. Only the moment the venue asks is different.
 """

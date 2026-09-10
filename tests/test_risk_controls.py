@@ -1,8 +1,8 @@
 """Message rate limits and the participant kill switch.
 
-Both controls answer the same question -- what does a venue do when one
-participant stops behaving like a participant -- and they answer it in different
-registers.
+Both controls answer the same question (what does a venue do when one
+participant stops behaving like a participant) and they answer it in
+different registers.
 
 A rate limit is the routine one, and it is not politeness. An algorithm that
 malfunctions emits orders faster than anything downstream can process them, and
@@ -18,8 +18,8 @@ something nobody wants to reason about at the time. It is deliberately blunt,
 because the point of a kill switch is that it is the one control that always
 works: everything working is pulled and everything new is refused. Cancels are
 the single exception, and that is not a softening of the rule. Refusing those
-too would leave the participant trapped in the orders it already has -- unable
-to place, unable to withdraw, holding exposure nobody is permitted to manage.
+too would leave the participant trapped in the orders it already has: unable to
+place, unable to withdraw, holding exposure nobody is permitted to manage.
 
 Neither control may create or destroy a penny, so every case here ends at the
 ledger.
@@ -130,7 +130,7 @@ def _resting(venue, symbol, who) -> list[int]:
 def _limited_venue(rate: int, clock: dict) -> Venue:
     """A venue whose clock the test moves by hand.
 
-    ``sim_clock`` defaults to None, which means simulated time never advances --
+    ``sim_clock`` defaults to None, which means simulated time never advances:
     right for a venue being poked rather than run, and useless for a rolling
     window, which measures nothing at all if the clock is stuck.
     """
@@ -146,9 +146,10 @@ def _limited_venue(rate: int, clock: dict) -> Venue:
 
 def test_a_participant_is_refused_only_once_it_is_over_its_message_cap():
     """A cap that bites early throttles traffic the venue agreed to take; one
-    that never bites is not a cap. The refused order also has to stay out of the
-    book -- a refusal that quietly rested anyway would be worse than no limit,
-    because the participant would be told no and get the order regardless.
+    that never bites is not a cap. The refused order also has to stay out of
+    the book: a refusal that quietly rested anyway would be worse than no
+    limit, because the participant would be told no and get the order
+    regardless.
     """
     clock = {"now": 0}
     venue = _limited_venue(5, clock)
@@ -166,7 +167,7 @@ def test_the_message_window_rolls_rather_than_resetting_on_a_boundary():
 
     Spend it all just before the reset and all of it again just after, and the
     venue has taken twice the traffic it agreed to, delivered inside the few
-    hundred milliseconds either side of one boundary -- which is precisely the
+    hundred milliseconds either side of one boundary, which is precisely the
     burst the limit exists to stop. A rolling window still sees the first half,
     so the second one is refused.
     """
@@ -203,8 +204,8 @@ def test_a_quiet_second_restores_the_whole_allowance():
 def test_being_refused_does_not_lengthen_a_lockout():
     """A refused message is refused, not remembered.
 
-    Counting refusals against the allowance would mean a client that retries --
-    which is what an automated client does when it is told no -- keeps its own
+    Counting refusals against the allowance would mean a client that retries
+    (which is what an automated client does when it is told no) keeps its own
     lockout alive by trying to get out of it. How long a burst costs would then
     depend on how quickly the offender gave up, which is the wrong thing for it
     to depend on.
@@ -236,7 +237,7 @@ def test_a_venue_with_no_message_rate_never_limits_anything():
 def test_one_participant_exhausting_its_allowance_does_not_touch_another():
     """The limit is a fact about a participant, not about the venue's total
     traffic. A shared budget would let a single runaway algorithm lock every
-    other participant out of the market -- the outage the limit exists to
+    other participant out of the market, the outage the limit exists to
     prevent, arriving by a different route.
     """
     clock = {"now": 0}
@@ -352,7 +353,7 @@ def test_reviving_a_participant_lets_it_back_in_with_nothing_working():
 
 def test_killing_one_participant_leaves_the_rest_of_the_market_trading():
     """Stopping the market is a halt, and a halt is a different decision with
-    different costs -- everyone's, rather than one participant's. Confusing the
+    different costs: everyone's, rather than one participant's. Confusing the
     two turns a narrow tool into an outage.
     """
     venue = _venue()
@@ -376,10 +377,10 @@ def test_the_ledger_stays_exactly_balanced_through_limits_kills_and_revivals():
     """Neither control may cost or create a penny.
 
     Both refuse commands, and one of them cancels orders on the participant's
-    behalf -- exactly the shape of thing that leaves collateral reserved against
+    behalf, exactly the shape of thing that leaves collateral reserved against
     an order that no longer exists. A leak like that shows up nowhere else: the
-    books look right, the positions look right, and the only symptom is a number
-    that should be zero and is not.
+    books look right, the positions look right, and the only symptom is a
+    number that should be zero and is not.
     """
     clock = {"now": 0}
     venue = _limited_venue(3, clock)
@@ -416,8 +417,8 @@ def test_a_participant_at_its_cap_can_still_withdraw_an_order():
     five, it sent five orders and then every attempt to pull one came back
     RATE_LIMITED, through five retries, with fifty lots still standing in the
     book. That is the same failure refusing a stopped participant's cancels
-    would be -- unable to place, unable to withdraw, holding exposure nobody is
-    permitted to manage -- arriving by the other door.
+    would be (unable to place, unable to withdraw, holding exposure nobody is
+    permitted to manage) arriving by the other door.
 
     A cancel is also the one command that only ever makes things smaller: less
     risk for the participant and less book for the venue. Refusing it is the
@@ -467,7 +468,7 @@ def test_the_kill_switch_pulls_a_market_on_open_order():
     """A kill switch that walks past an order is not a kill switch.
 
     A market-on-open order names no price, so nothing was ever written into the
-    venue's record of what the participant is working -- and the record was the
+    venue's record of what the participant is working, and the record was the
     only place the kill switch looked. Measured: ``kill`` reported the symbol
     as pulled while a 40-lot market-on-open buy stayed standing, and the
     stopped participant then took 40 lots in the very auction it had been
@@ -530,8 +531,8 @@ def test_the_kill_switch_pulls_an_order_the_venue_has_no_record_of():
     The venue's record and the engine's book are two accounts of the same
     thing, and a kill switch that consults only the first is only as good as
     the bookkeeping. It is the one control that has to work when something has
-    already gone wrong -- which is the situation in which the bookkeeping is
-    least trustworthy -- so it takes the union of both and pulls that.
+    already gone wrong (which is the situation in which the bookkeeping is
+    least trustworthy) so it takes the union of both and pulls that.
 
     The record is emptied here by hand rather than through a bug, because the
     point is the property and not the route to it.
@@ -550,7 +551,7 @@ def test_a_rejection_that_did_terminate_an_order_still_clears_the_reservation():
     it both ways.
 
     A post-only order is acknowledged and then refused for crossing, so it is
-    tracked and then must be untracked -- otherwise the reservation outlives an
+    tracked and then must be untracked; otherwise the reservation outlives an
     order that never existed, which is the same phantom by the opposite route.
     """
     venue = _venue()
@@ -587,8 +588,8 @@ def test_a_quote_that_gets_filled_stops_being_reserved_against():
     after 120 rounds the venue believed it was working **120 orders for 240
     lots** while the engine's book held none. With a million in capital the
     maker was refused for insufficient collateral at round 47, holding 497,100
-    of free cash and nothing at all in the book -- an account charged twice for
-    a risk it holds once.
+    of free cash and nothing at all in the book, an account charged twice for a
+    risk it holds once.
     """
     venue = Venue("arena", starting_cash=1_000_000)
     venue.list_instrument(_instrument())
@@ -628,10 +629,10 @@ def test_one_agents_command_cannot_book_another_agents_order_against_it():
     A command's event batch can carry events for people who never sent it: a
     peg repricing is a ``Replaced`` for the peg's owner, produced inside
     somebody else's order. Booking the whole batch under the sender wrote a
-    stranger's order into the sender's working book -- measured, a five-lot
-    order left its sender reserving collateral against **thirty** lots, its own
-    five and twenty-five of a peg it had never seen, while the peg's owner kept
-    a record at the price the peg had already left.
+    stranger's order into the sender's working book. Measured, a five-lot order
+    left its sender reserving collateral against **thirty** lots, its own five
+    and twenty-five of a peg it had never seen, while the peg's owner kept a
+    record at the price the peg had already left.
     """
     venue = _venue()
     _send(venue, "seed", B, 18_000, 10)
@@ -681,7 +682,7 @@ def test_an_order_is_charged_against_the_position_it_would_create():
     account holding 50,500 against a contract bounded by [0, 10,000]: ten lots
     long at 5,000, then ten more at 100. The check evaluated ``20 * 100 =
     2,000``, accepted the order, and the position it produced carried a basis
-    of 51,000 -- collateral of 51,000,000,000 minor units against cash of
+    of 51,000: collateral of 51,000,000,000 minor units against cash of
     50,500,000,000, which is **free cash of -500,000,000**. An account owing
     money it does not have is the one outcome full collateralisation exists to
     make impossible.
@@ -739,7 +740,7 @@ def test_closing_a_position_stays_admissible_with_no_free_cash():
     """A trade that reduces exposure must never be refused for collateral.
 
     The scenario check prices the *resulting* position, so a sale that takes a
-    long back to flat is charged against nothing -- which is the property that
+    long back to flat is charged against nothing, which is the property that
     keeps an agent able to get out of a losing position at exactly the moment
     it has no room left to get into anything.
     """
@@ -770,7 +771,7 @@ def test_an_order_is_charged_against_the_cash_the_fill_would_leave():
     path: short four lots at an average of 50, then buy eleven at 9,500. The
     flip realises **-37,800,000,000** minor units, which the check never saw,
     so 66,500,000,000 of collateral was approved against 100,000,000,000 of
-    cash that became 62,200,000,000 the moment it filled -- free cash of
+    cash that became 62,200,000,000 the moment it filled: free cash of
     **-4,300,000,000**.
 
     Swept over four hundred fills across the whole settlement range, nine of
@@ -800,7 +801,7 @@ def test_an_order_is_charged_against_the_cash_the_fill_would_leave():
 def test_a_flip_the_account_can_pay_for_still_goes_through():
     """The permissive half again. An account with the cash to absorb the loss
     and collateralise what it is left holding must still be able to turn its
-    position around -- a check that refused every flip would be a market where
+    position around: a check that refused every flip would be a market where
     nobody can change their mind.
     """
     venue = Venue(

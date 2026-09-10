@@ -17,8 +17,8 @@ even if their underlying future never traded, and put-call parity holds as an
 exact identity rather than as an approximation.
 
 What none of these provide is a *price*. Valuing an option needs a volatility
-model, and these contracts have an unusual one -- variance shrinks
-deterministically as the observation window fills with evidence -- so that
+model, and these contracts have an unusual one (variance shrinks
+deterministically as the observation window fills with evidence), so that
 belongs with the agents that trade options, not with the contract that defines
 them.
 """
@@ -50,8 +50,8 @@ class Payoff(ABC):
 
         This is what makes collateral exact. Every instrument here settles
         inside a known interval, so a position's worst case is arithmetic
-        rather than a value-at-risk estimate -- which is not true of an
-        ordinary future on an unbounded price.
+        rather than a value-at-risk estimate, which is not true of an ordinary
+        future on an unbounded price.
         """
 
     @abstractmethod
@@ -142,11 +142,11 @@ class Call(Payoff):
     settles even if its underlying future never traded.
 
     What this deliberately does *not* provide is a price. Valuing an option
-    needs a volatility model, and these contracts have an unusual one --
-    variance shrinks deterministically as the observation window fills with
-    battles, so implied vol should follow a predictable decay whose violations
-    are informative. That belongs with the agents that trade options, not with
-    the contract that defines them.
+    needs a volatility model, and these contracts have an unusual one: variance
+    shrinks deterministically as the observation window fills with battles, so
+    implied vol should follow a predictable decay whose violations are
+    informative. That belongs with the agents that trade options, not with the
+    contract that defines them.
     """
 
     strike: float
@@ -159,7 +159,7 @@ class Call(Payoff):
         """Floored at zero, capped by the best the underlying can do.
 
         An option's downside is bounded by its own structure rather than by the
-        underlying's range, which is the whole point of buying one -- and it
+        underlying's range, which is the whole point of buying one, and it
         makes the collateral for a long position exactly the premium paid.
         """
         ends = (
@@ -181,8 +181,8 @@ class Put(Payoff):
 
         max(F - K, 0) - max(K - F, 0) = F - K
 
-    That identity is not an approximation here -- both legs settle from the same
-    metric at the same instant -- so it is an exact invariant the test suite can
+    That identity is not an approximation here (both legs settle from the same
+    metric at the same instant), so it is an exact invariant the test suite can
     assert rather than a relationship that holds to within a discount factor.
     """
 

@@ -1,7 +1,7 @@
 """Capture a market's price and order-flow history for analysis.
 
 An observer, not a participant. It reads the venue's books directly and never
-sends a message, so nothing it does can perturb what it is measuring -- which
+sends a message, so nothing it does can perturb what it is measuring, which
 matters because every agent in this simulation influences the market simply by
 being in it.
 

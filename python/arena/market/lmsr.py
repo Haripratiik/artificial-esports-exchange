@@ -8,7 +8,7 @@ or the *population* limits it (every agent has identical size, limits and cash,
 so nothing lets the better-informed one push harder).
 
 This module exists to separate them. Same agents, same information, same seeds,
-different mechanism -- and this mechanism has no counterparty problem at all,
+different mechanism. And this mechanism has no counterparty problem at all,
 because the market maker is a function rather than a participant.
 
 The rule
@@ -67,7 +67,7 @@ def liquidity_for_subsidy(subsidy: float, payout: float) -> float:
     """The ``b`` whose worst-case loss is exactly ``subsidy``.
 
     Inverts ``subsidy = payout * b * ln 2``. Stated this way round because the
-    subsidy is the decision -- how much the venue will spend to make a market --
+    subsidy is the decision (how much the venue will spend to make a market)
     and ``b`` is only its consequence.
     """
     if subsidy <= 0.0:
@@ -83,7 +83,7 @@ def subsidy_for_depth(shares_per_tick: float, tick_size: float, payout: float) -
     This is the calibration that makes a comparison against an order book mean
     anything. Depth is what decides how far a given amount of informed trading
     moves the price, so two venues quoting different depth are not being
-    compared on mechanism at all -- the deeper one will simply look less
+    compared on mechanism at all; the deeper one will simply look less
     responsive, whatever its rule.
 
     From ``p = sigmoid(q/b)``, ``dq/dp = b / (p (1 - p))`` in payout units, which
@@ -133,7 +133,7 @@ class LmsrMarket:
         return self._cost_function(self.net + quantity) - self._cost_function(self.net)
 
     def average_price(self, quantity: int) -> float:
-        """Cost per share for ``quantity`` shares -- what the trader really pays."""
+        """Cost per share for ``quantity`` shares: what the trader really pays."""
         if quantity == 0:
             raise ValueError("a trade must have non-zero quantity")
         return self.cost(quantity) / quantity

@@ -1,7 +1,7 @@
 """Running the mechanisms that were built and never run.
 
 Fees, an opening call auction, a circuit breaker and a scoring-rule venue were
-all written, all tested in isolation, and all defaulted off -- so the live
+all written, all tested in isolation, and all defaulted off, so the live
 exchange exercised none of them. Switching them on found four bugs in an hour,
 every one of which had been sitting in tested code:
 
@@ -107,7 +107,7 @@ def test_the_market_opens_with_a_call_rather_than_a_race():
 def test_an_unfilled_market_on_open_order_does_not_survive_the_call(opened):
     """The bug that printed trades at minus two to the sixty-first.
 
-    A market order names no price. It is given one -- the sentinel -- so that it
+    A market order names no price. It is given one (the sentinel) so that it
     crosses every candidate the auction considers, and once that auction has
     cleared there is no price it was ever willing to pay. Leaving it resting
     makes it the whole book.
@@ -249,7 +249,7 @@ def test_a_paused_symbol_reopens_through_an_auction():
 
     Halted deliberately rather than by waiting for the breaker. Now that trades
     outside the band are prevented, the market rarely has to be stopped at all
-    -- six limit states and no pauses over five minutes -- so a test that waits
+    (six limit states and no pauses over five minutes), so a test that waits
     for one is a test that usually measures nothing.
     """
     market = build(seed=7)

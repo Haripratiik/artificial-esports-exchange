@@ -55,7 +55,7 @@ class ReferenceLookahead(Exception):
 
     The most dangerous failure this engine can have, because it does not look
     like a failure. A snapshot fitted on data from inside its own observation
-    window has seen the outcome, so its weights and priors encode the answer --
+    window has seen the outcome, so its weights and priors encode the answer,
     and the settlement it produces will be *better* than an honest one, which
     is precisely why nothing about the result would invite suspicion.
     """
@@ -82,17 +82,17 @@ def distributions(spec: ContractSpec, oracle: Oracle) -> tuple[Decimal, ...]:
     if spec.distribution is None:
         return ()
 
-    # The same out-of-range guard `settle` applies, for the same reason, and the
-    # only place a share ever gets one. A share's terminal payoff is Linear(0),
-    # so its settlement bounds are [0, 0] and the check below `settle` can never
-    # fire on it -- yet a share is the one instrument whose cash moves *before*
-    # settlement, and `Venue.distribute` lowers the range collateral is charged
-    # against by whatever was paid. So a payment outside the range the schedule
-    # declared would silently move the bounds every short in the contract is
-    # collateralised against, and nothing downstream would notice. On the
-    # fixture the four SPIKE_EQ payments come out at 468.5, 464.75, 468.75 and
-    # 467.25 against a declared range of [0, 1000], so this is a guard rather
-    # than a change of behaviour.
+    # The same out-of-range guard `settle` applies, for the same reason, and
+    # the only place a share ever gets one. A share's terminal payoff is
+    # Linear(0), so its settlement bounds are [0, 0] and the check below
+    # `settle` can never fire on it. Yet a share is the one instrument whose
+    # cash moves *before* settlement, and `Venue.distribute` lowers the range
+    # collateral is charged against by whatever was paid. So a payment outside
+    # the range the schedule declared would silently move the bounds every
+    # short in the contract is collateralised against, and nothing downstream
+    # would notice. On the fixture a share's four weekly payments came out at
+    # 468.5, 464.75, 468.75 and 467.25 against a declared range of [0, 1000],
+    # so this is a guard rather than a change of behaviour.
     floor, ceiling = spec.distribution.payoff.bounds(spec.underlying.bounds())
     lowest = quantize_to_tick(floor, spec.tick_size)
     highest = quantize_to_tick(ceiling, spec.tick_size)
@@ -109,7 +109,7 @@ def distributions(spec: ContractSpec, oracle: Oracle) -> tuple[Decimal, ...]:
                 f"{spec.contract_id} would pay {amount} for the period beginning "
                 f"{window.start.isoformat()}, outside the range [{lowest}, {highest}] "
                 "its schedule declared. Either the oracle returned a metric outside "
-                "its stated bounds or those bounds are wrong -- and unlike a "
+                "its stated bounds or those bounds are wrong, and unlike a "
                 "settlement, a payment cannot be walked back once it has moved cash."
             )
         paid.append(amount)
@@ -132,14 +132,14 @@ def settle(spec: ContractSpec, oracle: Oracle) -> SettlementResult:
         raise ReferenceLookahead(
             f"{spec.contract_id} opens its observation window at "
             f"{spec.window.start.isoformat()}, but reference {spec.reference_id!r} was "
-            f"estimated as of {oracle.reference_as_of.isoformat()} -- after the window "
+            f"estimated as of {oracle.reference_as_of.isoformat()}, after the window "
             "had already begun. Its weights and priors may encode the outcome. "
             "Estimate a new snapshot dated on or before the window start."
         )
 
     resolutions: list[MetricResolution] = []
-    # spec.atoms() is sorted, so resolution order -- and therefore the order of
-    # resolutions in the record and its digest -- does not depend on how the
+    # spec.atoms() is sorted, so resolution order (and therefore the order of
+    # resolutions in the record and its digest) does not depend on how the
     # underlying happened to be nested.
     for ref in spec.atoms():
         try:
@@ -161,17 +161,17 @@ def settle(spec: ContractSpec, oracle: Oracle) -> SettlementResult:
     settlement_value = quantize_to_tick(spec.payoff.apply(level), spec.tick_size)
 
     # A settlement outside the contract's declared range means the oracle
-    # returned something the contract never contemplated -- a metric out of its
+    # returned something the contract never contemplated: a metric out of its
     # stated bounds, or bounds declared wrongly. Either way the collateral
-    # posted against this contract was computed from a false premise, so this is
-    # a hard error rather than a void: voiding would hide a solvency problem
+    # posted against this contract was computed from a false premise, so this
+    # is a hard error rather than a void: voiding would hide a solvency problem
     # behind a normal-looking outcome.
     low, high = spec.settlement_bounds
     if not low <= settlement_value <= high:
         raise SettlementOutOfBounds(
             f"{spec.contract_id} settled at {settlement_value}, outside its declared "
             f"range [{low}, {high}]. Either the oracle returned a metric outside its "
-            "stated bounds, or the contract's bounds are wrong -- in both cases the "
+            "stated bounds, or the contract's bounds are wrong. In both cases the "
             "collateral held against this contract was computed from a false premise."
         )
 
@@ -192,9 +192,10 @@ def _void(
 ) -> SettlementResult:
     """Build a void record that still carries whatever evidence was gathered.
 
-    The partial resolutions are kept on purpose. "Voided because Crow's sample
-    was thin" is a far more useful record than "voided", especially when the
-    same contract template is about to be reused for the next window.
+    The partial resolutions are kept on purpose. "Voided because this
+    competitor's sample was thin" is a far more useful record than "voided",
+    especially when the same contract template is about to be reused for the
+    next window.
     """
     return SettlementResult(
         contract_id=spec.contract_id,

@@ -1,11 +1,11 @@
 """What a portfolio can lose, exactly.
 
 Collateral here is charged per contract. An account holding a long future and a
-short call on the same Brawler posts against the worst case of each separately,
-as though the world could be simultaneously terrible for both -- and it cannot,
-because both are functions of the same number. The arbitrageur feels this most:
-its whole business is holding offsetting packages, and it pays collateral on
-every leg of every one of them.
+short call on the same competitor posts against the worst case of each
+separately, as though the world could be simultaneously terrible for both. And
+it cannot, because both are functions of the same number. The arbitrageur feels
+this most: its whole business is holding offsetting packages, and it pays
+collateral on every leg of every one of them.
 
 Netting them is what a clearing house is for. The usual objection is that
 portfolio margining means a risk *model*, and a model is an estimate, and an
@@ -18,18 +18,18 @@ scalar. So the worst case of a portfolio is
 
 which is a minimisation of a **piecewise-linear function of one bounded
 variable**. Its minimum is attained at an endpoint or at a kink, every kink is
-known in advance -- a call's strike, a put's strike, a binary's threshold -- and
+known in advance (a call's strike, a put's strike, a binary's threshold), and
 there are a handful of them. Evaluating at each is not an approximation of the
 answer. It is the answer.
 
 Two consequences worth being explicit about:
 
-* **Only same-underlying positions net.** A future on SPIKE and a future on
-  CROW are functions of *different* numbers, and nothing here knows how those
-  two move together. Netting them would require a correlation, which would be
-  an estimate, and then the whole guarantee is gone. They are collateralised
-  separately, and that is not a limitation to be fixed later -- it is the line
-  between arithmetic and modelling.
+* **Only same-underlying positions net.** ``VANTA_SOLO_WR`` and
+  ``QUILL_SOLO_WR`` are functions of *different* numbers, and nothing here
+  knows how those two move together. Netting them would require a correlation,
+  which would be an estimate, and then the whole guarantee is gone. They are
+  collateralised separately, and that is not a limitation to be fixed later; it
+  is the line between arithmetic and modelling.
 * **Netting can only ever reduce the requirement**, never raise it, because the
   gross figure is the sum of per-contract worst cases and the net is the worst
   case of the sum. Anything else would be an arithmetic error.
@@ -38,19 +38,19 @@ And one place where the guarantee is genuinely weaker than the paragraph above,
 stated here rather than left to be discovered. What settles is not
 ``payoff(level)`` but ``quantize_to_tick(payoff(level))``, and quantization
 turns each leg into a staircase whose steps do not line up across legs of
-different scale. Legs that share a scale and a tick cancel exactly -- half-even
+different scale. Legs that share a scale and a tick cancel exactly: half-even
 rounding is an odd function, so ``quantize(x) + quantize(K - x) = K`` whenever
-``K`` is on the grid, which is why put-call parity and the four weekly legs of a
-share still net to zero here. Legs of *different* scale do not: measured, a long
-of one SPIKE_WR_FUT (scale 10,000) against a short of ten SPIKE_WR_W1 (scale
-1,000) is riskless before quantization and loses 1.25 after it, at a level of
-0.00013. The loss is bounded above by ``sum |quantity| * tick / 2`` -- 1.375 for
-that package -- and the tight answer would mean enumerating every level where
-any leg crosses a half-tick boundary, 40,000 of them for a single scale-10,000
-contract on a 0.25 grid, which is not something an order-entry check can afford.
-So this module reports the exact minimum of the *unquantized* claim, and the
-residue above is a known, bounded gap rather than a rounding error nobody
-measured.
+``K`` is on the grid, which is why put-call parity and the four weekly legs of
+a share still net to zero here. Legs of *different* scale do not: measured, a
+long of one four week win rate future (scale 10,000) against a short of ten of
+its first weekly leg (scale 1,000) is riskless before quantization and loses
+1.25 after it, at a level of 0.00013. The loss is bounded above by ``sum
+|quantity| * tick / 2`` (1.375 for that package), and the tight answer would
+mean enumerating every level where any leg crosses a half-tick boundary, 40,000
+of them for a single scale-10,000 contract on a 0.25 grid, which is not
+something an order-entry check can afford. So this module reports the exact
+minimum of the *unquantized* claim, and the residue above is a known, bounded
+gap rather than a rounding error nobody measured.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def kinks_of(payoff: Payoff, bounds: tuple[float, float]) -> list[float]:
 
     A linear payoff has none. An option has one, at its strike. A binary's step
     is not a kink but a jump, so what is offered there is the last level on one
-    branch and the first on the other -- which of the two is adverse depends on
+    branch and the first on the other; which of the two is adverse depends on
     the sign of the position, and the caller does not have to know which.
 
     Raises for a shape whose kinks are not known, rather than guessing at them.
@@ -95,8 +95,8 @@ def kinks_of(payoff: Payoff, bounds: tuple[float, float]) -> list[float]:
         # The nudge was `threshold * (1 + 1e-12) + 1e-12`, which lands *below*
         # a negative threshold as soon as its magnitude passes one. Measured on
         # a metric bounded by [-2, 2] with a step at -1.5, the "far side"
-        # candidate came out at -1.5000000000005 -- the same side as the
-        # threshold -- and a package holding that binary short against a long
+        # candidate came out at -1.5000000000005 (the same side as the
+        # threshold), and a package holding that binary short against a long
         # linear leg was charged 1,500 against a loss of 1,999.998.
         #
         # And the pair only spans both branches when the comparison leaves the
@@ -120,8 +120,8 @@ def kinks_of(payoff: Payoff, bounds: tuple[float, float]) -> list[float]:
         # Sampling an unknown shape was not conservative, it was wrong. The old
         # fallback took 63 evenly spaced levels and called the smallest of them
         # the answer. Measured against a payoff that dips to -1,000 inside a
-        # window 0.004 wide, all 63 samples missed the dip and the portfolio was
-        # charged nothing for a position that loses 1,000 -- and a miss like
+        # window 0.004 wide, all 63 samples missed the dip and the portfolio
+        # was charged nothing for a position that loses 1,000, and a miss like
         # that is unbounded, so no sample count makes it safe.
         #
         # An exact worst case needs the kinks, and the kinks are a property of
@@ -160,8 +160,8 @@ def worst_case(
 
     ``holdings`` is ``(spec, signed quantity, price paid)``. Every spec must be
     written on the same underlying; grouping is the caller's job, because only
-    the caller knows what "the same underlying" means for its world -- and a
-    caller that gets it wrong is refused rather than answered.
+    the caller knows what "the same underlying" means for its world. A caller
+    that gets it wrong is refused rather than answered.
 
     Returns a non-negative loss. Zero means the portfolio cannot lose anything
     at any level, which a fully hedged package genuinely cannot.
@@ -173,14 +173,15 @@ def worst_case(
     bounds = first.underlying.bounds()
     # The single-underlying rule used to be a sentence in this docstring and
     # nothing else. Measured, breaking it was silent and expensive: a long of 4
-    # SPIKE_WR_FUT at 4,670 against a short of 4 CROW_WR_FUT at the same price
-    # netted to *zero* against a gross of 40,000, because both are Linear(10000)
-    # and the arithmetic happily treated two Brawlers as one number. That is a
-    # perfect-correlation assumption, which is a risk model, which is the one
-    # thing this collateral is supposed to be free of. Same subject is not
-    # enough either: a long future against a short dispersion contract on the
-    # same Brawler netted 26,030 against a gross of 41,030, a win rate and a
-    # standard deviation being different scalars that can be adverse at once.
+    # of one competitor's win rate future at 4,670 against a short of 4 of a
+    # second competitor's at the same price netted to *zero* against a gross of
+    # 40,000, because both are Linear(10000) and the arithmetic happily treated
+    # two competitors as one number. That is a perfect-correlation assumption,
+    # which is a risk model, which is the one thing this collateral is supposed
+    # to be free of. Same subject is not enough either: a long future against a
+    # short dispersion contract on the same competitor netted 26,030 against a
+    # gross of 41,030, a win rate and a standard deviation being different
+    # scalars that can be adverse at once.
     #
     # Keyed on the canonical form rather than on object identity so that the
     # rule enforced here is exactly the rule the venue groups by.

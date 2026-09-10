@@ -484,7 +484,7 @@ def test_a_payment_outside_the_schedules_range_is_a_hard_error(window, published
     """The one guard a share never had, on the one contract whose cash moves early.
 
     A share's terminal payoff is Linear(0), so its settlement bounds are [0, 0]
-    and the out-of-range check in `settle` can never fire on it -- yet the
+    and the out-of-range check in `settle` can never fire on it; yet the
     payments happen *before* settlement and `Venue.distribute` lowers the range
     every short is collateralised against by whatever was paid. So a payment
     computed from a level the contract never contemplated would silently move

@@ -3,7 +3,7 @@
 Before this, every connection to the exchange traded one account. Two tabs
 shared a balance, a blotter and a set of working orders, and either could
 cancel the other's. That is not a missing feature on a venue whose entire
-premise is people trading against each other -- it is the premise not holding.
+premise is people trading against each other; it is the premise not holding.
 
 What is here is a signed session cookie: an account id and a display name,
 authenticated by an HMAC the browser cannot forge. What is deliberately *not*
@@ -295,7 +295,7 @@ def test_rebuilding_the_market_does_not_merge_everyone_into_one_account(browsers
     ``reconfigure`` discards the running market and every account in it. The
     table mapping a session id to an account was left holding ids the new
     market had never heard of, and ``LiveMarket.trader`` answers an unknown id
-    with the *shared* account -- so every signed-in visitor collapsed onto one
+    with the *shared* account, so every signed-in visitor collapsed onto one
     seat: one balance, one blotter, and each of them able to cancel the others'
     orders. Reloading the page did not clear it, because the stale entry was
     still in the table.
@@ -332,7 +332,7 @@ def test_a_socket_open_across_a_rebuild_follows_its_own_person(browsers):
 
     A connection that had captured an account id would spend the rest of its
     life reading the shared account, which is the same failure by a slower
-    route -- and the browser has no reason to reconnect, because nothing about
+    route. And the browser has no reason to reconnect, because nothing about
     the socket broke.
     """
     first, second = browsers
@@ -361,7 +361,7 @@ def test_a_seat_from_an_older_market_never_lands_in_a_newcomers_account():
 
     Seats are handed out `you-1`, `you-2`, ... and a rebuild starts the count
     again. A visitor whose remembered id was `you-1` therefore came back to
-    find a `you-1` in the roster -- somebody else's, freshly issued -- and was
+    find a `you-1` in the roster (somebody else's, freshly issued) and was
     seated in it. Two people, one account, arrived at from the far side of the
     thing this module exists to prevent. The seat has to remember which market
     issued it, not only what it was called there.

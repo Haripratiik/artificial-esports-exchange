@@ -7,10 +7,10 @@ guard on them at all.
 
 The one that matters most is ``POST /api/config``. It calls
 ``MarketRunner.reconfigure``, whose own docstring says "The old one is
-discarded, not paused" -- every account, every position, every working order
-and every price series, for everyone connected, gone. Any visitor could send
-it. ``POST /api/participant/{agent_id}/kill`` was worse in a quieter way: it
-takes an **arbitrary** agent id, so one visitor could reach across and disable
+discarded, not paused": every account, every position, every working order and
+every price series, for everyone connected, gone. Any visitor could send it.
+``POST /api/participant/{agent_id}/kill`` was worse in a quieter way: it takes
+an **arbitrary** agent id, so one visitor could reach across and disable
 another human's seat, pulling their working orders while they watched.
 
 That is survivable while the exchange is one person's demo. It is the end of

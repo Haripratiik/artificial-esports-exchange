@@ -2,8 +2,9 @@
 
 The data structure is chosen for a reference implementation rather than for
 throughput. Correctness has to be obvious by reading, because this engine's job
-is to be the oracle the C++ port is validated against -- if the reference is
-subtly wrong, the port will be validated into being identically wrong.
+is to be the oracle a second implementation is validated against. If the
+reference is subtly wrong, whatever is checked against it gets validated into
+being identically wrong.
 
     price -> PriceLevel(FIFO deque of orders, running total)
     plus a heap of prices per side, for O(log n) best-price lookup
@@ -55,9 +56,9 @@ class Order:
     #
     # An iceberg exists because size is information: an order for ten thousand
     # lots tells everyone what you are doing before you have done any of it, so
-    # it is worked in slices. The cost is queue priority -- each refreshed slice
+    # it is worked in slices. The cost is queue priority (each refreshed slice
     # goes to the back of its level, behind everything that arrived while the
-    # last one was working -- and that trade, visibility against position, is
+    # last one was working), and that trade, visibility against position, is
     # the whole design.
     display_size: int = 0
     # The slice currently on the book. The rest of ``remaining`` is reserve, and
@@ -76,10 +77,10 @@ class Order:
     # Carried on the order rather than left in the time-in-force of the command
     # that created it, for the same reason ``display_size`` is: a replace builds
     # a new order out of the old one, and anything the old one did not carry is
-    # silently dropped. Measured before this field existed -- a post-only sell
-    # resting at 105 over a bid of 100, replaced to 100, printed ten lots as the
-    # aggressor. The order had promised that could never happen, and the promise
-    # lived only in a command that had already been processed.
+    # silently dropped. Measured before this field existed, a post-only sell
+    # resting at 105 over a bid of 100, replaced to 100, printed ten lots as
+    # the aggressor. The order had promised that could never happen, and the
+    # promise lived only in a command that had already been processed.
     post_only: bool = False
 
     def __post_init__(self) -> None:
@@ -118,7 +119,7 @@ class PriceLevel:
     """All orders at one price, in arrival order.
 
     ``total`` is maintained incrementally rather than summed on demand. Depth is
-    queried far more often than it changes -- every market-data update reads it --
+    queried far more often than it changes. Every market-data update reads it,
     and recomputing it would make snapshot cost proportional to queue length.
     """
 
@@ -161,10 +162,10 @@ class PriceLevel:
     def prune(self) -> None:
         """Drop terminal or exhausted orders from the front of the queue.
 
-        Cancelled orders are not removed from their level when cancelled -- that
-        would be O(n) in the queue. They are tombstoned and skipped here, on the
-        way past, which keeps cancellation O(1). Cancel-heavy flow is the norm in
-        electronic markets, so this is the operation worth optimising.
+        Cancelled orders are not removed from their level when cancelled: that
+        would be O(n) in the queue. They are tombstoned and skipped here, on
+        the way past, which keeps cancellation O(1). Cancel-heavy flow is the
+        norm in electronic markets, so this is the operation worth optimising.
         """
         while self.orders and (
             self.orders[0].status.terminal or self.orders[0].remaining <= 0
@@ -298,7 +299,7 @@ class OrderBook:
         Market-on-open interest, which rests at a sentinel so it crosses every
         candidate in an auction and is therefore the top of the book by a margin
         of 2^61 while naming no price at all. And, optionally, one order of the
-        caller's choosing -- which is what a pegged order needs, because a peg
+        caller's choosing, which is what a pegged order needs, because a peg
         that counts its own quantity in the reference it tracks is pegged to
         itself and can never step back down.
 
@@ -323,18 +324,18 @@ class OrderBook:
         Returns the level's maintained total rather than summing the deque, and
         the distinction is a correctness one rather than a performance one.
         Cancellation tombstones an order instead of splicing it out, and
-        ``prune`` only clears tombstones from the *front* of the queue -- so a
-        cancelled order sitting mid-queue is invisible to matching but was still
-        being counted by a naive sum.
+        ``prune`` only clears tombstones from the *front* of the queue, so a
+        cancelled order sitting mid-queue is invisible to matching but was
+        still being counted by a naive sum.
 
         That over-reported depth was not merely cosmetic. ``_fillable`` reads it
         to decide whether a fill-or-kill order can be satisfied, so an inflated
         figure let a FOK order be accepted and then partially fill, which is
         precisely what fill-or-kill exists to prevent.
 
-        The total is exact because every path that removes quantity -- a fill via
-        ``consume``, a cancellation via ``remove``, a shrinking replace -- reduces
-        it at the same moment.
+        The total is exact because every path that removes quantity (a fill via
+        ``consume``, a cancellation via ``remove``, a shrinking replace)
+        reduces it at the same moment.
         """
         level = self._levels[side].get(price)
         if level is None:
@@ -386,7 +387,7 @@ class OrderBook:
         The visible slice is computed *here*, as the order joins a level, and
         not once at construction. An order that partially filled on the way in
         and then rested still carried the slice it was born with, so the depth
-        published its original size rather than what was left of it -- caught by
+        published its original size rather than what was left of it, caught by
         the differential harness as a book one lot deeper than the reference
         matcher's, which is exactly the kind of quiet arithmetic error that
         harness exists for.
@@ -421,7 +422,7 @@ class OrderBook:
         priority. *Spent* is not always *empty*: a slice smaller than the
         order's own minimum quantity is finished too, because there is nobody
         left who is allowed to take it. Without that, an iceberg showing three
-        with a minimum of five sat on the book forever -- never refreshing,
+        with a minimum of five sat on the book forever: never refreshing,
         because its slice was not empty, and never trading, because every
         execution it could offer was one it would refuse.
         """
@@ -440,8 +441,8 @@ class OrderBook:
         if level is not None and order.is_iceberg and spent:
             # By name rather than by position. This is the front of the queue
             # unless a minimum-quantity order ahead of it was passed over, and
-            # popping blindly in that case deleted *that* order from its level
-            # -- leaving it live and countable everywhere else, so the depth
+            # popping blindly in that case deleted *that* order from its level,
+            # leaving it live and countable everywhere else, so the depth
             # over-reported it while the matcher could no longer reach it, and
             # the iceberg appeared in the queue twice.
             if level.orders and level.orders[0] is order:
@@ -462,7 +463,7 @@ class OrderBook:
         that both make ``remaining`` smaller, and it was wrong twice over.
 
         ``consume`` reduces the level's total by the amount it removes, which is
-        right for a fill -- every lot a fill takes came off the visible slice.
+        right for a fill: every lot a fill takes came off the visible slice.
         A shrink takes its lots out of the *reserve*, which was never in the
         total. Measured on an iceberg for twelve showing three, with four lots
         resting behind it: shrinking to one left the level reporting **-3** and
@@ -475,7 +476,7 @@ class OrderBook:
 
         So: reduce the visible slice only by what actually came off it, leave
         the order where it is in the queue, and take the same amount off
-        ``quantity`` as off ``remaining`` -- otherwise ``filled`` reports lots
+        ``quantity`` as off ``remaining``; otherwise ``filled`` reports lots
         that never traded, which on a plain order for a hundred shrunk to sixty
         read as **40 filled** against an empty tape.
         """

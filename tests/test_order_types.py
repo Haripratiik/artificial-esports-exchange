@@ -4,17 +4,17 @@ The exchange offered limit and market, with GTC, IOC, FOK and post-only. A
 production venue offers twenty or more, and two of the missing ones are missing
 in a way that changes what the market *is* rather than what it can express:
 
-**Iceberg orders** trade visibility for queue priority. Size is information --
-an order for ten thousand lots announces what you are doing before you have
-done any of it -- so it is worked in slices, and each refreshed slice goes to
-the back of its level behind everything that arrived while the last one worked.
+**Iceberg orders** trade visibility for queue priority. Size is information (an
+order for ten thousand lots announces what you are doing before you have done
+any of it) so it is worked in slices, and each refreshed slice goes to the back
+of its level behind everything that arrived while the last one worked.
 docs/GAPS.md recorded them as "absent, and they change queue dynamics
 materially", which is exactly right and is why they are worth having.
 
 **Stop orders** wait for a price before they exist. They are the classic risk
 tool and the classic accelerant: a stop sells into a fall, which pushes the
 price down, which triggers more stops. Nothing here prevents that cascade and
-nothing should -- being able to *measure* one is most of the reason to model
+nothing should. Being able to *measure* one is most of the reason to model
 stops at all.
 """
 
@@ -125,15 +125,15 @@ def test_an_iceberg_fills_completely_if_you_keep_taking():
 def test_a_shrinking_replace_leaves_an_iceberg_exactly_where_it_was():
     """The one modification that is promised to cost nothing, costing everything.
 
-    Reducing size at an unchanged price keeps queue position, and the shrink was
-    carried out by the same book operation that carries out a fill. On an
+    Reducing size at an unchanged price keeps queue position, and the shrink
+    was carried out by the same book operation that carries out a fill. On an
     iceberg that is wrong twice. The lots come out of the reserve, which was
     never in the level's published total, so the total was reduced by lots it
     never held: an iceberg for twelve showing three, with four lots behind it,
     shrunk to six left the level reporting **4** against **7** really resting,
     and shrunk to one left it reporting **-3** with a published depth of **0**
     over five live lots. And a spent slice refreshes to the back of its queue,
-    so the iceberg was moved behind the order that arrived after it -- while the
+    so the iceberg was moved behind the order that arrived after it, while the
     event it produced said ``kept_priority=True``.
     """
     engine = MatchingEngine()
@@ -180,7 +180,7 @@ def test_a_fill_or_kill_reaches_an_iceberg_s_reserve():
     """Published depth under-counts an iceberg, and fill-or-kill believed it.
 
     A hundred-lot iceberg showing ten was published as ten, so a fill-or-kill
-    for a hundred was refused as unfillable -- while the identical order sent
+    for a hundred was refused as unfillable, while the identical order sent
     good-till-cancelled filled all hundred against the same book, because each
     exhausted slice refreshes and the walk arrives back at it.
     """
@@ -285,10 +285,10 @@ def test_the_cascade_bound_stops_the_chain_without_deleting_orders():
 
     A stop is taken out of the parked list at the moment it is handed to the
     cascade, so anything still waiting when the bound bites had left the engine
-    entirely -- no order, no acknowledgement, no cancellation, and a later
-    cancel answered ``unknown_order``. Measured on a forty-deep ladder with the
-    bound at twenty-four: twenty-four released, fifteen still parked, and
-    **one** that simply ceased to exist with nothing in the stream to say so.
+    entirely: no order, no acknowledgement, no cancellation, and a later cancel
+    answered ``unknown_order``. Measured on a forty-deep ladder with the bound
+    at twenty-four: twenty-four released, fifteen still parked, and **one**
+    that simply ceased to exist with nothing in the stream to say so.
     """
     engine = MatchingEngine()
     depth = engine._max_cascade + 16
@@ -371,7 +371,7 @@ def test_a_stop_is_released_only_once_the_order_that_set_it_off_has_rested():
     logically preceded it and rested where that remainder was about to rest
     through. Measured: a stop-limit sell for nineteen at 99 set off by a print
     at 97, released before a taker's seven unfilled lots reached the book, left
-    **bid 101 against ask 99** -- a spread of minus two, crossed and stuck.
+    **bid 101 against ask 99**, a spread of minus two, crossed and stuck.
     """
     engine = MatchingEngine()
     _stop(engine, "stopper", Side.SELL, 19, trigger=103, limit=99)
@@ -392,7 +392,7 @@ def test_a_replace_that_crosses_sets_off_a_stop():
 
     Stops were released after a submission and not after a modification, so a
     resting offer moved down onto a bid traded ten lots at 100 while a stop
-    parked at 100 sat untouched -- and the identical print delivered as a new
+    parked at 100 sat untouched, and the identical print delivered as a new
     order set the same stop off immediately. Whether a stop fires cannot depend
     on which message the tape came from.
     """
@@ -516,7 +516,7 @@ def test_the_venue_reserves_for_a_stop_the_moment_it_is_parked():
 # **Minimum-quantity orders** refuse to be picked off in pieces. Distinct from
 # fill-or-kill, which is a statement about the whole order: an MPL order is
 # content to fill part of itself and only insists that no part be tiny. It
-# spends the same currency an iceberg does -- an aggressor too small to satisfy
+# spends the same currency an iceberg does: an aggressor too small to satisfy
 # it passes it by, and the order behind it gets the fill.
 # --------------------------------------------------------------------------
 
@@ -662,7 +662,7 @@ def test_repricing_a_peg_costs_it_its_place_in_the_queue():
 def test_a_peg_with_nothing_to_track_rests_inert_rather_than_being_rejected():
     """"There is no best bid yet" is a fact about the market, not an error in
     the order. Rejecting would make a peg unusable at the one moment it is most
-    useful -- the open, when nobody has quoted yet."""
+    useful: the open, when nobody has quoted yet."""
     engine = MatchingEngine()
     events = _peg(engine, "p", Side.BUY, 5, PegReference.BID)
 
@@ -684,7 +684,7 @@ def test_a_peg_that_loses_its_reference_comes_off_the_book():
 
     Leaving it at the last price it happened to track would turn a peg into a
     stale limit order at exactly the moment the market it was following stopped
-    existing -- quoting a number nobody else is quoting, chosen by a reference
+    existing, quoting a number nobody else is quoting, chosen by a reference
     that no longer has a value.
     """
     engine = MatchingEngine()
@@ -749,7 +749,7 @@ def test_a_peg_to_the_far_side_of_the_book_is_an_order_that_takes():
 def test_a_post_only_peg_declines_to_follow_a_reference_into_a_cross():
     """Post-only promises the order never takes, and a peg does not choose its
     own price. The promise is kept by not following, because there is nothing
-    left to reject -- the order was accepted before the touch moved."""
+    left to reject: the order was accepted before the touch moved."""
     engine = MatchingEngine()
     _limit(engine, "mm", Side.BUY, 10, 100)
     _limit(engine, "mm", Side.SELL, 10, 102)
@@ -963,8 +963,8 @@ def test_a_peg_may_hide_a_reserve_because_it_does_rest():
 def test_a_peg_that_takes_sets_off_a_stop_like_any_other_print():
     """A print is a print whoever made it.
 
-    Without this a stop could be set off by a peg that repriced into a trade but
-    not by one that arrived already crossing -- a distinction the tape cannot
+    Without this a stop could be set off by a peg that repriced into a trade
+    but not by one that arrived already crossing, a distinction the tape cannot
     see and nobody could have justified.
     """
     engine = MatchingEngine()
@@ -995,10 +995,10 @@ def test_a_minimum_quantity_order_does_not_trade_when_less_is_available():
 def test_a_minimum_quantity_order_is_not_fill_or_kill():
     """The distinction the field exists for.
 
-    Fill-or-kill asks whether the *whole* order can be done. A minimum asks only
-    whether it is worth starting, so an order for ten with a minimum of five
-    takes the six that are there and rests the other four -- where fill-or-kill
-    on the same book trades nothing.
+    Fill-or-kill asks whether the *whole* order can be done. A minimum asks
+    only whether it is worth starting, so an order for ten with a minimum of
+    five takes the six that are there and rests the other four, where
+    fill-or-kill on the same book trades nothing.
     """
     engine = MatchingEngine()
     _limit(engine, "mm", Side.SELL, 6, 100)
@@ -1027,9 +1027,10 @@ def test_a_minimum_counts_what_could_really_trade_rather_than_the_depth():
 
 
 def test_a_resting_minimum_is_passed_over_by_an_aggressor_too_small_for_it():
-    """The order behind it gets the fill, at the same price. That is the bargain
-    a minimum strikes -- conditional execution instead of an unconditional place
-    in the queue -- and it is the same currency an iceberg spends."""
+    """The order behind it gets the fill, at the same price. That is the
+    bargain a minimum strikes (conditional execution instead of an
+    unconditional place in the queue) and it is the same currency an iceberg
+    spends."""
     engine = MatchingEngine()
     _limit(engine, "big", Side.SELL, 20, 100, min_quantity=10)
     _limit(engine, "small", Side.SELL, 8, 100)
@@ -1079,7 +1080,7 @@ def test_a_book_of_minimums_can_show_a_cross_it_will_not_execute():
     best offer can sit on top of each other while neither side is allowed to
     trade. It clears the moment either side grows enough to satisfy the other,
     which is the difference between this and the locked book a collared limit
-    order used to produce -- that one had no way out at all.
+    order used to produce: that one had no way out at all.
     """
     engine = MatchingEngine()
     _limit(engine, "mm", Side.SELL, 3, 100)
@@ -1097,10 +1098,10 @@ def test_fill_or_kill_is_not_admitted_by_liquidity_a_minimum_protects():
     """Conditional liquidity is not liquidity, and the check was counting it.
 
     Fill-or-kill asked published depth, which does not know that an offer
-    refusing anything under twenty is unavailable to a buyer of ten. Twenty-five
-    lots were on offer at 100 and a fill-or-kill for ten was admitted -- and
-    then **printed five**, which is the one outcome fill-or-kill exists to make
-    impossible. What the walk could really take was five.
+    refusing anything under twenty is unavailable to a buyer of ten.
+    Twenty-five lots were on offer at 100 and a fill-or-kill for ten was
+    admitted, and then **printed five**, which is the one outcome fill-or-kill
+    exists to make impossible. What the walk could really take was five.
     """
     engine = MatchingEngine()
     _limit(engine, "big", Side.SELL, 20, 100, min_quantity=20)
@@ -1117,7 +1118,7 @@ def test_an_aggressor_s_minimum_counts_slices_rather_than_totals():
     """How much a level yields depends on the order the executions happen in.
 
     An iceberg's spent slice goes to the *back* of its queue, so an aggressor
-    meets whatever was behind it before it can reach the reserve -- and by then
+    meets whatever was behind it before it can reach the reserve, and by then
     it may be too small for a minimum that was satisfiable a moment earlier.
     Counting the iceberg's remaining quantity as one lump said six lots were
     reachable here. The walk took three from the slice, one from the lot behind
@@ -1148,9 +1149,9 @@ def test_an_aggressor_s_minimum_is_met_when_the_slices_really_reach_it():
 
 
 def test_a_minimum_larger_than_the_order_is_refused():
-    """It is not a strict order, it is an order that can never execute, and the
-    difference matters -- the first one rests quietly forever and looks like bad
-    luck."""
+    """It is not a strict order, it is an order that can never execute,
+    and the difference matters: the first one rests quietly forever and
+    looks like bad luck."""
     engine = MatchingEngine()
     events = _limit(engine, "a", Side.BUY, 5, 100, min_quantity=6)
     assert _reasons(events) == [RejectReason.INVALID_QUANTITY]
@@ -1210,7 +1211,7 @@ def test_a_minimum_rides_through_a_stop_being_triggered():
 
     _market(engine, "seller", Side.SELL, 20)
     # The print at 100 took the whole 20-lot bid, so all the released stop can
-    # reach is two lots at 99 -- fewer than its minimum, so it takes none.
+    # reach is two lots at 99, fewer than its minimum, so it takes none.
     assert engine.book.snapshot().bids == ((Price(99), Quantity(2)),)
 
 
@@ -1218,11 +1219,11 @@ def test_an_iceberg_behind_a_skipped_minimum_refreshes_without_evicting_it():
     """Found by writing the two features down together, and worth keeping.
 
     An iceberg's slice refresh took the front of the queue by position, which
-    was the same order it had just filled -- until a minimum-quantity order
-    ahead of it could be passed over. Then the refresh deleted *that* order from
-    its level instead. It stayed live everywhere else, so the depth still
-    counted it and a cancel would still find it, while the matcher could no
-    longer reach it, and the iceberg appeared in the queue twice.
+    was the same order it had just filled, until a minimum-quantity order ahead
+    of it could be passed over. Then the refresh deleted *that* order from its
+    level instead. It stayed live everywhere else, so the depth still counted
+    it and a cancel would still find it, while the matcher could no longer
+    reach it, and the iceberg appeared in the queue twice.
     """
     engine = MatchingEngine()
     _limit(engine, "mpl", Side.SELL, 20, 100, min_quantity=10)
@@ -1269,11 +1270,11 @@ def test_a_parked_stop_can_be_cancelled():
     and the cancel came back as an unknown order.
 
     That was not merely unhelpful. The venue drops its working-order entry on a
-    rejection, so a cancel the agent believed had failed released the collateral
-    reserved against the stop while leaving the stop parked and still able to
-    trigger -- one stop still armed, nothing reserved against it. The same gap
-    meant the kill switch could report a participant as flat while its stops
-    were live.
+    rejection, so a cancel the agent believed had failed released the
+    collateral reserved against the stop while leaving the stop parked and
+    still able to trigger: one stop still armed, nothing reserved against it.
+    The same gap meant the kill switch could report a participant as flat while
+    its stops were live.
     """
     engine = MatchingEngine()
     _limit(engine, "mm", Side.BUY, 20, 100)

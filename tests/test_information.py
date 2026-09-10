@@ -12,9 +12,9 @@ mean has an exact closed form,
     E[(E[p|k] - p)^2] = p_bar (1 - p_bar) * kappa / ((kappa + 1)(kappa + n))
 
 by the law of total variance applied to the Beta-Binomial marginal. Matching a
-constant is a much stronger check than matching an exponent -- a conjugate update
-with the prior applied twice, or with the win count off by one, still produces a
--0.5 slope but lands on the wrong constant.
+constant is a much stronger check than matching an exponent: a conjugate update
+with the prior applied twice, or with the win count off by one, still produces
+a -0.5 slope but lands on the wrong constant.
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ def test_error_falls_as_one_over_root_n():
     """The exit criterion: log-log slope of RMSE against n is -1/2.
 
     A weak prior is used deliberately. With a strong one the slope is *not*
-    -0.5 and should not be -- see the next test, which pins the shrinkage
+    -0.5 and should not be; see the next test, which pins the shrinkage
     exactly. Quoting -0.5 while holding a strong prior would be quoting the
     asymptotic law outside the regime where it applies.
     """
@@ -125,9 +125,9 @@ def test_a_strong_prior_makes_the_slope_shallower():
     """Shrinkage is real, and the model shows it rather than hiding it.
 
     With prior strength kappa the slope is -0.5 * n/(kappa + n), so a strong
-    prior flattens the curve at small n. If this test failed -- if the slope
-    were -0.5 regardless of kappa -- the prior would not be doing anything and
-    the "empirical Bayes" framing would be decoration.
+    prior flattens the curve at small n. If this test failed (if the slope were
+    -0.5 regardless of kappa), the prior would not be doing anything and the
+    "empirical Bayes" framing would be decoration.
     """
     small = SAMPLE_SIZES[:3]
 
@@ -150,7 +150,7 @@ def test_a_strong_prior_makes_the_slope_shallower():
 
 
 def test_no_evidence_leaves_the_prior_untouched():
-    """An agent that saw nothing holds exactly the prior -- no accidental drift."""
+    """An agent that saw nothing holds exactly the prior: no accidental drift."""
     a, b = posterior_for(0.9, 0, prior_mean=0.4, prior_strength=30.0, rng=random.Random(1))
     assert a == pytest.approx(12.0)
     assert b == pytest.approx(18.0)

@@ -13,7 +13,7 @@ dictionary order, object identity, or wall-clock time.
 
 **Honest information timing.** An agent learns things when a message reaches it,
 not when they happen. That is the whole substrate for the latency and
-information-asymmetry experiments -- a slow agent is slow because its messages
+information-asymmetry experiments: a slow agent is slow because its messages
 arrive later, not because it was told to pretend.
 
 **Composability.** The exchange is just an agent. So is a data feed, and so is a
@@ -22,8 +22,8 @@ research probe. Nothing in the kernel knows what a market is.
 Ordering is by ``(timestamp, sequence)``. The sequence is a monotonic insertion
 counter, so it is unique and total: two events scheduled for the same nanosecond
 still have a defined order, and it is the order they were created in. Falling
-back to comparing payloads -- which is what a naive heap of tuples does when
-timestamps tie -- would be a correctness bug that only shows up under load.
+back to comparing payloads (which is what a naive heap of tuples does when
+timestamps tie) would be a correctness bug that only shows up under load.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ class Agent(Protocol):
 
     An agent may only act during a callback, and only through the context it is
     handed. It has no reference to the kernel, to other agents, or to the clock
-    between callbacks -- so it cannot accidentally read state from a time it
+    between callbacks, so it cannot accidentally read state from a time it
     should not know about.
     """
 
@@ -105,7 +105,7 @@ class SimulationContext:
         """Ask to be woken ``delay`` from now.
 
         A delay rather than an absolute time, so an agent cannot schedule itself
-        into the past -- which the queue would accept and then process out of
+        into the past, which the queue would accept and then process out of
         order relative to everything already pending.
         """
         self._kernel.schedule_wakeup(self._agent_id, delay)
@@ -167,8 +167,8 @@ class Kernel:
         exists for exactly one reason: a person arriving at the exchange.
 
         That does not weaken replay in the way it looks like it should. A
-        market with a human in it was never byte-reproducible -- the human acts
-        at wall-clock moments the seed knows nothing about -- so a second human
+        market with a human in it was never byte-reproducible (the human acts
+        at wall-clock moments the seed knows nothing about), so a second human
         arriving is the same kind of event as the first one placing an order.
         Every experiment harness builds its population up front and never calls
         this; the live exchange calls it and is honest about not being a
@@ -236,7 +236,7 @@ class Kernel:
 
         **Delivery order is preserved per ordered pair.** Latency is jittered,
         and without this a message could overtake one sent earlier on the same
-        link -- which is not how an exchange session behaves. Order entry runs
+        link, which is not how an exchange session behaves. Order entry runs
         over a stream, and a participant that received a fill before the
         acknowledgement of the order it filled would be seeing something no real
         venue produces.
@@ -279,8 +279,8 @@ class Kernel:
     def start(self) -> None:
         """Deliver ``on_start`` to every agent. Idempotent.
 
-        Split out from :meth:`run` so the kernel can be driven incrementally --
-        a slice of simulated time per slice of wall clock -- which is what a
+        Split out from :meth:`run` so the kernel can be driven incrementally
+        (a slice of simulated time per slice of wall clock), which is what a
         live interface needs. Batch runs and live runs then share one code
         path, so a market watched in a browser behaves identically to the same
         seed replayed headless.
@@ -304,7 +304,7 @@ class Kernel:
     ) -> int:
         """Process queued events up to ``until``. Returns how many ran.
 
-        Does not call ``on_start`` or ``on_finish`` -- the caller owns the
+        Does not call ``on_start`` or ``on_finish``: the caller owns the
         lifecycle, which is what makes stepping possible.
         """
         processed = 0
@@ -338,7 +338,7 @@ class Kernel:
         # The clock may only jump to ``until`` if everything scheduled before it
         # has actually run. Stopping early on the event cap leaves events in the
         # queue whose timestamps are *behind* ``until``, and moving the clock
-        # past them would strand them in the past -- the next call then raises
+        # past them would strand them in the past: the next call then raises
         # "scheduled before current time" on perfectly valid events.
         #
         # This mattered exactly where the cap does: it exists so a burst cannot

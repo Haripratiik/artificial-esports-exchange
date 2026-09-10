@@ -2,13 +2,13 @@
 
 Everything on the exchange side of this interface is generic: it knows about
 contracts, prices, and settlement. Everything on the far side knows about
-battles, maps, and trophy ranges. The Oracle protocol is the only thing that
+matches, formats, and competitors. The Oracle protocol is the only thing that
 crosses, which is what lets a second data-generating world be plugged into the
 same exchange later.
 
 An oracle answers exactly one question: *what was this metric, over this
 window, according to the evidence?* It does not know what contract is asking or
-what the answer is worth. That separation is deliberate -- an oracle that could
+what the answer is worth. That separation is deliberate: an oracle that could
 see the payoff could, in principle, be tuned to it.
 """
 

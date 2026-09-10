@@ -18,7 +18,7 @@ score is better, so a negative difference means the market won.
 
 Three of the four rungs are deliberately stacked against the market:
 
-  * best single agent is chosen *after* seeing the answers -- nobody could pick
+  * best single agent is chosen *after* seeing the answers. Nobody could pick
     it in advance, and no real forecasting system gets to
   * precision-weighted uses the exact battle counts as weights, which a field
     study could only estimate
@@ -94,7 +94,7 @@ def held_out_extremized(results: list[TrialResult]) -> tuple[list[float], float,
 
     The trials are split in half; the factor is fitted on one half and applied
     to the other, then the roles swap. Fitting and evaluating on the same trials
-    would let the baseline see the answers -- and since the baseline is the one
+    would let the baseline see the answers, and since the baseline is the one
     the market has to beat, that would quietly bias the experiment toward the
     market. The two fitted factors are returned so a large gap between them can
     be spotted as instability rather than hidden in an average.
@@ -138,7 +138,7 @@ def _run_one(config: TrialConfig) -> TrialResult:
 def run_all(configs: list[TrialConfig], workers: int) -> list[TrialResult]:
     """Trials are independent and each is deterministic from its own config.
 
-    So parallelism cannot change a result -- only how long it takes to get it.
+    So parallelism cannot change a result, only how long it takes to get it.
     The order is restored by the executor's map, which keeps the output stable
     regardless of the worker count.
     """
@@ -356,11 +356,11 @@ def write_outputs(
 def compare_venues(configs: list[TrialConfig], args: argparse.Namespace) -> int:
     """Experiment 2: the same trials through both mechanisms.
 
-    Identical seeds, truths, thresholds, agents and information -- the only thing
-    that varies is where the liquidity comes from. That makes the difference
-    between the two a property of the mechanism, and lets it be tested as a
-    paired difference rather than as two separate averages that happen to
-    differ.
+    Identical seeds, truths, thresholds, agents and information: the only
+    thing that varies is where the liquidity comes from. That makes the
+    difference between the two a property of the mechanism, and lets it be
+    tested as a paired difference rather than as two separate averages that
+    happen to differ.
     """
     print(f"running {len(configs)} trials on both mechanisms "
           f"({args.workers} worker(s))...")
@@ -487,7 +487,7 @@ def main() -> int:
         # Same total information, held by one agent instead of spread across
         # the population. This is the Kyle question: whether a market with one
         # informed trader prices as well as a market with many small ones.
-        # Everything else -- seeds, truths, thresholds, the maker, the noise --
+        # Everything else (seeds, truths, thresholds, the maker, the noise)
         # is held fixed, so the only thing that moved is where the information
         # sits.
         configs = [

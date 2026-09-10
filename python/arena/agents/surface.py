@@ -1,11 +1,17 @@
 """A market maker that quotes a whole option chain from one distribution.
 
-The defect this exists to fix was measured on the live market and is a
-riskless arbitrage sitting in the book: `SPIKE_C4700` marked at 72.7 while
-`SPIKE_C4600` marked at 59.1. A call struck higher cannot be worth more than
-one struck lower -- the lower strike pays whatever the higher one pays and
-sometimes more -- so anyone could buy the 4,600 and sell the 4,700 and never
-lose. Put-call parity was out by 35 ticks at the same time.
+The defect this exists to fix was measured on the live market and is a riskless
+arbitrage sitting in the book: on one chain of calls over a win rate future,
+the strike at 4,700 marked at 72.7 while the strike at 4,600 on the same
+underlying marked at 59.1. A call struck higher cannot be worth more than one
+struck lower (the lower strike pays whatever the higher one pays and sometimes
+more), so anyone could buy the 4,600 and sell the 4,700 and never lose.
+Put-call parity was out by 35 ticks at the same time.
+
+Strikes in the four thousands anywhere in this file belong to the retired
+statistics world. Those measurements predate the circuit and the listing it
+carries, and they are kept as measured because every one of them is a fact
+about the quoting rule rather than about which contract it was quoting.
 
 There was one cause. The plain maker anchors each book on its own trade prints
 and opens it at the middle of its own settlement range, so every strike was
@@ -25,48 +31,49 @@ holds because the put is *defined* here as ``C - (E[F] - K)``.
 Two things it deliberately does not do, because they would make it price the
 answer rather than a belief:
 
-  * The distribution is centred on the **market's** view of the underlying --
-    the maker's own anchor for the future, which is a slow average of where
-    that future has actually traded -- and never on the settlement value. If
-    the future is mispriced, the whole chain is consistently mispriced, which
-    is right: consistency is the property being fixed, not correctness.
-  * Its width is **estimated from the tape**, not configured. A constant
-    would have been a number chosen to make option prices look plausible, and
-    it would have frozen the one quantity an option market is actually about.
+  * The distribution is centred on the **market's** view of the underlying (the
+    maker's own anchor for the future, which is a slow average of where that
+    future has actually traded) and never on the settlement value. If the
+    future is mispriced, the whole chain is consistently mispriced, which is
+    right: consistency is the property being fixed, not correctness.
+  * Its width is **estimated from the tape**, not configured. A constant would
+    have been a number chosen to make option prices look plausible, and it
+    would have frozen the one quantity an option market is actually about.
     Instead the maker keeps an exponentially-weighted variance of how far
-    prints in the underlying land from its own anchor -- the same estimator a
-    risk desk runs -- and converts it into a Beta concentration by matching
+    prints in the underlying land from its own anchor, the same estimator a
+    risk desk runs, and converts it into a Beta concentration by matching
     moments: for a rate ``m`` scaled by ``S``, a standard deviation of ``s`` in
     price implies ``kappa = m(1-m)S^2/s^2 - 1``.
 
     So the width follows the market. When the underlying is quiet, options
     price near intrinsic; when it moves, they carry time value. That is a
-    belief the maker can still be wrong about -- realised dispersion is not
+    belief the maker can still be wrong about (realised dispersion is not
     settlement uncertainty, and the difference is the adverse selection an
-    options market maker actually faces -- but it is wrong in a way that
+    options market maker actually faces), but it is wrong in a way that
     responds to evidence rather than in a way that was typed in.
 
-The event contracts are on the same ladder, for the same reason and by the
-same arithmetic. A binary struck at a level is a digital on the forward the
-calls are written on, so ``P(F > K)`` prices it and that is the same quantity
+The event contracts are on the same ladder, for the same reason and by the same
+arithmetic. A binary struck at a level is a digital on the forward the calls
+are written on, so ``P(F > K)`` prices it and that is the same quantity
 ``call_delta`` already computes for the ladder. Left off it, they were quoted
 by the plain maker's exponential average of their own prints, which on a claim
 settling at zero or one is an average of a quantity that takes neither value
 until it resolves, and which stops being an estimator at all once the book
 stops trading. Measured on seed 7 over 600s: every event contract was dead
-inside two minutes, `CROW_GT47` spent the remaining eight marked at 0.40
-against a settlement of 1.00, and `SPIKE_GT47` took every one of its passive
-fills on the same side.
+inside two minutes, one binary struck on a competitor's win rate spent the
+remaining eight marked at 0.40 against a settlement of 1.00, and another struck
+at the same level on a different competitor took every one of its passive fills
+on the same side.
 
 Inventory is skewed in the underlying, not per strike, and that is not a
 detail. The plain maker skews each book by a fraction of *that contract's*
 settlement range, which is sensible for a future worth half its range and
-absurd for an option worth one percent of it: a full inventory in
-`SPIKE_C4600` would move its quote by 540, against a fair value near 70. Here
-the chain's net delta shifts the underlying anchor and the whole ladder
-reprices from the shifted anchor, so inventory control happens in the units the
-risk is actually denominated in -- and the ladder stays consistent while it
-happens.
+absurd for an option worth one percent of it: a full inventory in a call a
+hundred ticks out of the money would move its quote by 540, against a fair
+value near 70. Here the chain's net delta shifts the underlying anchor and the
+whole ladder reprices from the shifted anchor, so inventory control happens in
+the units the risk is actually denominated in, and the ladder stays consistent
+while it happens.
 """
 
 from __future__ import annotations
@@ -148,20 +155,21 @@ def derive_chains(instruments: dict[str, Instrument]) -> dict[str, ChainMember]:
     """Match every listed derivative to the listed future it is written on.
 
     Read out of the contracts rather than configured, so listing a new strike
-    makes it quotable with no code change -- and an option whose underlying
+    makes it quotable with no code change, and an option whose underlying
     future is not listed is simply left to the plain maker, because there is
     nothing to anchor it to.
 
     Binaries belong here for the same reason the calls do, and leaving them out
-    was the same defect arriving through a different door. A binary struck at
-    a level is a digital on the same forward as the call struck at that level
+    was the same defect arriving through a different door. A binary struck at a
+    level is a digital on the same forward as the call struck at that level
     times the scale, so a distribution that prices one prices the other; a
     process that has never heard of the strike next to it prices neither.
     Measured on seed 7 before they joined, over 600s: every event contract in
     the market stopped trading inside two minutes, the maker's print average
-    froze wherever it happened to be when the last trade printed, and
-    `CROW_GT47` spent the remaining eight minutes marked at 0.40 against a
-    settlement of 1.00. Its passive flow imbalance was +0.43 and `SPIKE_GT47`
+    froze wherever it happened to be when the last trade printed, and one
+    binary struck on a competitor's win rate spent the remaining eight minutes
+    marked at 0.40 against a settlement of 1.00. Its passive flow imbalance was
+    +0.43 and another binary struck at the same level on a different competitor
     was +1.00, meaning every passive fill on it landed on the same side without
     exception. A print average is not merely a poor estimator of a probability,
     it is not an estimator at all once the book it feeds on has stopped
@@ -278,10 +286,10 @@ def option_value(
 
         E[(L - k)+] = m * (1 - I_k(a + 1, b)) - k * (1 - I_k(a, b))
 
-    where ``I`` is the regularized incomplete beta and ``m = a / (a + b)``.
-    It follows from ``L * f_{a,b}(L) = m * f_{a+1,b}(L)``, so no quadrature and
-    no simulation is needed -- which matters because this runs on every requote
-    of every strike.
+    where ``I`` is the regularized incomplete beta and ``m = a / (a + b)``. It
+    follows from ``L * f_{a,b}(L) = m * f_{a+1,b}(L)``, so no quadrature and no
+    simulation is needed, which matters because this runs on every requote of
+    every strike.
 
     The put is defined by parity rather than integrated separately. Computing
     it independently would leave the two agreeing only up to floating point,
@@ -330,14 +338,14 @@ class SurfaceMarketMaker(MarketMaker):
         # weight when nothing is printing.
         #
         # Without it the estimate only moved on prints, so a quiet market kept
-        # whatever width it last had -- forever. Measured: with the future
-        # pinned at 4,800 for six straight minutes the makers were still
-        # quoting `SPIKE_C4700` at 153 against an intrinsic value of 100, the
-        # informed agents sold it to them all session, all three reached their
-        # position limits and stopped bidding, and the strike had no bid at 17
-        # of 19 sampled moments. Volatility is a statement about now; an
-        # estimate of it has to forget at the rate time passes, not at the rate
-        # trades happen.
+        # whatever width it last had. Forever. Measured: with the future pinned
+        # at 4,800 for six straight minutes the makers were still quoting the
+        # call struck a hundred ticks below it at 153 against an intrinsic
+        # value of 100, the informed agents sold it to them all session, all
+        # three reached their position limits and stopped bidding, and the
+        # strike had no bid at 17 of 19 sampled moments. Volatility is a
+        # statement about now; an estimate of it has to forget at the rate time
+        # passes, not at the rate trades happen.
         self.vol_halflife = vol_halflife
         # Below this many prints the estimate is noise, and the chain is left
         # to the plain maker rather than quoted off a number that is not one.
@@ -528,11 +536,12 @@ class SurfaceMarketMaker(MarketMaker):
         difference is not small. A digital's sensitivity to the forward is the
         density at its strike, not the probability above it, so charging it the
         probability would read a position of 300 binary lots as roughly 200
-        future lots. In future-equivalents the real figure is nearer nothing:
-        a lot of `SPIKE_WR_FUT` is worth up to 4,000 currency and a lot of
-        `SPIKE_GT47` is worth at most one, so the whole event ladder is a
-        rounding error against a single future position and pretending
-        otherwise would swing the skew on the option chain for no risk.
+        future lots. In future-equivalents the real figure is nearer nothing: a
+        lot of a win rate future is worth up to 10,000 currency and a lot of a
+        binary written on the same rate is worth at most one, so the whole
+        event ladder is a rounding error against a single future position and
+        pretending otherwise would swing the skew on the option chain for no
+        risk.
         """
         total = float(self.position.get(underlying_symbol, 0))
         for symbol, member in self.chain.items():
@@ -585,12 +594,13 @@ class SurfaceMarketMaker(MarketMaker):
         if concentration is None:
             # Not enough tape to have a view on width, so quote intrinsic: the
             # zero-volatility limit, and the one answer that needs no estimate.
-            # Falling back to the plain maker here was worse than doing nothing
-            # -- it anchored each strike at the middle of its own settlement
-            # range, so `SPIKE_C4700` opened near 2,650 against a fair value
-            # under 20 and put-call parity was out by a thousand. Intrinsic is
-            # wrong about time value and right about everything else, including
-            # being monotone and convex across strikes.
+            # Falling back to the plain maker here was worse than doing
+            # nothing. It anchored each strike at the middle of its own
+            # settlement range, so a call far out of the money opened near
+            # 2,650 against a fair value under 20 and put-call parity was out
+            # by a thousand. Intrinsic is wrong about time value and right
+            # about everything else, including being monotone and convex across
+            # strikes.
             #
             # A digital's zero-volatility limit is the whole payout on one side
             # of the strike and nothing on the other, which is the same
@@ -629,24 +639,25 @@ class SurfaceMarketMaker(MarketMaker):
         position, and that is the same argument the skew makes one level up.
 
         The plain maker widens on ``inventory / position_limit`` in the book it
-        is quoting, and copying that here reintroduced per-strike inventory into
-        an option price by a route the skew had already been moved to avoid. It
-        is invisible while the fair values differ and unmistakable once they do
-        not. Every quote is clamped into its contract's settlement range, so
-        when the fair value sits at or under the floor the bid pins to the floor
-        while the ask stays at ``fair + half`` -- and the mid is then half the
-        spread, which is to say a pure function of the position. Measured on
-        seed 7 with the future at 4,264, all three SPIKE calls were worth
-        nothing and marked 1.88, 2.00 and 2.50 in ascending strike: a chain of
-        worthless options getting *more* valuable the further out of the money
-        they were, and free money to anyone who read it as a price.
+        is quoting, and copying that here reintroduced per-strike inventory
+        into an option price by a route the skew had already been moved to
+        avoid. It is invisible while the fair values differ and unmistakable
+        once they do not. Every quote is clamped into its contract's settlement
+        range, so when the fair value sits at or under the floor the bid pins
+        to the floor while the ask stays at ``fair + half``, and the mid is
+        then half the spread, which is to say a pure function of the position.
+        Measured on seed 7 with the future at 4,264, all three calls on one
+        chain were worth nothing and marked 1.88, 2.00 and 2.50 in ascending
+        strike: a chain of worthless options getting *more* valuable the
+        further out of the money they were, and free money to anyone who read
+        it as a price.
 
         Driving the width from the chain's net delta instead gives one width to
         the whole ladder at each requote, so the quotes stay monotone in strike
         whatever the maker is holding, and the widening still means what it is
         supposed to mean: a desk deep in risk is more likely to be on the wrong
         side of whatever is moving the market, and charges for it. It measures
-        the risk in the units that risk is actually denominated in -- a maker
+        the risk in the units that risk is actually denominated in. A maker
         long calls and long puts is short nothing in particular and quotes
         tight, which is right, and the per-strike position limit is still there
         to stop it accumulating an unbounded amount of either.
@@ -668,12 +679,12 @@ class SurfaceMarketMaker(MarketMaker):
         # function of the half-spread, and the half-spread here widens with
         # inventory. Two worthless calls then price differently for no reason
         # other than how much of each the maker happens to hold: with the
-        # future at 3,784 both `SPIKE_C4600` and `SPIKE_C4650` were worth
+        # future at 3,784 the calls struck at 4,600 and 4,650 were worth
         # nothing, and they marked at 1.63 and 68.38 respectively, purely
         # because one book carried a heavier position than the other. That is
-        # an inverted chain -- buy the 4,600, sell the 4,650, collect 133 that
-        # settlement cannot take back -- manufactured by the quoting rule
-        # rather than by any view.
+        # an inverted chain (buy the 4,600, sell the 4,650, collect 133 that
+        # settlement cannot take back) manufactured by the quoting rule rather
+        # than by any view.
         #
         # Clamping each side independently keeps the same guarantee (no quote
         # leaves the settlement range) without letting spread width leak into

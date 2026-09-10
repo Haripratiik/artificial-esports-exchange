@@ -1,8 +1,8 @@
 """Trading agents, and the market they make together.
 
-Two of these are regression tests for bugs that only appeared once a real market
-was run, and both are the dangerous kind -- they produce plausible numbers rather
-than crashes.
+Two of these are regression tests for bugs that only appeared once a real
+market was run, and both are the dangerous kind: they produce plausible numbers
+rather than crashes.
 
 ``test_messages_on_a_link_never_overtake`` guards the kernel: jittered latency
 was allowed to reorder messages on the same link, so a fill could arrive before
@@ -98,11 +98,11 @@ def _reachable(engine, price) -> bool:
     """Whether a market order could actually reach this price.
 
     A collar stops an unpriced order at the edge of the band, so in a fast
-    market -- and this one is fast, because its evidence arrives over the
-    session -- the whole offer can sit beyond where a market order is allowed
-    to go, and such an order fills nothing at all. That is the protection
-    working, and it is why anyone in a hurry uses a limit order. A test that
-    sweeps a book has to start from a moment when the book is sweepable.
+    market (and this one is fast, because its evidence arrives over the
+    session) the whole offer can sit beyond where a market order is allowed to
+    go, and such an order fills nothing at all. That is the protection working,
+    and it is why anyone in a hurry uses a limit order. A test that sweeps a
+    book has to start from a moment when the book is sweepable.
     """
     band = engine.execution_band
     return band is None or band[0] <= int(price) <= band[1]
@@ -270,26 +270,25 @@ def test_a_large_order_moves_the_price():
     """Size has to have consequences, or the book is decorative.
 
     A sweep should walk the book, pay progressively worse prices, and leave the
-    touch higher than it found it -- then decay back as the maker refills and
-    the fundamental agents push against it. Temporary impact and permanent
-    impact are different things, and a market that shows neither is not a
-    market.
+    touch higher than it found it, then decay back as the maker refills and the
+    fundamental agents push against it. Temporary impact and permanent impact
+    are different things, and a market that shows neither is not a market.
 
     Sized against the depth that is standing rather than against a round
     number. This test used to sweep 5,000 lots, which happened to be more than
     the whole offer side: it cleared the book, left nothing at the touch, and
     then read the mark off whichever small print landed next. That measures
-    luck, not impact -- and it duly broke the first time an unrelated change
+    luck, not impact, and it duly broke the first time an unrelated change
     moved the market's state at the sixty-second mark.
     """
     # Funded explicitly. A person's default account is deliberately small
     # enough to read a profit against, and this test is about what a *large*
-    # order does to a book -- so it asks for the capital it needs rather than
+    # order does to a book, so it asks for the capital it needs rather than
     # inheriting whatever the product happens to hand a new user.
     m = build(seed=7, human_cash=40_000_000)
     m.kernel.start()
     # Measured on a settled market rather than during the open. Evidence
-    # arrives over the session, so the first minutes are a violent repricing --
+    # arrives over the session, so the first minutes are a violent repricing:
     # the offer can fall three hundred points while a buy order is walking up
     # through it, and what that measures is the open rather than the order.
     m.kernel.advance(until=seconds(180))
@@ -303,8 +302,8 @@ def test_a_large_order_moves_the_price():
     before = float(m.venue.mark_price(SYMBOL))
     best_ask = float(instrument.from_ticks(book.best_ask))
     # The whole visible offer, so it has to walk every level rather than
-    # stopping on the first. The book is about sixty lots a side now -- three
-    # makers quoting thirty, twenty-two and fourteen -- where it used to show
+    # stopping on the first. The book is about sixty lots a side now (three
+    # makers quoting thirty, twenty-two and fourteen) where it used to show
     # thousands, and those thousands were stale orders their owners had lost
     # track of rather than liquidity anyone would have honoured.
     sweep = offered
@@ -329,8 +328,8 @@ def test_a_large_order_moves_the_price():
 
     # And the market answered. Either the cheapest offer left is dearer than
     # the one it started with, or the move was large enough that the circuit
-    # breaker stopped trading -- which is the same statement about impact,
-    # made by the venue instead of by the book.
+    # breaker stopped trading, which is the same statement about impact, made
+    # by the venue instead of by the book.
     after = m.venue.engine(SYMBOL).book.snapshot()
     halted = m.venue.session(SYMBOL) is not SessionState.CONTINUOUS
     moved = (
@@ -348,16 +347,16 @@ def test_a_large_order_moves_the_price():
     # This assertion used to say the opposite, and said so deliberately: with a
     # single maker, sweeping 60% of the offers left it short past the point its
     # collateral allowed it to quote, and the spread it left behind was still
-    # ten times its opening width three minutes later. Not a slow repair -- no
+    # ten times its opening width three minutes later. Not a slow repair: no
     # repair. The comment there said the test should fail on the day
     # replenishment worked, and it did: three makers differing in spread, size
     # and inventory limit mean the one that gets run over is not the only one
     # there, and the spread comes back from 1.25 to 2.50 rather than to 24.50.
     # The *change* across the makers, not their level. With three of them the
-    # sweep is shared, and which one sells depends on whose quote was in front
-    # -- so asserting on `mm-1` alone was asserting on the queue. And a maker
-    # can be long before the sweep and still long after selling into it, which
-    # is why the level says nothing.
+    # sweep is shared, and which one sells depends on whose quote was in front,
+    # so asserting on `mm-1` alone was asserting on the queue. And a maker can
+    # be long before the sweep and still long after selling into it, which is
+    # why the level says nothing.
     after_makers = _maker_position(m)
     sold = before_makers - after_makers
     assert sold > 0, (
@@ -412,8 +411,8 @@ def test_the_mark_never_sits_outside_the_touch():
 def test_a_market_order_is_collateralised_against_the_book_not_the_range():
     """A market order can only trade against resting liquidity.
 
-    Reserving against the far end of the settlement range instead -- 10,000 on a
-    contract quoted near 4,700 -- rejects orders that could never have cost
+    Reserving against the far end of the settlement range instead (10,000 on a
+    contract quoted near 4,700) rejects orders that could never have cost
     anything like that much, for a price they were structurally incapable of
     paying. The symptom was a large order silently vanishing.
 
@@ -484,7 +483,7 @@ def test_every_instrument_is_quoted_and_never_crossed(market):
     That is adverse selection visible in the book, which is a phenomenon to
     observe rather than to configure away.
 
-    A book in a call phase is *expected* to be crossed -- that is what a call
+    A book in a call phase is *expected* to be crossed; that is what a call
     phase is: orders accumulate without matching until the uncross clears them
     all at one price. So the check applies to books that are trading, and the
     ones that are not are skipped rather than excused.
@@ -550,10 +549,10 @@ def test_price_discovers_the_settlement_value(symbol, tolerance):
 
     # Averaged over the second half rather than read off the end. The endpoint
     # of a market whose evidence arrives over the session is one draw from a
-    # noisy process -- a contract whose prior already equals its settlement has
-    # nothing to discover, so all that is left to measure is the wandering.
-    # The harness that produces this project's published results samples the
-    # same way, for the same reason.
+    # noisy process: a contract whose prior already equals its settlement has
+    # nothing to discover, so all that is left to measure is the wandering. The
+    # harness that produces this project's published results samples the same
+    # way, for the same reason.
     samples = []
     for moment in range(20, 361, 20):
         m.kernel.advance(until=seconds(moment))
@@ -580,8 +579,8 @@ def test_the_maker_respects_its_position_limit(market):
 
     The maker stops quoting the side that would breach its limit, but its
     cancels are in flight while fills are still landing, so it can overshoot by
-    roughly one quote. Any real market maker has the same exposure -- an order
-    already resting cannot be unsent -- so the test allows the overshoot and
+    roughly one quote. Any real market maker has the same exposure (an order
+    already resting cannot be unsent) so the test allows the overshoot and
     checks it stays small rather than pretending it cannot happen.
     """
     maker = next(a for a in market.agents if isinstance(a, MarketMaker))
@@ -614,7 +613,7 @@ def test_agent_populations_are_present(market):
 
 
 def test_relations_are_read_out_of_the_listed_contracts():
-    """Nothing is configured by hand -- the algebra comes from the contracts.
+    """Nothing is configured by hand: the algebra comes from the contracts.
 
     This is what makes the agent connective tissue rather than a strategy: list
     a new spread and it becomes arbitrageable with no code change. If these
@@ -648,7 +647,7 @@ def test_a_relation_missing_a_leg_is_not_formed():
     """Take a leg away and the index relation goes; put it back and it returns.
 
     A relation traded against a proxy is a bet, not an arbitrage, so the agent
-    has to decline it -- and then form it the moment the leg is listed, with no
+    has to decline it, and then form it the moment the leg is listed, with no
     code change, or the derivation is not really reading the contracts.
 
     Written by *removing* a listed leg rather than by relying on one being
@@ -686,12 +685,12 @@ def arb_market():
     """A market with the arbitrageur switched on.
 
     It is off by default. Across four paired seeds it improved spread
-    consistency on three and worsened it on the fourth, and on one seed it took
-    visible ask depth from 877 lots to 69 -- consistency bought with liquidity.
-    So the tests below assert what it reliably *does* (derives the right
-    identities, trades them, conserves value, respects its limits) and not the
-    price convergence it does not reliably deliver. docs/GAPS.md carries the
-    numbers.
+    consistency on three and worsened it on the fourth, and on one seed it
+    took visible ask depth from 877 lots to 69: consistency bought with
+    liquidity. So the tests below assert what it reliably *does* (derives the
+    right identities, trades them, conserves value, respects its limits) and
+    not the price convergence it does not reliably deliver. docs/GAPS.md
+    carries the numbers.
     """
     m = build(seed=41, arbitrageur=True)
     m.kernel.start()
@@ -740,7 +739,7 @@ def test_the_arbitrageur_sizes_to_the_liquidity_it_can_see(arb_market):
     """The participation cap is what stops it stripping the book bare.
 
     Without it this agent fired IOC orders on three legs every 400ms and took
-    ask depth from 207 resting lots to 26 -- and a book that thin cannot absorb
+    ask depth from 207 resting lots to 26, and a book that thin cannot absorb
     anyone else's order, so the damage was not confined to its own P&L.
     """
     from arena.agents.arbitrageur import Arbitrageur
@@ -790,7 +789,7 @@ def test_your_fills_survive_the_bots_flooding_the_tape():
 
     The first version kept one rolling window of *every* fill on the venue. The
     bots print thousands a minute, so a person's single trade was evicted from
-    it within seconds -- the panel was empty in exactly the situation it existed
+    it within seconds: the panel was empty in exactly the situation it existed
     for, and nothing anywhere reported a problem. Logs are per participant now.
     """
     market = build(seed=7, human_cash=250_000)

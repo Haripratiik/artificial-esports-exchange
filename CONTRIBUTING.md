@@ -45,6 +45,18 @@ confident diagnosis was wrong and the measurement said so. "I assumed 47
 instruments across three makers had thinned the books; measured, 94% two-sided,
 so that was false" is a better contribution than a plausible fix.
 
+**House style: no em dash, and nothing standing in for one.** Not in code, not
+in comments, not in docs, not in commit messages. A comma, a colon, a full stop
+or a pair of parentheses always does the work, and picking which one is a small
+act of reading the sentence back. The spaced double hyphen is the same habit in
+a disguise and goes for the same reason: this repository carried 1,022 of them
+against zero em dashes, so the character had been kept out and the habit had
+not. `test_nothing_in_the_repository_stands_in_for_an_em_dash` holds the rule
+over every file the repository wrote, in all three shapes, because a rewrap
+moves the offender to the end of one line or the start of the next and a search
+for the obvious shape finds about nine in ten. Section dividers are exempt:
+their dashes rule a line across the page rather than punctuate a sentence.
+
 ---
 
 ## Three invariants. Do not negotiate with these.

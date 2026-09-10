@@ -2,8 +2,8 @@
 
 A diagnostic nobody has checked is worse than no diagnostic: it produces
 numbers that look like evidence. So each estimator is fed series whose answer
-is known analytically -- a Gaussian random walk, a trending series, a
-mean-reverting one, a deliberately fat-tailed one -- and has to get them right
+is known analytically (a Gaussian random walk, a trending series, a
+mean-reverting one, a deliberately fat-tailed one) and has to get them right
 before it is allowed to have an opinion about the market.
 """
 
@@ -149,9 +149,9 @@ def test_order_flow_autocorrelation_detects_persistence():
 def test_acf_decay_exponent_declines_to_measure_pure_noise():
     """No autocorrelation means no decay to fit, and it must say so.
 
-    Fitting a power law to a series with no memory produced -0.03 -- a
-    confident number manufactured from noise, which reads as "slower decay
-    than any real market" rather than "nothing here". NaN is the honest answer.
+    Fitting a power law to a series with no memory produced -0.03, a confident
+    number manufactured from noise, which reads as "slower decay than any real
+    market" rather than "nothing here". NaN is the honest answer.
     """
     assert np.isnan(acf_decay_exponent(RNG.normal(0, 1, 20_000)))
 

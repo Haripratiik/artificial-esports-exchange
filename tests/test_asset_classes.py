@@ -1,14 +1,14 @@
 """Every asset class, and the venue lifecycle around it.
 
-The four canonical instruments -- future, event contract, spread, index -- are
-only the combinations someone thought to try. The underlying algebra composes
-freely, so this exercises the combinations nobody designed for: a binary written
-on a spread, a spread of spreads, an index of spreads, a long/short basket, an
-inverse future. Each one has to price, trade, mark, collateralise and settle
-without special-casing, or the algebra is not really an algebra.
+The four canonical instruments (future, event contract, spread, index) are only
+the combinations someone thought to try. The underlying algebra composes
+freely, so this exercises the combinations nobody designed for: a binary
+written on a spread, a spread of spreads, an index of spreads, a long/short
+basket, an inverse future. Each one has to price, trade, mark, collateralise
+and settle without special-casing, or the algebra is not really an algebra.
 
 The lifecycle tests cover the second half of the question: what happens around
-the edges of a contract's life. Three real bugs were found here -- a replace that
+the edges of a contract's life. Three real bugs were found here: a replace that
 was never collateral-checked, a replace that left the venue reserving against
 stale values, and working-order state that survived settlement.
 """
@@ -240,7 +240,7 @@ def test_options_trade_and_settle(payoff_name):
     events = venue.submit(B, SYM, order(B, Side.BUY, ticks, 10))
     assert any(type(e).__name__ == "Traded" for e in events)
 
-    # A long option's worst case is exactly the premium paid -- it expires
+    # A long option's worst case is exactly the premium paid: it expires
     # worthless, and cannot do worse than that.
     assert venue.account(B).collateral[SYM] == int(D("400") * 10 * 1_000_000)
 
@@ -561,7 +561,7 @@ def test_paying_a_distribution_moves_cash_and_conserves_it():
     market.kernel.start()
 
     # Bought when the share is actually trading. At a fixed moment it may be
-    # mid-auction -- either the opening call or a breaker pause -- and an order
+    # mid-auction (either the opening call or a breaker pause) and an order
     # into a halted book rests until the uncross rather than filling.
     symbol = "BASTION_SOLO_EQ"
     for moment in range(20, 300, 5):
@@ -575,8 +575,8 @@ def test_paying_a_distribution_moves_cash_and_conserves_it():
     # Retried, because seeing an offer and reaching it are different events.
     #
     # An order enqueued here travels the same latency link as an algorithm's,
-    # and a maker is free to pull in between -- so a fill-or-cancel market
-    # order that was aimed at a real offer arrives to an empty side and cancels
+    # and a maker is free to pull in between, so a fill-or-cancel market order
+    # that was aimed at a real offer arrives to an empty side and cancels
     # itself. Acknowledged, then Cancelled, with no position. That is the
     # market working, not a fault, and it began failing here only because
     # listing nineteen more contracts moved the trajectory at this seed.
@@ -659,8 +659,8 @@ def test_a_distribution_leaves_no_account_short_of_collateral():
     from arena.portfolio.money import Money
 
     # The change, not the level. An agent can be fully invested for reasons
-    # that have nothing to do with this payment -- it is holding twenty-six
-    # contracts -- and asserting a positive balance would be testing how much
+    # that have nothing to do with this payment (it is holding twenty-six
+    # contracts) and asserting a positive balance would be testing how much
     # capital the fixture happens to hand out. What must hold is that meeting
     # an obligation does not make anyone worse off: the cash goes out and the
     # requirement falls by exactly as much.
@@ -696,8 +696,8 @@ def test_a_distribution_leaves_no_account_short_of_collateral():
         )
 
     # The live sweep above proves the rule for whoever happens to be holding.
-    # The exception -- a requirement already at zero, so the payment has to come
-    # out of headroom -- is then constructed rather than waited for.
+    # The exception (a requirement already at zero, so the payment has to come
+    # out of headroom) is then constructed rather than waited for.
     #
     # It used to be waited for, and that was a fixture depending on a bug.
     # `VenueAgent.top_of_book` was publishing the market-on-open sentinel, so
@@ -871,8 +871,8 @@ def test_dispersion_is_bounded_so_collateral_stays_arithmetic():
 
     That bound is not decoration. It is what lets a second-moment claim join an
     exchange whose whole collateral model is "every contract settles inside a
-    known interval" -- without it, a short would need a variance estimate
-    rather than a subtraction. The ceiling is reached only by a competitor that
+    known interval". Without it, a short would need a variance estimate rather
+    than a subtraction. The ceiling is reached only by a competitor that
     finishes first in half its matches and last in the other half, which is
     arithmetic rather than an observed maximum.
     """

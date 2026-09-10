@@ -3,10 +3,10 @@
 Split by who is allowed to see them, because that distinction is the substrate
 for every information-asymmetry experiment in the project:
 
-**Private** -- acknowledgements, fills, cancels, rejects. Sent only to the agent
+**Private**: acknowledgements, fills, cancels, rejects. Sent only to the agent
 whose order it was, after that agent's own latency.
 
-**Public** -- trade prints and book updates. Broadcast to subscribers, each after
+**Public**: trade prints and book updates. Broadcast to subscribers, each after
 *their* latency, so two agents subscribed to the same feed genuinely see the same
 event at different times. That is not a simulation artifact to be smoothed over;
 it is the thing being studied.
@@ -53,7 +53,7 @@ class Subscribe:
     """Ask for a feed.
 
     ``throttle`` is a minimum interval between updates on this feed for this
-    agent. It models a subscriber that cannot or does not consume every tick --
+    agent. It models a subscriber that cannot or does not consume every tick:
     a retail client on a slow connection, or an agent that pays for a slower
     data product. Zero means every update.
     """
@@ -76,7 +76,7 @@ class PrivateEvent:
     Carries the symbol because the matching engine does not: each engine serves
     one book and so has no need of one. The venue knows which book produced the
     event, and attaching it here is what lets an agent attribute a fill to an
-    instrument without having to remember what it last sent -- a guess that
+    instrument without having to remember what it last sent, a guess that
     breaks the moment it has orders working in two symbols at once.
     """
 
@@ -99,7 +99,7 @@ class TradePrint:
     Real feeds publish one for the same reasons we need one: it uniquely
     identifies a print, so a subscriber can detect a gap, deduplicate a replay,
     and align its view against another subscriber's. Prices repeat constantly in
-    a narrow market -- anything that tries to identify a trade by its price will
+    a narrow market: anything that tries to identify a trade by its price will
     quietly match the wrong one.
     """
 

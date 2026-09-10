@@ -1,10 +1,10 @@
 """Contract validation, determinism primitives, and the no-lookahead interface.
 
 The lookahead tests matter more than they look. A lookahead bug does not crash
-and does not produce implausible numbers -- it produces *better* results, which
-is the worst possible failure mode for a research project, because nothing about
-the output invites suspicion. So each channel through which the future could
-leak gets an explicit, named test.
+and does not produce implausible numbers: it produces *better* results, which
+is the worst possible failure mode for a research project, because nothing
+about the output invites suspicion. So each channel through which the future
+could leak gets an explicit, named test.
 """
 
 from __future__ import annotations

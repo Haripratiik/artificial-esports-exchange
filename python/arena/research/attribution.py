@@ -11,10 +11,10 @@ telescopes exactly, for any fill sequence and any choice of horizon ``h``,
 
 with ``qᵢ`` the signed lots, ``Pᵢ`` the fill price, ``Mᵢ`` the mid prevailing
 before the fill, and ``M_T`` the mark at the end. Nothing is assumed and
-nothing is estimated -- the middle two terms are added and subtracted -- so
-this belongs in a repository whose collateral is arithmetic rather than a
-model. The first two terms are the Huang-Stoll effective and realized spread;
-their difference is what the literature means by adverse selection, and what
+nothing is estimated (the middle two terms are added and subtracted), so this
+belongs in a repository whose collateral is arithmetic rather than a model. The
+first two terms are the Huang-Stoll effective and realized spread; their
+difference is what the literature means by adverse selection, and what
 Hasbrouck reads as the permanent, information-bearing part of a trade's impact.
 
 **What it is for.** The three terms fail in different directions and want
@@ -23,7 +23,7 @@ and is being run over, and the answer is a faster anchor. Negative adverse
 selection means the quote was picked off by somebody who knew more, and the
 answer is size, skew, or not quoting that side. A negative residual is
 inventory, and the answer is a limit or a hedge. Widening the spread is the
-reflex for all three and is only ever right for the second -- and on a market
+reflex for all three and is only ever right for the second, and on a market
 this thin, not even always then, because a maker that is most of the book
 widens the mid it is measured against.
 
@@ -40,7 +40,7 @@ same way, and takes only one thing from inside the venue: who was on each side
 of a print. That cannot be recovered afterwards, because an order id resolves
 to an agent only while the order is still in the book. So the venue offers a
 notification and this listens to it, and the honest cost of the arrangement is
-that the mid attributed to a fill is the one sampled most recently before it --
+that the mid attributed to a fill is the one sampled most recently before it:
 stale by up to one sampling interval, which the caller chooses.
 
 Floats, unlike everywhere else in this project. A mid sits half a tick between
@@ -310,7 +310,7 @@ class TradeAttribution:
             raise ValueError(f"horizon {want} was never collected")
 
         # The venue's own mark, not this module's mid. They differ, and the
-        # venue's is the one the ledger settles against -- so using it is what
+        # venue's is the one the ledger settles against, so using it is what
         # lets the three terms be checked against `equity - starting_cash`
         # instead of merely resembling it. An attribution that reconciles to
         # something other than the books is not an attribution.
@@ -361,7 +361,7 @@ class TradeAttribution:
 
         Glosten-Milgrom's ``μ``. It is the parameter that decides whether any
         spread can be profitable at all, and it is directly observable here
-        while being unobservable on a real venue -- which is most of the reason
+        while being unobservable on a real venue, which is most of the reason
         to run a market you built.
         """
         passive = matched = 0

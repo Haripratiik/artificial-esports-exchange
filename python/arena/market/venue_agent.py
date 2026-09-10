@@ -8,10 +8,10 @@ and the account layer.
 The layering is unchanged and deliberate:
 
     matching        one MatchingEngine per symbol, still a pure function of its
-                    own command stream, so the C++ port's differential test
-                    remains statable per symbol
-    accounting      the Venue -- positions, collateral, settlement
-    timing          the kernel -- latency, ordering, wakeups
+                    own command stream, so the differential test against a
+                    second implementation remains statable per symbol
+    accounting      the Venue: positions, collateral, settlement
+    timing          the kernel: latency, ordering, wakeups
     this module     the mailbox that joins them
 
 Private events go out before public ones, as on a real venue: an agent learns of
@@ -78,7 +78,7 @@ class VenueAgent:
         self.depth_levels = depth_levels
         self._subscriptions: dict[AgentId, list[_Subscription]] = {}
         # Every public event in order, for the research harness and the UI.
-        # Agents never read this -- they only see what reaches their mailbox.
+        # Agents never read this; they only see what reaches their mailbox.
         self.public_log: list[tuple[Timestamp, Any]] = []
         self.max_log = 5_000
         self._wakeup_pending = False
@@ -242,7 +242,7 @@ class VenueAgent:
         sentinel so that it crosses every candidate in the auction, which makes
         it the top of the book by a margin of 2^61 while naming no price at
         all. The matching engine must see it; a market-data subscriber must
-        not, and `BookSnapshot.best_bid` has always agreed -- so the depth feed
+        not, and `BookSnapshot.best_bid` has always agreed, so the depth feed
         was already correct and only the top-of-book feed was not.
 
         Measured on seed 7 over 20 simulated seconds before the fix: 78,742
@@ -269,8 +269,8 @@ class VenueAgent:
     ) -> None:
         """Send to every subscriber, each after their own latency.
 
-        Recipients are iterated in sorted order so the sequence of sends -- and
-        so the kernel sequence numbers that break timestamp ties -- does not
+        Recipients are iterated in sorted order so the sequence of sends (and
+        so the kernel sequence numbers that break timestamp ties) does not
         depend on the order agents happened to subscribe in.
         """
         for recipient in sorted(self._subscriptions):

@@ -503,7 +503,7 @@ class _Reader:
             # too few bytes, because the length is written in the same call as
             # the body it describes. A length no legitimate record could have
             # is therefore damage, not truncation, and must not be reported as
-            # a droppable tail -- nor be allowed to ask for a gigabyte read.
+            # a droppable tail, nor be allowed to ask for a gigabyte read.
             if length > _MAX_BODY_BYTES:
                 raise JournalCorruption(
                     f"{self.label}: record at offset {start} claims {length} bytes, "
@@ -513,7 +513,7 @@ class _Reader:
             body = self._read(length)
             if len(body) < length:
                 # Short read. Either the record the process was in the middle of
-                # writing when it died -- expected, dropped with a warning -- or
+                # writing when it died (expected, dropped with a warning), or
                 # a length prefix damaged upward, which is corruption and must
                 # not be dropped. The `> _MAX_BODY_BYTES` gate above only catches
                 # the absurd end of that; a length flipped from 41 to 42 lands
@@ -525,7 +525,7 @@ class _Reader:
                 #
                 # The discriminator is the checksum, which covers the length
                 # prefix. If the prefix was damaged, the record's real bytes are
-                # all still on disk and the stored crc still describes them -- so
+                # all still on disk and the stored crc still describes them, so
                 # re-checking against the length the file can actually supply
                 # validates. A genuine tear is missing bytes that were never
                 # written, so no length validates and it stays a tear.
@@ -590,7 +590,7 @@ class _Reader:
         raise JournalCorruption(
             f"{self.label}: record at offset {start} claims {length} bytes but the "
             f"file holds {len(body)}, and those {len(body)} bytes match the stored "
-            "checksum. The length prefix is damaged, not the file truncated -- the "
+            "checksum. The length prefix is damaged, not the file truncated: the "
             "record is whole and its framing is wrong. Dropping it as a torn tail "
             "would discard an input that was fully written and report success."
         )
@@ -658,7 +658,7 @@ def _check_version(found: str, expected: str, label: str) -> None:
             f"{label}: journal was written by engine version {found!r}, this "
             f"build is {expected!r}. Refusing to replay. Deterministic replay "
             "regenerates agent behaviour by re-running the generators, so "
-            "against changed logic it would not fail -- it would rebuild a "
+            "against changed logic it would not fail. It would rebuild a "
             "different market that looks completely plausible, with the right "
             "accounts and sensible prices, and nothing would report an error. "
             "Recover with a build of the original version, or start a new "
@@ -1056,7 +1056,7 @@ class Snapshot:
         # Named rather than left to a KeyError, because the missing field this is
         # most likely to catch is `last_applied_sequence`, and "KeyError" does not
         # tell the operator that what they have is a state with no idea which
-        # inputs are already in it -- which is the one way a snapshot is useless
+        # inputs are already in it, which is the one way a snapshot is useless
         # rather than merely stale.
         for required in ("engine_version", "last_applied_sequence", "state"):
             if required not in parsed:

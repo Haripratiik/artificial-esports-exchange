@@ -1,8 +1,8 @@
 """Splitting a maker's loss into terms that want different fixes.
 
-The decomposition is an arithmetic identity, not a model -- the two middle
-terms are added and subtracted -- so most of what is worth testing is that the
-identity holds and that measuring does not change the thing measured.
+The decomposition is an arithmetic identity, not a model. The two middle terms
+are added and subtracted. So most of what is worth testing is that the identity
+holds and that measuring does not change the thing measured.
 """
 
 from __future__ import annotations
@@ -145,8 +145,8 @@ def test_the_horizon_ladder_is_collected_in_full():
 
     Measured on seed 7 over 600s: the largest maker's adverse selection is
     *positive* through the first half second and only turns over between one
-    and five seconds. A pick-off by somebody faster shows the opposite shape --
-    all of the damage inside the first hundred milliseconds and flat after --
+    and five seconds. A pick-off by somebody faster shows the opposite shape
+    (all of the damage inside the first hundred milliseconds and flat after),
     so the sign of the short end is what rules latency out. Neither is visible
     without the ladder, which is why the ladder is the default.
     """
@@ -185,10 +185,10 @@ def test_informed_share_of_a_stranger_is_zero():
 def test_one_sided_passive_flow_is_reported_per_symbol():
     """Net over gross. Persistently off zero is a pricing error, not bad luck.
 
-    Measured on seed 7: the makers' passive flow on the binaries reaches
-    +1.00 and -0.93 -- every passive fill on a contract landing on the same
-    side, without exception. Inventory noise cannot do that; only a quote that
-    is wrong in one direction can. The equivalent delta limit is structurally
+    Measured on seed 7: the makers' passive flow on the binaries reaches +1.00
+    and -0.93, every passive fill on a contract landing on the same side,
+    without exception. Inventory noise cannot do that; only a quote that is
+    wrong in one direction can. The equivalent delta limit is structurally
     blind to it, which is what makes this worth reporting separately.
     """
     market, attribution = _run()

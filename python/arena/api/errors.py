@@ -3,9 +3,9 @@
 A trading client cannot branch on prose. If a rejection arrives sometimes as
 ``{"detail": "..."}``, sometimes as ``{"ok": false, "error": "..."}`` and
 sometimes as a bare 500, the only thing an algorithm can reliably do with a
-failure is stop -- which is the wrong response to "you are one tick off the
-grid" and the right one to "your signature is invalid", and the client cannot
-tell those apart.
+failure is stop, which is the wrong response to "you are one tick off the grid"
+and the right one to "your signature is invalid", and the client cannot tell
+those apart.
 
 So every failure carries a stable machine code, a sentence for a human, and an
 HTTP status, and the three never disagree. The codes are the contract; the

@@ -1,16 +1,17 @@
 """What every trading agent shares.
 
 An agent's view of the world is exactly what has reached its mailbox. It does
-not read the venue, the book, or another agent's state -- if it wants to know
-the best bid it must have subscribed, and what it knows is what arrived, at the
+not read the venue, the book, or another agent's state. If it wants to know the
+best bid it must have subscribed, and what it knows is what arrived, at the
 time it arrived. That restriction is the whole point: an agent that could peek
 at the book would make every latency and information-asymmetry result
 meaningless, and the peek would be invisible in the output.
 
 So this base class maintains a *local* view, updated only by messages, and
 offers the small vocabulary an agent needs: quote, cancel, and know its own
-position. Anything domain-specific -- what a brawler's win rate will be, whether
-a patch matters -- belongs to the subclass and arrives through its own feed.
+position. Anything domain-specific (what a competitor's win rate will be,
+whether a patch matters) belongs to the subclass and arrives through its own
+feed.
 """
 
 from __future__ import annotations
@@ -77,7 +78,7 @@ class LocalBook:
     """An agent's own picture of one symbol, as of the last message it received.
 
     Deliberately allowed to be stale. A market maker quoting off a view that is
-    100ms old *is* the adverse-selection problem -- modelling it away would
+    100ms old *is* the adverse-selection problem; modelling it away would
     delete the phenomenon the experiments are about.
     """
 
@@ -106,11 +107,11 @@ def _on_grid(instrument, side: Side, price: Price) -> Price:
     """Move a price onto the increment its band requires, conservatively.
 
     A bid rounds down and an offer rounds up, so snapping to the grid never
-    makes a quote more aggressive than the agent intended -- it gives up a
+    makes a quote more aggressive than the agent intended: it gives up a
     fraction of a tick rather than crossing something the agent had not meant
     to cross.
 
-    Contracts with one increment everywhere -- which is all but one of them --
+    Contracts with one increment everywhere, which is all but one of them,
     return unchanged after a single comparison.
     """
     ticks = int(price)
@@ -119,7 +120,7 @@ def _on_grid(instrument, side: Side, price: Price) -> Price:
     # once is the obvious implementation and is wrong for any table with two
     # tiers: with steps of 1.00 from 100 and 5.00 from 203, an offer at 202.75
     # snaps up to 203.00, which is in the five-point band and not a multiple of
-    # five -- so the agent's own snapped quote comes back INVALID_PRICE.
+    # five, so the agent's own snapped quote comes back INVALID_PRICE.
     #
     # Each pass moves in one direction only and lands on a multiple of a
     # strictly coarser increment, so this cannot cycle. Bounded anyway, because
@@ -168,12 +169,12 @@ class TradingAgent:
         # Orders this agent believes are live. Believes, not knows: an
         # acknowledgement may still be in flight, and a fill may not have
         # arrived yet. Reconciling that belief with reality is a real trading
-        # problem and is left visible rather than assumed away.
-        # Working orders, keyed by **(symbol, order id)**.
+        # problem and is left visible rather than assumed away. Working orders,
+        # keyed by **(symbol, order id)**.
         #
         # Order ids come from the matching engine, and there is one engine per
-        # symbol, so id 5 exists on every book at once. Keyed by id alone -- as
-        # this was -- an agent working orders on twenty-six contracts loses
+        # symbol, so id 5 exists on every book at once. Keyed by id alone (as
+        # this was), an agent working orders on twenty-six contracts loses
         # track of almost all of them: a new acknowledgement overwrites the
         # entry for a different symbol's order, and completing one puts its id
         # in ``_completed``, after which the acknowledgement for *another*
@@ -185,26 +186,26 @@ class TradingAgent:
         # book**. The stale ones formed a wall the price could not move
         # through, the maker's own position drifted from the venue's (it
         # believed +807 where the ledger said -63), and the cancel-to-trade
-        # ratio -- the thing docs/GAPS.md recorded as "nothing requotes fast
-        # enough" -- was low because most quotes were never cancelled at all.
+        # ratio (the thing docs/GAPS.md recorded as "nothing requotes fast
+        # enough") was low because most quotes were never cancelled at all.
         self.live_orders: dict[tuple[str, OrderId], str] = {}
-        # Which side each working order is on, so one side can be
-        # replaced without disturbing the other.
+        # Which side each working order is on, so one side can be replaced
+        # without disturbing the other.
         self.order_side: dict[tuple[str, OrderId], Side] = {}
         # The quote this agent believes it is working, per (symbol, side).
         self._intent: dict[tuple[str, Side], tuple[int, int]] = {}
         # Orders known to be finished, so a late message cannot revive one.
         self._completed: dict[tuple[str, OrderId], None] = {}
         # Amendments this agent has sent and not yet had answered, counted per
-        # order. It is the only thing that tells a refused *replace* -- after
-        # which the original is still resting -- from a refused *submit*, after
-        # which nothing is. The engine reports both as ``Rejected`` carrying the
-        # same order id, and an agent may not ask the book which it was.
+        # order. It is the only thing that tells a refused *replace*, after
+        # which the original is still resting, from a refused *submit*, after
+        # which nothing is. The engine reports both as ``Rejected`` carrying
+        # the same order id, and an agent may not ask the book which it was.
         #
         # Measured, on an order resting for ten lots amended to a million: the
         # venue refused it INSUFFICIENT_COLLATERAL and left the order exactly
-        # where it was -- the engine held it, the venue held it and reserved
-        # collateral against it -- and the agent dropped it, after which
+        # where it was. The engine held it, the venue held it and reserved
+        # collateral against it, and the agent dropped it, after which
         # ``cancel`` answered "no such live order". Every guard on the replace
         # path ended in exposure its owner was no longer allowed to manage,
         # which is the outcome the venue's own rate limiter goes out of its way
@@ -226,7 +227,7 @@ class TradingAgent:
         # Amendments answered, counted for the reason ``fills`` and ``rejects``
         # are: ``_numbered`` derives a monotonic, eviction-proof cursor from a
         # counter rather than from a position in a log that gets trimmed. A
-        # replace is a third sequence and not a member of either of theirs --
+        # replace is a third sequence and not a member of either of theirs:
         # fill 3, rejection 3 and amendment 3 are unrelated events.
         self.amendments = 0
 
@@ -236,16 +237,17 @@ class TradingAgent:
         # Quotes conflated to this agent's own decision cadence; trades not.
         #
         # An agent cannot act on a book update that arrives between two of its
-        # wakeups -- by the time it looks, the update has been superseded -- so
-        # sending every one is work nobody uses. Real feeds conflate for exactly
-        # this reason, and unconflated ones are a product you pay extra for.
+        # wakeups (by the time it looks, the update has been superseded), so
+        # sending every one is work nobody uses. Real feeds conflate for
+        # exactly this reason, and unconflated ones are a product you pay extra
+        # for.
         #
         # Measured: with twenty agents each subscribed to twenty-six books with
         # no conflation, market data alone was most of **887,000 events per
         # simulated minute**.
         #
         # Trades are not conflated. The tape is the record of what happened,
-        # and the maker's anchor is an average over it -- dropping prints would
+        # and the maker's anchor is an average over it: dropping prints would
         # not slow the market down, it would change what the market believes.
         throttle = int(self.wake_interval) // 2
         for symbol in sorted(self.instruments):
@@ -389,17 +391,17 @@ class TradingAgent:
             self.fills += 1
             # The symbol comes from the event, not from a lookup in
             # live_orders. Looking it up would silently drop the fill if the
-            # acknowledgement had not arrived yet -- and a dropped fill means
-            # the agent's position diverges from the venue's, which is the
-            # worst class of bug this system can have.
+            # acknowledgement had not arrived yet, and a dropped fill means the
+            # agent's position diverges from the venue's, which is the worst
+            # class of bug this system can have.
             signed = int(event.quantity) * (1 if event.side is Side.BUY else -1)
             self.position[symbol] = self.position.get(symbol, 0) + signed
             if int(event.remaining) == 0:
                 self._complete(key)
         elif isinstance(event, Replaced):
             # A replace keeps the order id and keeps the order. Falling through
-            # to the branch below -- which is where this landed, because
-            # ``Replaced`` is neither an ack nor a fill nor a refusal -- treated
+            # to the branch below (which is where this landed, because
+            # ``Replaced`` is neither an ack nor a fill nor a refusal) treated
             # a successful amendment as the end of the order.
             #
             # Measured, on a bid for ten amended to six at the same price: the
@@ -425,11 +427,12 @@ class TradingAgent:
                 self.live_orders[key] = symbol
                 side = self.order_side.get(key)
                 if side is not None:
-                    # The result, not the request -- the same argument the
-                    # acknowledgement above makes. A peg that reprices has moved
-                    # the quote this agent believes it is working, and an intent
-                    # left pointing at the old price is an agent that sees no
-                    # reason to requote an order that is no longer there.
+                    # The result, not the request: the same argument the
+                    # acknowledgement above makes. A peg that reprices has
+                    # moved the quote this agent believes it is working, and an
+                    # intent left pointing at the old price is an agent that
+                    # sees no reason to requote an order that is no longer
+                    # there.
                     self._intent[(symbol, side)] = (
                         int(event.price),
                         int(event.quantity),
@@ -439,7 +442,7 @@ class TradingAgent:
             # A refusal is not always a removal, and which one it is depends on
             # what was refused rather than on anything in the event. The engine
             # refuses a replace it dislikes and leaves the original exactly
-            # where it was -- the same fact ``Venue._track_working`` records,
+            # where it was, the same fact ``Venue._track_working`` records,
             # which it settles by asking the engine's book. An agent may not
             # ask the book, so it asks itself: an outstanding amendment on this
             # order, refused for a reason that is about the command rather than
@@ -467,9 +470,9 @@ class TradingAgent:
         this.** ``HumanAgent.enqueue`` does it by reading the command it is
         about to send, which is why ``LiveMarket.replace`` does not have to
         remember to. An agent that skips it still trades correctly; what it
-        loses is the ability to tell a refused *amendment* -- after which its
-        order is still resting -- from a refused *order*, and it will drop a
-        live order from its own book the first time a guard fires.
+        loses is the ability to tell a refused *amendment* (after which its
+        order is still resting) from a refused *order*, and it will drop a live
+        order from its own book the first time a guard fires.
 
         Counted rather than flagged, so two amendments in flight on one order
         are answered by two events and the second answer does not read as an
@@ -479,8 +482,8 @@ class TradingAgent:
         self._amending[key] = self._amending.get(key, 0) + 1
         if len(self._amending) > 4096:
             # Bounded for the reason ``_completed`` is. An amendment goes
-            # unanswered when the command never reached a book at all -- an
-            # unknown symbol is refused without an order id -- and a long
+            # unanswered when the command never reached a book at all (an
+            # unknown symbol is refused without an order id), and a long
             # session must not accumulate those without limit.
             for stale in list(self._amending)[:2048]:
                 del self._amending[stale]
@@ -509,8 +512,8 @@ class TradingAgent:
         # were in flight leaks an entry for the rest of the session.
         self._amending.pop(key, None)
         # A dict rather than a set, purely for its insertion order. Trimming a
-        # set to "the last 2048" is a sentence with no meaning -- ``list(set)``
-        # yields hash order -- so the old bound discarded an arbitrary half of
+        # set to "the last 2048" is a sentence with no meaning (``list(set)``
+        # yields hash order), so the old bound discarded an arbitrary half of
         # the record and could resurrect a finished order at any time.
         self._completed.pop(key, None)
         self._completed[key] = None
@@ -585,7 +588,7 @@ class TradingAgent:
 
         Doing it here cost more than realism. Every agent cancelled and
         reposted on all twenty-six contracts on every wakeup, which produced
-        **1.6 million events per simulated minute** -- the market spending its
+        **1.6 million events per simulated minute**, the market spending its
         time on paperwork rather than on trading. It was invisible until agents
         could track their own orders, because before that they lost most of
         them and most of the cancels were never sent: the bug was quietly
@@ -594,7 +597,7 @@ class TradingAgent:
         # Compared on the price that will actually be SENT, not the one that
         # was asked for. :meth:`quote` clamps into the settlement range and
         # snaps to the tick grid, so two different requested prices routinely
-        # become the same resting price -- and comparing the requests instead
+        # become the same resting price, and comparing the requests instead
         # reads that as a change, cancels a perfectly good order and reposts it
         # at the price it was already at. Measured on seed 7 over five minutes:
         # 2,463 of 62,424 quotes, 3.9%, were exactly that. Clamping and
@@ -627,7 +630,7 @@ class TradingAgent:
         Separate from :meth:`cancel_all` because replacing a quote should not
         disturb the other side of it: an agent that cancels both sides to move
         one gives up its queue position on an order it was perfectly happy
-        with, and pays for it twice -- once in priority and once in messages.
+        with, and pays for it twice, once in priority and once in messages.
         """
         pulled = False
         for key, order_symbol in list(self.live_orders.items()):

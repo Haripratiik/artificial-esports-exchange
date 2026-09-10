@@ -33,7 +33,7 @@ The signing key
 
 Generated per process unless ``ARENA_SECRET`` is set. A restart therefore
 invalidates every session, which is correct for a simulator whose market does
-not survive the restart either -- the accounts those cookies name are gone too.
+not survive the restart either: the accounts those cookies name are gone too.
 """
 
 from __future__ import annotations

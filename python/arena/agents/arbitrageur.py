@@ -4,7 +4,7 @@ Without it, related instruments are priced by unrelated crowds. Measured on the
 live market before this agent existed: put-call parity was violated by ~360
 ticks, and the spread contract was genuinely mean-reverting (variance ratio
 0.38) because nothing tied it to the two futures it is defined by. Those are
-not tuning problems -- no amount of better market making on each book separately
+not tuning problems: no amount of better market making on each book separately
 creates consistency *between* books.
 
 The relations it enforces are mechanical identities of the contracts, not
@@ -23,23 +23,23 @@ option chain internally consistent. A set of call prices is free of static
 arbitrage exactly when it is decreasing and convex in strike with slope in
 [-1, 0] (Davis and Hobson 2007; Carr and Madan 2005), and those two families
 are that condition written as portfolios. A violated bound is still a riskless
-trade -- buy the cheap side of a vertical and the payoff can never be negative --
+trade (buy the cheap side of a vertical and the payoff can never be negative),
 so the same execution path handles both; only the definition of "mispriced"
 changes, from "not zero" to "outside the band".
 
-Relations are *derived from the listed instruments* at construction -- from each
-contract's underlying algebra and payoff -- rather than configured by hand, so
-listing a new spread or option chain makes it arbitrageable with no code change,
-and a relation with a missing leg (an index component with no listed future) is
-simply not formed.
+Relations are *derived from the listed instruments* at construction, from each
+contract's underlying algebra and payoff, rather than configured by hand, so
+listing a new spread or option chain makes it arbitrageable with no code
+change, and a relation with a missing leg (an index component with no listed
+future) is simply not formed.
 
 Honest limitations, kept on purpose:
 
   * It trades on its *local* view, which is stale by its latency. Both legs are
-    sent as IOC market orders simultaneously, but fills are not atomic -- it can
+    sent as IOC market orders simultaneously, but fills are not atomic: it can
     get one leg and miss the other. That legging risk is real on real venues
-    too, and the cost hurdle plus position limits are the classical mitigations,
-    not a magic exemption.
+    too, and the cost hurdle plus position limits are the classical
+    mitigations, not a magic exemption.
   * It pays the spread on every leg, so it only acts when the mispricing
     exceeds the round-trip cost times a safety multiple. Small violations
     persist; that is the no-arbitrage *band*, which is what real markets have.
@@ -86,8 +86,8 @@ class Relation:
         """How far outside the band this relation currently sits, signed.
 
         Zero inside it. Positive means the target is too dear relative to the
-        package, negative too cheap -- the same convention an identity had, so
-        everything downstream is unchanged.
+        package, negative too cheap. That is the same convention an identity
+        had, so everything downstream is unchanged.
         """
         theoretical = self.constant
         for symbol, coefficient in self.legs:
@@ -105,7 +105,7 @@ def _underlying_key(instrument: Instrument) -> str:
 
     The window belongs in the key. Without it two contracts that differ only by
     the week they measure are indistinguishable here, so the last one listed
-    silently wins the lookup and a relation gets formed against the wrong leg --
+    silently wins the lookup and a relation gets formed against the wrong leg:
     an identity between two things that are not the same thing, traded as
     though it were free money. Nothing was mispriced by it yet, because no
     spread or index referenced a weekly contract at the time; listing weekly
@@ -126,8 +126,8 @@ def _key(underlying: dict, window: dict) -> str:
 def derive_relations(instruments: dict[str, Instrument]) -> list[Relation]:
     """Read the pricing identities out of the listed contracts.
 
-    A relation is only formed when every leg it needs is actually listed --
-    an index over a component with no future is left alone rather than
+    A relation is only formed when every leg it needs is actually listed. An
+    index over a component with no future is left alone rather than
     approximated, because a relation traded against a proxy is a bet, and this
     agent only trades identities.
     """
@@ -212,7 +212,7 @@ def derive_relations(instruments: dict[str, Instrument]) -> list[Relation]:
     # Exact, not approximate. The share's payment for a week and the future on
     # that week resolve the same metric over the same window under the same
     # evidential bar, so they are the same number. Formed only when *every*
-    # week is listed -- a strip missing a leg is a directional bet on the leg
+    # week is listed; a strip missing a leg is a directional bet on the leg
     # that is missing.
     for symbol, instrument in sorted(instruments.items()):
         schedule = instrument.spec.distribution
@@ -342,7 +342,7 @@ class Arbitrageur(TradingAgent):
         self.position_limit = position_limit
         # Whether to take a converged package back off. Holding to settlement
         # realises the whole gap and pays no exit cost, which is the better
-        # trade in isolation -- but it consumes the balance sheet permanently,
+        # trade in isolation, but it consumes the balance sheet permanently,
         # and a fully-invested arbitrageur cannot correct the *next*
         # dislocation. Measured rather than assumed; see the ablation.
         self.recycle_capital = recycle_capital
@@ -421,7 +421,7 @@ class Arbitrageur(TradingAgent):
         return int(max(0, resting) * self.max_participation)
 
     def _half_spread(self, symbol: str) -> float | None:
-        """Half the touch, in price units -- the cost of taking one leg."""
+        """Half the touch, in price units: the cost of taking one leg."""
         book = self.books[symbol]
         if book.spread is None:
             return None
@@ -457,8 +457,8 @@ class Arbitrageur(TradingAgent):
 
         if abs(gap) <= cost * self.edge_multiple:
             # Inside the no-arbitrage band: the relation is fair, so there is
-            # nothing to correct. If a package is still on from when it was
-            # not fair, this is where it comes off -- but only once the gap has
+            # nothing to correct. If a package is still on from when it was not
+            # fair, this is where it comes off, but only once the gap has
             # converged well past the band, or the exit would give back more
             # than the entry captured.
             if self.recycle_capital and held and abs(gap) <= cost * self.exit_fraction:
@@ -471,7 +471,7 @@ class Arbitrageur(TradingAgent):
 
         # Do not average into a trade that is not working. Holding a package in
         # this direction already, the dislocation has to have *widened*
-        # materially before adding to it -- otherwise the agent re-enters the
+        # materially before adding to it; otherwise the agent re-enters the
         # same position on every wakeup for as long as the gap persists, which
         # is what it did: firing on 93% of wakeups, ~1,400 times a session, and
         # taking the book down from 207 resting lots to 26. A market that thin
@@ -487,8 +487,8 @@ class Arbitrageur(TradingAgent):
     def _execute(self, ctx: SimulationContext, relation: Relation, units: int, lots: int) -> None:
         """Trade ``lots`` packages in direction ``units`` (+1 long the target).
 
-        All legs go out together as IOC market orders. Not atomic -- legging
-        risk is real and deliberately kept; see the module docstring.
+        All legs go out together as IOC market orders. Not atomic. Legging risk
+        is real and deliberately kept; see the module docstring.
         """
         lots = min(lots, self.base_size)
         if lots <= 0:
@@ -504,7 +504,7 @@ class Arbitrageur(TradingAgent):
 
         # Size to the thinnest leg. Taking the full size on a deep leg and a
         # fraction of it on a thin one would leave the relation half-on, which
-        # is a directional bet -- so the whole package shrinks to what the
+        # is a directional bet, so the whole package shrinks to what the
         # scarcest book can supply.
         for symbol, side, weight in sides:
             lots = min(lots, int(self._takeable(symbol, side) / max(weight, 1e-9)))

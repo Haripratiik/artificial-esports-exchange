@@ -1,16 +1,16 @@
 """What a contract is written on, expressed as a small closed algebra.
 
-A contract's underlying is not a price -- it is a recipe for computing one
-number from measured facts about the external world. Three node types cover
-every instrument family in the current roadmap:
+A contract's underlying is not a price: it is a recipe for computing one number
+from measured facts about the external world. Three node types cover every
+instrument family in the current roadmap:
 
     Single      one measured metric             -> performance futures
     Difference  left minus right                -> relative-value spreads
     Basket      pinned weighted combination     -> class and meta indices
 
-Keeping this closed -- rather than, say, evaluating an expression string
-pulled from a YAML file -- is deliberate. Settlement has to be auditable long
-after the fact, and an algebra with three constructors can be reasoned about
+Keeping this closed (rather than, say, evaluating an expression string pulled
+from a YAML file) is deliberate. Settlement has to be auditable long after the
+fact, and an algebra with three constructors can be reasoned about
 exhaustively.
 """
 
@@ -60,7 +60,7 @@ class MetricRef:
     # in March is a different thing from the amount delivered in April.
     #
     # Declared here rather than inferred from the metric name, so the layer that
-    # classifies instruments never has to know what a Brawler is.
+    # classifies instruments never has to know what a competitor is.
     kind: str = "rate"
 
     def __post_init__(self) -> None:
@@ -132,7 +132,7 @@ class Underlying(ABC):
 
         Interval arithmetic over the algebra. Exact rather than estimated,
         which is what lets a position's worst case be computed instead of
-        modelled -- unusual, and a direct consequence of every underlying here
+        modelled: unusual, and a direct consequence of every underlying here
         being a bounded statistic rather than an unbounded price.
         """
 
@@ -160,7 +160,7 @@ class Single(Underlying):
 
 @dataclass(frozen=True, slots=True)
 class Difference(Underlying):
-    """left minus right -- the relative-value primitive.
+    """left minus right: the relative-value primitive.
 
     A spread hedges out whatever moves both legs together, which is what makes
     cross-sectional strategies expressible at all.
@@ -232,9 +232,9 @@ class Basket(Underlying):
         return total
 
     def bounds(self) -> tuple[float, float]:
-        # A negative weight flips its leg's interval, which is how a
-        # long/short index expresses itself. Ignoring the sign would report a
-        # range that excludes values the basket can actually settle at.
+        # A negative weight flips its leg's interval, which is how a long/short
+        # index expresses itself. Ignoring the sign would report a range that
+        # excludes values the basket can actually settle at.
         lower = 0.0
         upper = 0.0
         for leg, weight in self.legs:

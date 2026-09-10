@@ -2,18 +2,18 @@
 
 The point of this package is that somebody can write a market-making or
 buy-side strategy, run it against a market that behaves like a market, and get
-back a number they are entitled to believe -- without real money, without a
-data vendor, and without waiting for a session that only happens once a day.
-That only works if the boundary between "the strategy" and "the exchange" is
-drawn honestly, so this module draws it.
+back a number they are entitled to believe: without real money, without a data
+vendor, and without waiting for a session that only happens once a day. That
+only works if the boundary between "the strategy" and "the exchange" is drawn
+honestly, so this module draws it.
 
 **A strategy sees a view and returns intents. It never touches the venue.**
 That is not tidiness, it is the whole validity argument. An object holding a
 reference to the venue can read the other participants' positions, the true
 settlement level, or the book of a symbol it was never told about, and a
 backtest of such a thing measures nothing. :class:`MarketView` is assembled
-from exactly what the agent has been *sent* -- its own fills, its own
-acknowledgements, and the market data it subscribes to -- so a strategy is
+from exactly what the agent has been *sent* (its own fills, its own
+acknowledgements, and the market data it subscribes to), so a strategy is
 structurally unable to see anything a real desk could not.
 
 **Staleness is preserved rather than smoothed away.** The view is built from
@@ -22,18 +22,18 @@ strategy that reads a mid is reading the mid it would actually have had. This
 is the single most common way a backtest lies, and the cheapest place to
 refuse to.
 
-**Prices leave as Decimal on the grid.** A strategy may model in floats -- the
+**Prices leave as Decimal on the grid.** A strategy may model in floats (the
 literature's formulas are floating-point and pretending otherwise would be
-theatre -- but the value it emits is quantised before it becomes an order, so
+theatre), but the value it emits is quantised before it becomes an order, so
 nothing floating-point ever reaches the ledger. :func:`snap` is where that
 happens and strategies are expected to use it.
 
 The two protocols are deliberately separate. A maker's job is to have a price
 in the market at all times and be compensated for it; a taker's job is to
 decide whether the price on the screen is wrong. They fail differently, they
-are measured differently -- one by realized spread, the other by hit rate and
-edge -- and a single `act()` method for both is what produced the makers in
-this repository that take more often than they make.
+are measured differently, one by realized spread, the other by hit rate and
+edge, and a single `act()` method for both is what produced the makers in this
+repository that take more often than they make.
 """
 
 from __future__ import annotations
@@ -77,11 +77,11 @@ def snap(instrument: Instrument, side: Side, price: Decimal | float) -> Decimal:
     low, high = instrument.tick_bounds
     ticks = max(int(low), min(int(high), ticks))
     # Then onto the increment the contract's band requires, which is not the
-    # tick everywhere: PIPER_WR_FUT steps by 1.00 above 4,000, so rounding to
-    # the tick alone returns 5232.25, a price the venue refuses. Delegated
-    # rather than repeated, because the subtle part is that one pass can round
-    # *into* a coarser band and land off its grid, and `_on_grid` already
-    # handles that and says why.
+    # tick everywhere: VANTA_OBJECTIVE_WR steps by 1.00 above 4,000, so
+    # rounding to the tick alone returns 5232.25, a price the venue refuses.
+    # Delegated rather than repeated, because the subtle part is that one pass
+    # can round *into* a coarser band and land off its grid, and `_on_grid`
+    # already handles that and says why.
     #
     # `TradingAgent.quote` applies the same function before anything is sent,
     # so no bad order ever reached the venue. What was wrong is that the price
@@ -120,7 +120,7 @@ class TwoSided:
     """What a maker wants resting in one symbol.
 
     ``None`` on a side means *do not quote it*, which is a legitimate and
-    frequently correct answer -- pulling the side somebody keeps picking off is
+    frequently correct answer: pulling the side somebody keeps picking off is
     the cheapest defence there is, and a strategy that can only widen cannot
     express it. It is distinct from a zero size, which is not representable at
     all, because "an order for no lots" is not a thing to have an opinion
@@ -140,7 +140,7 @@ class Take:
     """An intent to cross the spread.
 
     ``limit`` of ``None`` means marketable, and the venue's price band still
-    applies -- a taker cannot escape the listing rules by declining to name a
+    applies. A taker cannot escape the listing rules by declining to name a
     price. Naming one is strictly safer and strategies are encouraged to.
     """
 
@@ -209,11 +209,11 @@ class SymbolView:
         if the book has never traded. Somewhere to start, not a fair value.
 
         Tested with `is None` rather than for truth, because a price of zero is
-        a real price here and `or` discards it. Latent when found -- zero of
-        1,200 sampled mids across 47 books were exactly zero -- but one
-        cancelled offer away in seven option books, where a genuinely worthless
-        put would have reported the midpoint of its settlement range instead,
-        which on SPIKE_C4550 is 2,350 against a fair value of nothing.
+        a real price here and `or` discards it. Latent when found (zero of
+        1,200 sampled mids across 47 books were exactly zero) but one cancelled
+        offer away in seven option books, where a genuinely worthless put would
+        have reported the midpoint of its settlement range instead, which on
+        the call that was measured is 2,350 against a fair value of nothing.
         """
         mid = self.mid
         if mid is not None:
@@ -269,10 +269,10 @@ class MakerStrategy(Protocol):
         quote that does not move when it is lifted can be lifted again at the
         same price, which is measurably what happens here when it does not.
 
-        Returning the same prices as last time costs nothing -- the adapter
-        compares against what is already working and sends only differences,
-        so an unchanged quote keeps its place in the queue instead of going to
-        the back of it.
+        Returning the same prices as last time costs nothing: the adapter
+        compares against what is already working and sends only differences, so
+        an unchanged quote keeps its place in the queue instead of going to the
+        back of it.
         """
         ...
 
@@ -290,7 +290,7 @@ class TakerStrategy(Protocol):
 
         Priority matters because collateral is finite and the adapter stops at
         the first intent the account cannot fund. A strategy that wants a
-        package rather than a list should say so by ordering its legs -- and
+        package rather than a list should say so by ordering its legs, and
         should expect to be left half-legged sometimes, which is a real
         execution risk and not an artefact.
         """

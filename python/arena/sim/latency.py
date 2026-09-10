@@ -1,14 +1,14 @@
 """How long a message takes to get from one agent to another.
 
 Latency is not a detail of this simulation, it is one of its subjects. Several
-of the project's research questions -- how much is faster information worth, does
-a co-located market maker earn its edge, how quickly does a patch get priced --
+of the project's research questions (how much is faster information worth, does
+a co-located market maker earn its edge, how quickly does a patch get priced)
 are questions about the latency matrix and nothing else. So it is a first-class,
 configurable object rather than a constant buried in the kernel.
 
 The design follows ABIDES: a pairwise matrix plus a noise model, applied to every
 message. Pairwise rather than per-agent because the interesting asymmetries are
-directional -- an agent can receive market data quickly while its orders still
+directional: an agent can receive market data quickly while its orders still
 take the slow path, which is exactly the situation a colocation experiment wants
 to create.
 
@@ -34,7 +34,7 @@ def _stable_seed(*parts: object) -> int:
     """A seed derived reproducibly from its parts.
 
     Python's built-in ``hash`` is randomized per process for strings, so using it
-    here would make runs irreproducible across processes -- the precise failure
+    here would make runs irreproducible across processes: the precise failure
     this module exists to avoid.
     """
     payload = "|".join(str(part) for part in parts).encode("utf-8")

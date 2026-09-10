@@ -14,8 +14,8 @@ An :class:`Instrument` is that statement. It carries:
     expiry        when trading stops and settlement is attempted
 
 The exchange still knows nothing about any of it. The venue translates between
-integer ticks -- the only thing the matching engine understands -- and the
-Decimal prices a contract settles in, at the boundary and nowhere else.
+integer ticks (the only thing the matching engine understands) and the Decimal
+prices a contract settles in, at the boundary and nowhere else.
 """
 
 from __future__ import annotations
@@ -85,8 +85,8 @@ class Instrument:
         """Convert a contract price to the integer ticks the engine matches on.
 
         Exact division is required, not rounded: an agent quoting off the grid
-        is a bug in the agent, and silently rounding it would put the order at a
-        price the agent did not choose -- then fill it there.
+        is a bug in the agent, and silently rounding it would put the order at
+        a price the agent did not choose, then fill it there.
         """
         amount = price if isinstance(price, Decimal) else Decimal(str(price))
         ticks = amount / self.tick_size

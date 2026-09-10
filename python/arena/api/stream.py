@@ -3,25 +3,24 @@
     WS /v1/stream
 
 The dashboard already has a websocket and it is the wrong shape for an
-algorithm. ``/ws`` sends the whole world twenty times a second -- every book,
-the tape, the roster, the account, the blotter, the counterparties -- because
-one browser needs all of it at once to draw a page. A systematic trader
-usually wants two contracts and its own fills, and on this venue that means it
-would spend its entire decode budget parsing the other twenty-six instruments
-to throw them away. Worse, it cannot tell whether anything it cares about
-actually changed: every snapshot is a fresh copy of everything, so "did the
-book move" is a diff the client has to perform against a message it did not
-ask for.
+algorithm. ``/ws`` sends the whole world twenty times a second (every book, the
+tape, the roster, the account, the blotter, the counterparties) because one
+browser needs all of it at once to draw a page. A systematic trader usually
+wants two contracts and its own fills, and on this venue that means it would
+spend its entire decode budget parsing the other twenty-six instruments to
+throw them away. Worse, it cannot tell whether anything it cares about actually
+changed: every snapshot is a fresh copy of everything, so "did the book move"
+is a diff the client has to perform against a message it did not ask for.
 
 So this is a subscription feed in the shape Kalshi and Alpaca use: the client
 names channels and receives only those, each frame labelled with the channel
 that produced it.
 
-Protocol, client to server -- one JSON object per message::
+Protocol, client to server (one JSON object per message)::
 
-    {"op": "subscribe",   "channels": ["book.SPIKE_WR_FUT", "ticker.*"]}
+    {"op": "subscribe",   "channels": ["book.VANTA_OBJECTIVE_WR", "ticker.*"]}
     {"op": "unsubscribe", "channels": [...]}
-    {"op": "get_snapshot", "channels": ["book.SPIKE_WR_FUT"]}
+    {"op": "get_snapshot", "channels": ["book.VANTA_OBJECTIVE_WR"]}
     {"op": "auth", "key_id": "...", "timestamp": "...", "signature": "..."}
     {"op": "resume", "session": "sn_...", "from_seq": 41}
     {"op": "ping"}
@@ -43,22 +42,20 @@ Channels::
     fills               this seat's executions                  private
 
 ``<symbol>`` may be ``*``, which follows the registry rather than a list fixed
-at subscribe time -- so an instrument listed later appears on the feed without
+at subscribe time, so an instrument listed later appears on the feed without
 the client reconnecting, and no channel kind knows anything about any
-particular asset class. Every contract the venue lists -- future, event, index,
-volatility, spread, share, call, put, commodity -- streams through this one
-path.
+particular asset class. Every contract the venue lists (future, event, index,
+volatility, spread, share, call, put, commodity) streams through this one path.
 
 Every server frame carries ``{"type", "channel", "seq"}``. ``seq`` counts
 frames on **this session** and is gapless: a client that sees 41 after 39 knows
 it lost one, which is the whole reason to number them. A connection is normally
-a session, so this reads as "on this connection" -- the exception is a
-connection that resumed another session, where the numbering changes over once,
-at a point the ``resumed`` frame names in ``next_seq`` and nowhere else. Frames
-that are not about a channel -- ``hello``, ``pong``, ``subscribed``,
-``unsubscribed``, ``snapshot``, ``auth``, ``resumed``, ``resume_failed``,
-``reset``, ``error`` -- carry ``"channel": null`` rather than inventing a
-channel to put them on.
+a session, so this reads as "on this connection"; the exception is a connection
+that resumed another session, where the numbering changes over once, at a point
+the ``resumed`` frame names in ``next_seq`` and nowhere else. Frames that are
+not about a channel (``hello``, ``pong``, ``subscribed``, ``unsubscribed``,
+``snapshot``, ``auth``, ``resumed``, ``resume_failed``, ``reset``, ``error``)
+carry ``"channel": null`` rather than inventing a channel to put them on.
 
 A ``trade`` also carries ``exchange_seq``, and the two numbers are different
 things: ``seq`` is this session's frame count, ``exchange_seq`` is the
@@ -71,17 +68,17 @@ Recovering, rather than only detecting
 
 A number that reveals a gap is worth nothing on its own. A client that sees 41
 after 39 knows its book is wrong and, without the three mechanisms below, its
-only remedy is to tear the process down and start again -- which is what a
+only remedy is to tear the process down and start again, which is what a
 systematic trader that drops a TCP connection had to do here until now.
 
 **Re-snapshot without resubscribing.** ``{"op": "get_snapshot", "channels":
 [...]}`` answers with a fresh full ``book`` (or ``ticker``) frame for each
-named channel, marked ``"snapshot": true``, and **changes nothing** -- not the
+named channel, marked ``"snapshot": true``, and **changes nothing**: not the
 subscription list, not the conflation state, not the ``change`` anchor. It is
 Kalshi's orderbook contract: a snapshot first, increments after, and a
 ``get_snapshot`` action that re-snapshots without resubscribing. Bybit states
-the client's half of the same contract -- a new snapshot means reset your local
-book -- which is why the flag is on the frame rather than implied by the
+the client's half of the same contract (a new snapshot means reset your local
+book), which is why the flag is on the frame rather than implied by the
 request.
 
 **Resume across a reconnect.** ``hello`` carries a ``session`` id, and a client
@@ -90,12 +87,12 @@ that lost its socket may reconnect and send ``{"op": "resume", "session":
 stating in its own words: if the connection is broken the client re-logs in
 naming the session and its next expected sequence number, and is then
 guaranteed to receive every sequenced message in order despite the failure. A
-successful resume answers ``resumed`` -- which names ``next_seq``, exactly as
-SoupBinTCP's Login Accepted packet does -- then replays the retained frames
+successful resume answers ``resumed`` (which names ``next_seq``, exactly as
+SoupBinTCP's Login Accepted packet does) then replays the retained frames
 **with their original sequence numbers**, restores the subscriptions and the
 cursors, and carries on. The cursors matter as much as the frames: a resume
-that restored the subscription but reopened the tape cursor at *now* would
-drop every print that landed while the client was away, and drop it silently,
+that restored the subscription but reopened the tape cursor at *now* would drop
+every print that landed while the client was away, and drop it silently,
 because the sequence would still be gapless across the hole.
 
 A resume that cannot be honoured is answered with a ``resume_failed`` frame
@@ -104,15 +101,15 @@ case is the actual danger: a client that believes it resumed and did not is a
 client trading on a book with a hole in it, and nothing downstream can tell.
 
 What is retained is bounded and the bound is published. A session keeps its
-last :data:`RESUME_FRAMES` frames -- 2,000, CME MDP 3.0's own cap on a TCP
-replay request -- for :data:`RESUME_SECONDS` after the socket goes, and at most
+last :data:`RESUME_FRAMES` frames (2,000, CME MDP 3.0's own cap on a TCP replay
+request) for :data:`RESUME_SECONDS` after the socket goes, and at most
 :data:`RESUME_SESSIONS` disconnected sessions are held at once. All three are
 on the ``hello`` frame, because a client told the bound only at the moment it
 exceeds one has already lost the data. Past the bound the answer is a refusal
 and never a partial replay.
 
 **A reset the client did not ask for.** ``reset`` is pushed whenever a cursor
-this connection holds stops meaning anything -- ``reconfigure`` discarding the
+this connection holds stops meaning anything: ``reconfigure`` discarding the
 market and every account in it, a re-seat onto a different account, or the
 seat's blotter sliding past the last entry forwarded. It says discard, and the
 client re-snapshots.
@@ -123,7 +120,7 @@ about this codebase rather than general principles:
 **Conflation, not dropping.** :class:`~arena.market.venue_agent.VenueAgent`
 records what dropping costs: an earlier feed threw away an update when a
 subscriber was behind, a maker that has not moved its quote sends no order so
-nothing republishes, and every agent waiting for a price waited forever -- a
+nothing republishes, and every agent waiting for a price waited forever: a
 trial that traded 2,039 times traded 0. So nothing here is discarded. State
 channels (``ticker``, ``book``) hold the *latest* state and send that on the
 next tick, which is conflation: a superseded book is not an update anybody
@@ -132,17 +129,17 @@ all, because a print is a fact rather than a state and the next one does not
 replace it.
 
 The mechanism is that nothing is queued at production time. Each flush reads
-the venue's own buffers -- the engine's tape, the seat's blotter -- from a
-cursor. A client that stops reading for ten seconds therefore has no queue
-growing behind it; it has a cursor that is ten seconds behind, and the next
-flush it can absorb catches it up in order. That is also what keeps a slow
-client off the market loop: the kernel is stepped by a different task, this one
-only reads, and when a send blocks it blocks this connection and nothing else.
+the venue's own buffers (the engine's tape, the seat's blotter) from a cursor.
+A client that stops reading for ten seconds therefore has no queue growing
+behind it; it has a cursor that is ten seconds behind, and the next flush it
+can absorb catches it up in order. That is also what keeps a slow client off
+the market loop: the kernel is stepped by a different task, this one only
+reads, and when a send blocks it blocks this connection and nothing else.
 
 **Private channels re-resolve their seat every tick.** ``reconfigure`` discards
 the market and every account in it, and :meth:`LiveMarket.trader` answers an id
 it does not know with the **shared** account. A connection that captured an
-agent id once would, after a rebuild, quietly stream someone else's fills --
+agent id once would, after a rebuild, quietly stream someone else's fills,
 which is exactly the failure that merged every browser visitor into one seat,
 described at length in ``dashboard.server._seat_now``. An id is only meaningful
 inside the generation that issued it, so what is held here is the key's opaque
@@ -170,8 +167,8 @@ given**. A second key store would refuse credentials this one issued, and a
 second seat resolver would put one credential on two accounts.
 
 FastAPI is imported here, which the ``arena`` package otherwise avoids. It is
-confined to this module and ``rest.py`` -- the settlement core underneath still
-imports nothing -- and the alternative, hand-rolling the ASGI websocket
+confined to this module and ``rest.py`` (the settlement core underneath still
+imports nothing) and the alternative, hand-rolling the ASGI websocket
 handshake, would be a second implementation of something the application
 already depends on.
 """
@@ -232,9 +229,9 @@ TICK_SECONDS = 0.05
 # rather than being sent it twenty times a second.
 DEPTH_LEVELS = 10
 
-# The channel kinds. Kinds, not symbols and not asset classes -- every
-# instrument the registry lists is reachable through the same four public
-# kinds, and adding a contract type to the venue requires nothing here.
+# The channel kinds. Kinds, not symbols and not asset classes: every instrument
+# the registry lists is reachable through the same four public kinds, and
+# adding a contract type to the venue requires nothing here.
 PUBLIC_KINDS = ("ticker", "book", "trades", "lifecycle")
 PRIVATE_KINDS = ("orders", "fills")
 
@@ -247,8 +244,8 @@ PRIVATE_KINDS = ("orders", "fills")
 STATE_KINDS = ("ticker", "book")
 
 # What a ``lifecycle`` frame can say. Kalshi publishes the same set under
-# ``market_lifecycle_v2`` -- created, activated, deactivated, determined,
-# settled -- and the mapping here is to what this venue actually has: a symbol
+# ``market_lifecycle_v2`` (created, activated, deactivated, determined,
+# settled) and the mapping here is to what this venue actually has: a symbol
 # appearing in the registry, its session moving between the four phases, the
 # breaker or an operator stopping it, and its settlement paying out. An
 # algorithm running unattended learns about a new listing from this rather than
@@ -268,7 +265,7 @@ ALL = "*"
 # venues all draw the line somewhere and say where: Nasdaq's SoupBinTCP caps a
 # retransmission at what fits one packet, and CME's MDP 3.0 caps a TCP replay
 # request at 2,000 packets. This is CME's number, and on this feed it is a
-# useful amount of time rather than an arbitrary one -- a connection watching a
+# useful amount of time rather than an arbitrary one: a connection watching a
 # handful of contracts at 20Hz emits on the order of thirty frames a second, so
 # 2,000 frames is roughly a minute of feed, which comfortably covers a TCP
 # reconnect, a DNS stall or a process restart. A client watching every contract
@@ -286,7 +283,7 @@ RESUME_FRAMES = 2000
 # client in a reconnect loop would otherwise mint a session per attempt and
 # leak every one of them: the frame buffer is bounded per session, so without
 # these two the total is bounded only by how often a client can reconnect. A
-# live connection is never evicted -- it owns its session.
+# live connection is never evicted: it owns its session.
 RESUME_SESSIONS = 64
 RESUME_SECONDS = 120.0
 
@@ -322,7 +319,7 @@ def configure(
     ``seat_now`` is how the application says where one of its own people is
     sitting *in the market running now*, given the seat token a key was issued
     against. **Pass the same one the REST half is given.** Without it the two
-    halves of this API each seat the credential separately -- the client places
+    halves of this API each seat the credential separately: the client places
     an order on one account and watches another's fills, sees nothing, and has
     no way to tell that from a broken feed. ``dashboard.server`` already has
     exactly this function, ``_seat_now``, and hands it to ``rest.configure``.
@@ -400,9 +397,8 @@ class _Session:
     that is easy to leave out and disastrous to leave out. A resume that
     restored the subscriptions and then opened a fresh tape cursor at *now*
     would skip every print that landed while the client was disconnected, and
-    the sequence numbers would still run 40, 41, 42 straight across the hole --
-    a gap that is undetectable by the one mechanism provided for detecting
-    gaps.
+    the sequence numbers would still run 40, 41, 42 straight across the hole, a
+    gap that is undetectable by the one mechanism provided for detecting gaps.
 
     ``token`` is the seat token of the credential the session authenticated
     with, or ``None`` if it never did. It is the reason a session id is not on
@@ -462,7 +458,7 @@ def _new_session(frames: int) -> _Session:
 
     The id is random rather than sequential. A session id is quoted back by a
     client to resume a stream, so a guessable one is a way to read a stream
-    somebody else opened -- and while an authenticated session is additionally
+    somebody else opened, and while an authenticated session is additionally
     protected by its seat token, a public one would be readable by anybody who
     could count.
     """
@@ -504,8 +500,8 @@ class _Seat:
     """Which account a credential trades, and what it is called.
 
     The name is the durable half. The account id is only meaningful inside the
-    generation that issued it -- ``reconfigure`` hands the same ``you-1`` to
-    whoever seats first in the new market -- so it is stamped with a generation
+    generation that issued it (``reconfigure`` hands the same ``you-1`` to
+    whoever seats first in the new market), so it is stamped with a generation
     and re-resolved rather than trusted.
     """
 
@@ -516,9 +512,9 @@ class _Seat:
 
 # Seats by **seat token**, shared across every connection. ``ApiKey.agent_id``
 # is that token: an opaque, durable identifier for a person, which is what the
-# REST half binds to as well. It is deliberately not an account id -- an
-# account lasts only as long as the market that issued it -- and deliberately
-# not a display name, because two traders called "Ash" are two traders.
+# REST half binds to as well. It is deliberately not an account id (an account
+# lasts only as long as the market that issued it) and deliberately not a
+# display name, because two traders called "Ash" are two traders.
 #
 # Keyed by token rather than by key id so that a person holding two keys, or
 # one key on two connections, reads one blotter. That is how any real venue
@@ -534,7 +530,7 @@ _SEAT_NAMES: dict[str, str] = {}
 # ``LiveMarket.seat`` picks the next free id, opens an account under it and
 # then registers the agent. Two threads through that window pick the same id
 # and the second overwrites the first, which puts two credentials on one
-# account -- the failure this module exists to prevent, reached from the other
+# account: the failure this module exists to prevent, reached from the other
 # side. ``dashboard.server`` holds its own lock over its own seating for
 # exactly this reason.
 _SEAT_LOCK = threading.Lock()
@@ -546,7 +542,7 @@ def _seat_for(runner: Any, key: Any, seat_now: Any | None) -> _Seat:
     Called on every flush, not once per connection. That is the whole point:
     between two flushes the market may have been rebuilt, every account in it
     discarded, and a connection still holding the old id would be reading
-    ``LiveMarket.trader``'s fallback -- the shared account -- and streaming a
+    ``LiveMarket.trader``'s fallback (the shared account) and streaming a
     stranger's fills to a client that has no way of knowing.
 
     Two ways of answering, in this order.
@@ -554,15 +550,15 @@ def _seat_for(runner: Any, key: Any, seat_now: Any | None) -> _Seat:
     The application's own, when it has one. It knows where its browser sessions
     are sitting, and the REST half asks it the same question through the same
     hook, so a person's key, their cookie and their stream all land on one
-    account -- including across a rebuild, which is exactly where a naive
-    binding falls back to the shared seat. The answer is checked against the
-    venue's account table before it is trusted, because an application holding
-    a stale id is the failure being guarded against, not a source of truth.
+    account, including across a rebuild, which is exactly where a naive binding
+    falls back to the shared seat. The answer is checked against the venue's
+    account table before it is trusted, because an application holding a stale
+    id is the failure being guarded against, not a source of truth.
 
     Otherwise, the seat token's own binding, re-seated by **name** whenever the
     generation moves or the bound id is no longer an account. That last check
-    matters more than the generation one: it tests the actual failure --
-    ``LiveMarket.trader`` answers an unknown id with the shared account --
+    matters more than the generation one: it tests the actual failure
+    (``LiveMarket.trader`` answers an unknown id with the shared account)
     rather than a bookkeeping proxy for it.
 
     The token is never looked up as an account id. ``reconfigure`` starts the
@@ -619,10 +615,10 @@ class _Channel:
         """The channel label a frame for one symbol carries.
 
         A client subscribed to ``ticker.*`` receives frames labelled
-        ``ticker.SPIKE_WR_FUT``, not ``ticker.*``. The wildcard is how you ask;
-        it is not a thing any frame is actually about, and a client routing on
-        the label would otherwise have to unpack the payload to find out which
-        instrument moved.
+        ``ticker.VANTA_OBJECTIVE_WR``, not ``ticker.*``. The wildcard is how
+        you ask; it is not a thing any frame is actually about, and a client
+        routing on the label would otherwise have to unpack the payload to find
+        out which instrument moved.
         """
         return f"{self.kind}.{symbol}" if self.symbol else self.kind
 
@@ -650,9 +646,9 @@ def _parse_channel(raw: Any) -> _Channel:
     kind, _, symbol = text.partition(".")
     if kind in PRIVATE_KINDS:
         if symbol:
-            # `fills.SPIKE_WR_FUT` reads like a filter and is not one. Accepting
-            # it and ignoring the symbol would stream every fill to a client
-            # that believes it asked for one instrument's.
+            # `fills.VANTA_OBJECTIVE_WR` reads like a filter and is not one.
+            # Accepting it and ignoring the symbol would stream every fill to a
+            # client that believes it asked for one instrument's.
             raise _BadChannel("invalid_request", text, reason="takes no symbol")
         return _Channel(kind)
     if kind in PUBLIC_KINDS:
@@ -686,7 +682,7 @@ def _price(instrument: Any, ticks: Any) -> str:
     Every price on this feed goes through here. The settlement figure on the
     dashboard was published in ticks under a label that promised a price, and
     on a contract quoted on a 0.25 grid that is four times the number a reader
-    expects -- it did not look like a bug, it looked like a number. A string
+    expects: it did not look like a bug, it looked like a number. A string
     rather than a float because a price path with a float in it is a price path
     that eventually disagrees with the ledger.
     """
@@ -726,8 +722,8 @@ class _Stream:
         )
         self._resumed = False
         # Assigning a sequence number and writing the frame have to happen
-        # together. Two tasks send here -- the flush loop and the command
-        # handler -- and without the lock one can take number 6 while the other
+        # together. Two tasks send here (the flush loop and the command
+        # handler) and without the lock one can take number 6 while the other
         # is still awaiting the write of number 5, putting them on the wire out
         # of order. A client checking that its sequence increases by one would
         # then report a gap on a connection that never lost anything.
@@ -753,14 +749,14 @@ class _Stream:
         # What ``change`` on a ticker is measured from, per symbol.
         self._anchor: dict[str, Decimal] = {}
         # Position in the seat's blotter, held as the identity of the last
-        # entry forwarded rather than as an index -- see :meth:`_drain_private`.
+        # entry forwarded rather than as an index (see :meth:`_drain_private`).
         self._private_mark: tuple[Any, ...] | None = None
         self._private_started = False
 
         # Lifecycle cursors. ``None`` means "not opened", which is how a
         # subscriber that arrives an hour in gets what happens next rather than
-        # a replay of every halt since the open -- the same rule the tape
-        # cursor follows, for the same reason.
+        # a replay of every halt since the open, the same rule the tape cursor
+        # follows, for the same reason.
         self._listed_seen: set[str] | None = None
         self._session_seen: dict[str, str] = {}
         self._halts_seen: int | None = None
@@ -793,7 +789,7 @@ class _Stream:
         """Put an already-numbered frame on the wire. The lock must be held.
 
         Used directly by a replay, which must not renumber or re-retain what it
-        is sending -- the whole point is that the client receives frame 41 as
+        is sending: the whole point is that the client receives frame 41 as
         frame 41.
         """
         if self._closed:
@@ -814,7 +810,7 @@ class _Stream:
         """Refuse, carrying the id of the command being refused where there is one.
 
         A client with three commands in flight cannot otherwise tell which of
-        them was rejected, and would have to guess from the channel -- which is
+        them was rejected, and would have to guess from the channel, which is
         absent on exactly the errors where the guess matters, such as a
         malformed ``channels`` list.
         """
@@ -826,7 +822,7 @@ class _Stream:
         # The outer ``finally`` covers the handshake as well as the loop. A
         # session is created before the socket is accepted and is held live
         # until it is released, and a live session is deliberately never
-        # evicted -- so a client that connects and aborts during the handshake
+        # evicted, so a client that connects and aborts during the handshake
         # would otherwise leave a session in the table that nothing can ever
         # remove, once per attempt.
         try:
@@ -899,8 +895,8 @@ class _Stream:
         and the next sequence number for the same reason: the client needs both
         of them before anything goes wrong, not after. ``resume.frames`` is the
         bound actually in force on this connection, so a client can work out
-        for itself -- from ``tick_ms`` and how much it subscribed to -- roughly
-        how long it has to reconnect within.
+        for itself (from ``tick_ms`` and how much it subscribed to) roughly how
+        long it has to reconnect within.
         """
         symbols = list(self._runner.market.venue.registry.symbols)
         return {
@@ -1044,7 +1040,7 @@ class _Stream:
         tens of milliseconds, and a print that lands in that gap would be read
         as history and skipped. The same gap, on the private side, loses a
         client the acknowledgement of an order it sent immediately after
-        subscribing -- which is precisely what a systematic trader does.
+        subscribing, which is precisely what a systematic trader does.
 
         Every cursor here is opened with ``setdefault`` or an ``is None``
         guard, never overwritten. A resume restores the cursors it left off at
@@ -1083,7 +1079,7 @@ class _Stream:
             if channel.kind == "trades":
                 self._tape_seen.pop(symbol, None)
         # The lifecycle cursors are one set for the connection rather than one
-        # per channel -- the venue's halt log is venue-wide -- so they are only
+        # per channel (the venue's halt log is venue-wide), so they are only
         # closed once the last lifecycle channel has gone. Closing them while
         # another lifecycle subscription was still open would silently stop
         # that one: the halts cursor would be reopened at the end of the log
@@ -1104,8 +1100,8 @@ class _Stream:
         only way back to a correct one was to tear the subscription down and
         rebuild it, and a client that reconnects to repair one contract loses
         its place on every other contract it was watching. Kalshi's orderbook
-        channel has exactly this shape -- a snapshot, then increments, and a
-        ``get_snapshot`` action that re-snapshots without resubscribing -- and
+        channel has exactly this shape (a snapshot, then increments, and a
+        ``get_snapshot`` action that re-snapshots without resubscribing) and
         the reason is the same.
 
         It is defined over state channels only. A ``trades`` snapshot would
@@ -1117,7 +1113,7 @@ class _Stream:
         Nothing here writes to ``_published`` or to ``_anchor``, and that is
         deliberate rather than an oversight. Recording a snapshot as published
         would let a channel the client is *not* subscribed to suppress the
-        first live frame it receives when it later subscribes -- a gap
+        first live frame it receives when it later subscribes, a gap
         manufactured by the very command that exists to close one.
 
         A live frame from the flush loop can land in the middle of the answer,
@@ -1164,10 +1160,10 @@ class _Stream:
         """The current state of each named channel, marked as a snapshot.
 
         ``"snapshot": true`` is on the frame rather than left implicit in the
-        request. Bybit states the client's half of this contract plainly -- a
-        new snapshot means reset your local orderbook -- and a client can only
-        act on that if a solicited full state is distinguishable from the
-        conflated update that follows it.
+        request. Bybit states the client's half of this contract plainly (a new
+        snapshot means reset your local orderbook) and a client can only act on
+        that if a solicited full state is distinguishable from the conflated
+        update that follows it.
         """
         venue = self._runner.market.venue
         frames: list[dict[str, Any]] = []
@@ -1221,7 +1217,7 @@ class _Stream:
         # Stamped on the session as well as on the connection. From here on
         # this session's buffer can hold this seat's blotter, so resuming it is
         # reading a private feed and has to be proved the same way subscribing
-        # to one is -- see :meth:`_resume`.
+        # to one is (see :meth:`_resume`).
         self._session.token = str(key.agent_id)
         # A different seat has a different blotter, so the cursor into the old
         # one means nothing. Opened here rather than left for the flush loop:
@@ -1259,9 +1255,9 @@ class _Stream:
         original numbers, and the connection then continues that same sequence.
 
         The whole exchange happens under one hold of the write lock. Taking it,
-        releasing it, and taking it again would let the flush loop -- which is
-        a separate task on the same event loop and is queued on the same lock
-        -- slip a live frame numbered 58 between the acknowledgement and the
+        releasing it, and taking it again would let the flush loop (which is a
+        separate task on the same event loop and is queued on the same lock)
+        slip a live frame numbered 58 between the acknowledgement and the
         replay of 41, which is out of order on the wire and unrecoverable by
         the client that just asked to be made whole.
 
@@ -1296,7 +1292,7 @@ class _Stream:
                             "channel": None,
                             "reason": reason or "malformed",
                             # The session now in force, which is *this*
-                            # connection's own -- so a client whose resume was
+                            # connection's own, so a client whose resume was
                             # refused knows what to quote if it drops again,
                             # and cannot mistake the refusal for a success.
                             "session": self._session.session_id,
@@ -1373,7 +1369,7 @@ class _Stream:
         if self._channels:
             # Resuming replaces the subscription list with the resumed
             # session's, so doing it after subscribing would throw away
-            # channels the client had already asked for on this connection --
+            # channels the client had already asked for on this connection,
             # quietly, and with a cursor the client believes is running.
             # Refusing says so. Authenticating first is fine and is in fact
             # required to resume a session that was authenticated.
@@ -1404,8 +1400,8 @@ class _Stream:
         Re-checked rather than trusted. The market may have been rebuilt while
         the client was away and no longer list a symbol it was following, and a
         private channel is only restored to a connection that has proved the
-        same seat -- the token check in :meth:`_resume_refusal` establishes
-        that, and this is where it is spent. A name that cannot be honoured is
+        same seat: the token check in :meth:`_resume_refusal` establishes that,
+        and this is where it is spent. A name that cannot be honoured is
         dropped rather than failing the resume: the frames are still worth
         replaying, and the reply reports what was actually restored so the
         client can diff it against what it asked for.
@@ -1434,21 +1430,21 @@ class _Stream:
         The cursors are the point. A resume that restored the subscription list
         and reopened the tape cursor at *now* would drop every print that
         landed between the old socket dying and the new one connecting, and
-        drop it invisibly -- the sequence would run straight across the hole,
-        so the one mechanism this feed gives a client for noticing loss would
+        drop it invisibly: the sequence would run straight across the hole, so
+        the one mechanism this feed gives a client for noticing loss would
         report that nothing was lost.
 
         The generation is restored too, and deliberately not reconciled here.
         If the market was rebuilt while the client was away, the next flush
         sees the generation move and pushes a ``reset`` through the path that
-        already exists for it -- which is the correct answer, because the
+        already exists for it, which is the correct answer, because the
         replayed frames describe a market that no longer exists.
         """
         with _SESSION_LOCK:
             # The connection's own session is abandoned rather than kept. It
-            # holds a handful of frames the resumed stream never contained --
-            # the hello, the auth -- and leaving it in the table would let a
-            # confused client resume its way into a two-frame stream.
+            # holds a handful of frames the resumed stream never contained (the
+            # hello, the auth) and leaving it in the table would let a confused
+            # client resume its way into a two-frame stream.
             _SESSIONS.pop(self._session.session_id, None)
         self._session = session
         session.live = True
@@ -1469,7 +1465,7 @@ class _Stream:
         self._settled_seen = (
             None if session.settled_seen is None else set(session.settled_seen)
         )
-        # Only fills in cursors the restored session did not already carry --
+        # Only fills in cursors the restored session did not already carry:
         # every opener here is a ``setdefault`` or an ``is None`` guard.
         for channel in restored:
             self._open_cursor(channel)
@@ -1481,8 +1477,8 @@ class _Stream:
 
         Collection is synchronous on purpose. The kernel is stepped by another
         task on this same event loop, so a collection that never awaits sees
-        one consistent instant -- and an ``await`` in the middle of it would
-        let the market advance between reading a book and reading the tape,
+        one consistent instant, and an ``await`` in the middle of it would let
+        the market advance between reading a book and reading the tape,
         publishing a state that never existed.
         """
         frames = self._collect()
@@ -1508,7 +1504,7 @@ class _Stream:
             # its cash is back where it started; a client that is not told
             # reconciles an empty blotter against orders it believes are live
             # and concludes the venue lost them. A public subscriber needs it
-            # too -- every price on the feed is about to jump to a different
+            # too: every price on the feed is about to jump to a different
             # session, and the contract set may not even be the same.
             frames.append(
                 {
@@ -1539,12 +1535,12 @@ class _Stream:
     def _sync_generation(self) -> bool:
         """Notice a rebuild, and forget everything that described the old market.
 
-        Every cursor here indexes into something ``reconfigure`` threw away --
-        an engine's tape, a seat's blotter, the last book published for a
-        symbol. Carrying any of them across a rebuild reads the new market
-        through the old market's bookmarks: a tape cursor at 400 against a tape
-        that starts again at 0 publishes nothing until the new session has
-        traded four hundred times.
+        Every cursor here indexes into something ``reconfigure`` threw away: an
+        engine's tape, a seat's blotter, the last book published for a symbol.
+        Carrying any of them across a rebuild reads the new market through the
+        old market's bookmarks: a tape cursor at 400 against a tape that starts
+        again at 0 publishes nothing until the new session has traded four
+        hundred times.
         """
         generation = self._runner.generation
         if self._generation == generation:
@@ -1603,9 +1599,9 @@ class _Stream:
         # Drained once for the connection, not once per channel. The venue's
         # halt log is one list for the whole venue, so a per-channel drain
         # would let the first lifecycle channel consume an event and leave the
-        # second with nothing -- a client subscribed to both ``lifecycle.*``
-        # and ``lifecycle.SOME_SYMBOL`` would see each halt on exactly one of
-        # them, chosen by iteration order.
+        # second with nothing: a client subscribed to both ``lifecycle.*`` and
+        # ``lifecycle.SOME_SYMBOL`` would see each halt on exactly one of them,
+        # chosen by iteration order.
         events = (
             self._lifecycle_events()
             if any(channel.kind == "lifecycle" for channel in self._channels)
@@ -1647,8 +1643,8 @@ class _Stream:
                 label = channel.concrete(symbol)
                 if self._published.get(label) == payload:
                     # Conflation with nothing left to conflate. The state has
-                    # not moved, so there is no update being withheld -- only
-                    # a frame that would tell the client what it already knows.
+                    # not moved, so there is no update being withheld, only a
+                    # frame that would tell the client what it already knows.
                     continue
                 self._published[label] = payload
                 frames.append({"type": channel.kind, "channel": label, **payload})
@@ -1672,9 +1668,9 @@ class _Stream:
 
         ``change`` is measured from the first mark this connection published
         for the contract, and ``open`` names that anchor so the number is never
-        ambiguous. The obvious alternative -- change on the session -- would
-        mean reading ``MarketRunner.history``, which is kept in floats for
-        charting. A chart may round; a price on this feed may not.
+        ambiguous. The obvious alternative (change on the session) would mean
+        reading ``MarketRunner.history``, which is kept in floats for charting.
+        A chart may round; a price on this feed may not.
 
         No timestamp. A conflated state frame does not have an honest one: the
         book may have moved four times since the last flush, and stamping the
@@ -1687,7 +1683,7 @@ class _Stream:
         is not subscribed to would otherwise fix that contract's ``open`` at
         the moment of the snapshot, so a client that snapshotted first and
         subscribed second would be quoted a ``change`` measured from a
-        different instant than the one it thinks -- a command that promises to
+        different instant than the one it thinks: a command that promises to
         change nothing, silently changing what a later field means.
         """
         venue = self._runner.market.venue
@@ -1760,10 +1756,10 @@ class _Stream:
         a client that stops reading for ten seconds is caught up in order
         rather than told a version of the session that skips.
 
-        The venue's timestamped copy of the same prints -- ``public_log`` --
-        would carry a clock, and is bounded at 5,000 entries shared across
-        every contract the venue lists. On a market with twenty-eight of them a
-        busy contract pushes a quiet one's print out of that window, which is
+        The venue's timestamped copy of the same prints, ``public_log``, would
+        carry a clock, and is bounded at 5,000 entries shared across every
+        contract the venue lists. On a market with twenty-eight of them a busy
+        contract pushes a quiet one's print out of that window, which is
         dropping, which is the thing this module exists not to do. So the
         exchange's own sequence number identifies and orders a print here, and
         the wall clock is the price paid for delivering all of them.
@@ -1803,13 +1799,13 @@ class _Stream:
     def _lifecycle_events(self) -> list[tuple[str, dict[str, Any]]]:
         """What has happened *to* the contracts since the last flush.
 
-        Not to their prices -- to the contracts themselves: one being listed,
+        Not to their prices, but to the contracts themselves: one being listed,
         one moving between trading phases, one being stopped, one paying out.
         Kalshi publishes the same thing as ``market_lifecycle_v2`` and the
         reason is that an algorithm running unattended has no other way to find
         out. Without it, a new listing is invisible until somebody polls the
         registry, and a halt is indistinguishable from a contract that simply
-        went quiet -- so a maker keeps quoting into a book that is not going to
+        went quiet, so a maker keeps quoting into a book that is not going to
         trade, and a taker waits for a fill that cannot arrive.
 
         Returned as ``(symbol, payload)`` pairs rather than as frames because
@@ -1902,10 +1898,10 @@ class _Stream:
     def _halt_payload(self, symbol: str, record: dict[str, Any]) -> dict[str, Any]:
         """A halt record, in units a client can read.
 
-        The venue keeps these in its own units -- the price it was banding is
-        a tick count, the band itself is a fraction -- and both of those are
-        the settlement bug over again if they cross this wire untouched: a
-        number four times out on a 0.25 grid reads as a number rather than as a
+        The venue keeps these in its own units (the price it was banding is a
+        tick count, the band itself is a fraction) and both of those are the
+        settlement bug over again if they cross this wire untouched: a number
+        four times out on a 0.25 grid reads as a number rather than as a
         mistake. So a price becomes a price, and anything left holding a float
         becomes a string, because a float in a price path is a price path that
         eventually disagrees with the ledger.
@@ -1972,11 +1968,11 @@ class _Stream:
             #
             # A ``reset`` rather than an error, which is what this used to be.
             # An ``invalid_request`` tells a client to fix its request, and
-            # there is nothing wrong with its request -- the correct response
-            # is to discard the private view and re-read it, which is what
-            # every other cursor invalidation on this connection already says.
-            # A client branching on error codes would have treated the one
-            # frame that means "your positions may be wrong" as a typo.
+            # there is nothing wrong with its request: the correct response is
+            # to discard the private view and re-read it, which is what every
+            # other cursor invalidation on this connection already says. A
+            # client branching on error codes would have treated the one frame
+            # that means "your positions may be wrong" as a typo.
             frames.append(
                 {
                     "type": "reset",
@@ -2034,7 +2030,7 @@ class _Stream:
         index, because ``HumanAgent`` keeps only the last 200 entries: an index
         into a list that slides is an index into the wrong entries, and it
         slides silently. Searching for the last entry forwarded answers both
-        questions at once -- where to resume, and whether the resume point is
+        questions at once: where to resume, and whether the resume point is
         still there at all.
 
         ``(symbol, exchange sequence)`` identifies an entry: there is one
@@ -2089,7 +2085,7 @@ def _iso(moment: Any) -> str:
 
     The same format ``Instrument.to_dict`` stamps an expiry with, written here
     rather than borrowed so a listing frame cannot end up describing its open
-    in one spelling and its close in another -- which is a difference a client
+    in one spelling and its close in another, which is a difference a client
     parsing both with one format string discovers at run time.
     """
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2117,7 +2113,7 @@ def stream_endpoint(
     that another test is also using.
 
     Arguments given here win over :func:`configure`, and both are resolved when
-    a client connects rather than when the endpoint is built -- so mounting
+    a client connects rather than when the endpoint is built, so mounting
     before the market exists is fine, which is the order an application
     starting up actually does things in.
     """

@@ -1,0 +1,86 @@
+name: Tests
+
+# WHAT THIS PROVES, AND WHAT IT DOES NOT
+# ======================================
+# Two tiers, because one of them has to be fast enough that people actually
+# wait for it:
+#
+#   1. fast  (every push and PR)  everything except tests marked `slow`.
+#   2. full  (on demand)           the whole suite, nothing excluded.
+#
+# The full tier is deliberately NOT on a schedule yet. A nightly job on a branch
+# nobody watches is how a repository ends up with a wall of red runs that mean
+# nothing to the person who owns it. Turn the cron on after the first manual
+# full run comes back green, not before.
+#
+# The split exists for one measured reason. `test_netting_frees_the_arbitrageur
+# _when_collateral_binds` runs two full 300-second market simulations and takes
+# 678 seconds by itself. It is not padding, it is the evidence for the netting
+# claim, and it cannot be shortened without changing the numbers its docstring
+# records. Putting it on the per-push path would mean an hour-long wait on every
+# commit, which in practice means nobody reads the result.
+#
+# THE LIMITS, stated because a green check is what people read:
+#   * A green `fast` run has NOT run the slow tier. Only `full` has.
+#   * A local `pytest` with no arguments still runs everything, so the test count
+#     in the README is the whole count and not the fast subset.
+#   * This is a TEST gate only. It does not lint: the tree does not pass ruff
+#     clean today, and a gate that has to be argued with gets switched off.
+#   * Nothing here reaches a network endpoint. The world is generated from
+#     a seed, so there is no data to fetch and nothing to rate limit.
+#
+# HISTORY THIS REPLACES: until this file existed the README carried a static
+# shields.io badge reading "tests passing". The number on it was honest, but
+# nothing re-checked it, so it could only ever have become wrong silently. A
+# badge that cannot go red is decoration.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: fast (excludes slow tier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,research,dashboard,client]"
+      - name: Test
+        run: pytest -q -m "not slow"
+
+  full:
+    name: full (everything)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,research,dashboard,client]"
+      - name: Test
+        run: pytest -q --durations=20

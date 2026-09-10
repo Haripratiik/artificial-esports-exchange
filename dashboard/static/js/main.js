@@ -103,7 +103,7 @@ function acknowledge(ack) {
   if (ack.ok === false) toast(ack.error ?? 'Rejected', true);
   // "Accepted" was a promise the acknowledgement cannot make. An order is
   // *queued* here, and travels a latency link before the venue ever looks at
-  // it -- so the collateral check, the price band and the closing bell all
+  // it, so the collateral check, the price band and the closing bell all
   // answer later. Saying "Sent" and letting announceRejections carry what came
   // back is the difference between a status and a guess.
   else if (ack.speed === undefined) toast('Sent to the exchange');
@@ -113,7 +113,7 @@ function acknowledge(ack) {
  * Say out loud when the venue refuses an order.
  *
  * Rejections arrive asynchronously, in the private event log, and the only
- * place that log is drawn is the Activity panel on the Portfolio screen --
+ * place that log is drawn is the Activity panel on the Portfolio screen,
  * which is not where anybody is standing when they press Place Order. So the
  * screen said "Accepted", the order never appeared in the book or the
  * blotter beside it, and nothing on that page ever explained why. Insufficient
@@ -152,7 +152,7 @@ function announceRejections(payload) {
  * The operator token, remembered per browser.
  *
  * Five routes on this server reach past the caller and change the market for
- * everyone in it -- rebuild, halt, uncross, kill, revive -- and they are now
+ * everyone in it, rebuild, halt, uncross, kill and revive, and they are now
  * gated. `POST /api/config` discards every account and working order for every
  * connected user, and `kill` takes an arbitrary agent id, so before the gate
  * one visitor could end another's session.
@@ -283,7 +283,7 @@ let lastHeavy = 0;
  *
  * A trading screen wants to feel live: eight passes a second is fast enough
  * that a ladder moves under you and slow enough that you can still click it.
- * A browsing grid does not -- nobody reads a card seven times a second, and its
+ * A browsing grid does not: nobody reads a card seven times a second, and its
  * sparkline changes on every tick regardless of whether the price did, so at
  * the trading cadence the cards were rebuilding continuously to show a line
  * one pixel longer.
@@ -429,7 +429,22 @@ function renderWatchlist() {
   if (!s) return;
   const list = document.getElementById('watchlist');
 
-  const shown = Object.entries(s.books).filter(([sym, book]) => matches(sym, book, store.query));
+  const hits = Object.entries(s.books).filter(([sym, book]) => matches(sym, book, store.query));
+  // A rail is navigation, not a directory.
+  //
+  // It rendered every listed symbol, which was right for a fixed listing of
+  // forty-seven and stopped being right the moment matches began listing: one
+  // solo match carries 270 contracts, so the rail became 355 rows deep while
+  // the browse view beside it correctly collapsed that same match to a single
+  // line. Scrolling a market you cannot see is not a watchlist.
+  //
+  // Capped rather than filtered, so nothing is unreachable. The search box
+  // already narrows on symbol and on contract text, so typing a competitor or
+  // a match reaches anything the cap hides, and the count below says how much
+  // there is to reach.
+  const CAP = 40;
+  const shown = hits.slice(0, CAP);
+  const hidden = hits.length - shown.length;
   const html = (shown.length
     ? shown
     : [])
@@ -443,7 +458,7 @@ function renderWatchlist() {
       // Motion that carries information rather than decorating: a price that
       // just moved flashes in the direction it moved. This is the one
       // animation on a trading screen that earns its place, because it says
-      // something the static number cannot -- that this is new.
+      // something the static number cannot, that this is new.
       const now = Number(book.mark);
       const was = store.marks[symbol];
       const tick = !Number.isFinite(was) || now === was ? '' : now > was ? 'tick-up' : 'tick-down';
@@ -458,12 +473,17 @@ function renderWatchlist() {
     })
     .join('') || `<p class="empty">No market matches that.</p>`;
 
+  const footer = hidden > 0
+    ? `<p class="empty">${hidden} more. Search to narrow.</p>`
+    : '';
+  const rendered = html + footer;
+
   // Same reason the panels are diffed: rewriting this list recreates every row,
   // which restarts the tick highlight on rows whose price never moved. Twelve
   // animations were running at once on a list of seven.
-  if (html === watchlistHtml) return;
-  watchlistHtml = html;
-  list.innerHTML = html;
+  if (rendered === watchlistHtml) return;
+  watchlistHtml = rendered;
+  list.innerHTML = rendered;
 }
 
 function sparklineFor(series) {
@@ -515,7 +535,7 @@ function bind() {
   main.querySelectorAll('.lad-row').forEach((row) => {
     row.addEventListener('click', () => {
       // Clicking a level fills the limit box, so open Advanced to show where it
-      // went -- otherwise the click appears to do nothing at all.
+      // went, because otherwise the click appears to do nothing at all.
       const advanced = main.querySelector('.advanced');
       if (advanced) advanced.open = true;
       const input = document.getElementById('t-px');
@@ -614,7 +634,7 @@ function updatePreview() {
   if (stop !== '') {
     // A stop does not trade now, so a cost taken off today's book would be a
     // guess dressed as a quotation. What it *is* is the size of the
-    // commitment -- which is what the venue reserves against, and the only
+    // commitment, which is what the venue reserves against, and the only
     // honest thing to show before it triggers.
     //
     // It was `stop * quantity`, which is the notional, not the reservation.
@@ -694,7 +714,7 @@ function updatePreview() {
  * in full, visible, immediately. Both fields have been supported by the server
  * and by the venue the whole time; the submitter simply never read them.
  *
- * Raw strings rather than `Number`, deliberately -- `Number('')` is 0 and
+ * Raw strings rather than `Number`, deliberately: `Number('')` is 0 and
  * `Number('9,233.75')` is NaN, and JSON turns NaN into null, so a size box the
  * server should refuse would have arrived looking like a field nobody filled
  * in. The server parses and answers in the terms of the box.
@@ -764,7 +784,7 @@ async function act(action, data) {
  * A prompt rather than a modal, deliberately: there is exactly one field, no
  * validation the server does not already do, and a dialog for it would be more
  * chrome than the decision deserves. There is no password here and the page
- * does not pretend there is -- the account lives in a signed cookie, and losing
+ * does not pretend there is: the account lives in a signed cookie, and losing
  * the cookie loses the account. That is the honest shape for an exchange whose
  * capital is imaginary.
  */

@@ -1,16 +1,16 @@
 {
   "experiment": "information_aggregation",
-  "created_at": "2026-08-25T20:43:11.201818+00:00",
-  "git_commit": "134c24c6c416299a5d2865bfa4431aaeab54837e",
+  "created_at": "2026-09-11T01:39:50.770783+00:00",
+  "git_commit": "75ee351a52ac8beab489f3c1378000162bcdd24f",
   "code_digests": {
-    "python/arena/research/experiment.py": "cc0207c16158cd47",
-    "python/arena/research/aggregation.py": "e050d1726fa0751b",
-    "python/arena/agents/bayesian.py": "4f290de01273a829",
-    "python/arena/agents/market_maker.py": "edd431e3220a723d",
-    "python/arena/agents/noise.py": "fe223f156381afa0",
-    "python/arena/exchange/engine.py": "2603a848096da277",
-    "python/arena/market/venue.py": "585baa024ac47472",
-    "python/arena/sim/kernel.py": "ea76c6af9cb30736"
+    "python/arena/research/experiment.py": "064cd14b0a55ca73",
+    "python/arena/research/aggregation.py": "36a9653256352d24",
+    "python/arena/agents/bayesian.py": "0980a13a0822bc45",
+    "python/arena/agents/market_maker.py": "195a7da1c360c811",
+    "python/arena/agents/noise.py": "35acde05957f6c0e",
+    "python/arena/exchange/engine.py": "4cefe07bb0556581",
+    "python/arena/market/venue.py": "61a2e187e734c351",
+    "python/arena/sim/kernel.py": "259bf1047fc92261"
   },
   "arguments": {
     "quick": false,
@@ -32,26 +32,26 @@
     "tag": "depth_86.6"
   },
   "trial_count": 200,
-  "results_digest": "6e21b0c7423a772ddc965d28feb59ba1468226dae327ab39bc8af588775d94cc",
+  "results_digest": "8b4b43cd194927337553612d533d46d58d16b2a63bd8aaa88b7e5ef64f5217ee",
   "summary": {
-    "market_error": 0.03270427109793261,
+    "market_error": 0.032548922762620114,
     "extremization": [
       0.9500000000000004,
       1.1000000000000005
     ],
     "outcome_brier": {
-      "market": 0.19940399999999997,
+      "market": 0.20169449999999997,
       "best single agent": 0.17578990489064317,
       "simple mean": 0.20110571050108705,
       "precision weighted": 0.181522962756858,
       "extremized": 0.20424292775503564
     },
     "diagnostics": {
-      "brier": 0.19940399999999997,
-      "reliability": 0.0029637679170752924,
-      "resolution": 0.05170785341978134,
+      "brier": 0.20169449999999997,
+      "reliability": 0.003903355140455306,
+      "resolution": 0.051619583271905266,
       "uncertainty": 0.2496,
-      "trades": 1845.775,
+      "trades": 1869.29,
       "quoted_fraction": 1.0,
       "conservation_failures": 0.0,
       "truth_spread": 0.2598507326219216
@@ -60,54 +60,54 @@
   "comparisons": [
     {
       "baseline": "best single agent",
-      "market_score": 0.03270427109793261,
+      "market_score": 0.032548922762620114,
       "baseline_score": 0.002720268935182537,
-      "mean_difference": 0.02998400216275008,
+      "mean_difference": 0.029828653827437573,
       "ci": [
-        0.02414993868799993,
-        0.03643114773725067
+        0.023924641997122523,
+        0.03644648829290384
       ],
-      "p_value": 8.654518139216928e-18,
-      "p_adjusted": 3.461807255686771e-17,
+      "p_value": 2.954132273683491e-17,
+      "p_adjusted": 1.1816529094733965e-16,
       "n": 200
     },
     {
       "baseline": "simple mean",
-      "market_score": 0.03270427109793261,
+      "market_score": 0.032548922762620114,
       "baseline_score": 0.029599057600794197,
-      "mean_difference": 0.0031052134971384197,
+      "mean_difference": 0.002949865161825913,
       "ci": [
-        -0.0012979363482663539,
-        0.008154716935393
+        -0.0015554102197050243,
+        0.008083384236971785
       ],
-      "p_value": 0.20488144040258216,
-      "p_adjusted": 0.27317525387010955,
+      "p_value": 0.2321431590293348,
+      "p_adjusted": 0.30952421203911307,
       "n": 200
     },
     {
       "baseline": "precision weighted",
-      "market_score": 0.03270427109793261,
+      "market_score": 0.032548922762620114,
       "baseline_score": 0.014361974047551178,
-      "mean_difference": 0.01834229705038144,
+      "mean_difference": 0.018186948715068933,
       "ci": [
-        0.012908020861137112,
-        0.024543947875724583
+        0.012597008631531185,
+        0.024609037635949488
       ],
-      "p_value": 6.511661377768947e-09,
-      "p_adjusted": 1.3023322755537894e-08,
+      "p_value": 1.392521830401216e-08,
+      "p_adjusted": 2.785043660802432e-08,
       "n": 200
     },
     {
       "baseline": "extremized",
-      "market_score": 0.03270427109793261,
+      "market_score": 0.032548922762620114,
       "baseline_score": 0.029799413323284424,
-      "mean_difference": 0.002904857774648192,
+      "mean_difference": 0.0027495094393356844,
       "ci": [
-        -0.002087030217847679,
-        0.008281813219004956
+        -0.002319709763092976,
+        0.008298016531215164
       ],
-      "p_value": 0.27365645628738344,
-      "p_adjusted": 0.27365645628738344,
+      "p_value": 0.3121537868072203,
+      "p_adjusted": 0.3121537868072203,
       "n": 200
     }
   ]

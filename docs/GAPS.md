@@ -156,9 +156,9 @@ decides, and `b` is its consequence. `subsidy_for_depth` inverts it again so the
 two venues can be calibrated to the same depth at the touch. Without that, a
 comparison of mechanisms would really be a comparison of depths.
 
-**Result: the mechanism does not matter.** 200 paired trials, order book 0.03108
-against scoring rule 0.03115, difference +0.00007 with a 95% interval of
-[-0.0035, +0.0031]. A tight null, not an underpowered one. Sweeping depth across
+**Result: the mechanism does not matter.** 200 paired trials, order book 0.03137
+against scoring rule 0.03063, difference -0.00074 with a 95% interval of
+[-0.0045, +0.0024]. A tight null, not an underpowered one. Sweeping depth across
 a 70x range does not rescue it either: error is U-shaped with its minimum at
 the depth-matched point and never approaches the precision-weighted baseline.
 

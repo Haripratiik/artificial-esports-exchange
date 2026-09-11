@@ -6,7 +6,7 @@ rests on.
 
 **Experiment 2: and the mechanism is not why.** A logarithmic scoring rule,
 which has none of an order book's structural limitations, always quotes, and
-needs no counterparty, lands in exactly the same place (p = 0.97).
+needs no counterparty, lands in the same place (p = 0.68).
 
 What is left, measured rather than assumed: agents stop trading once the price
 is inside their own uncertainty band, using under half their capacity. Nothing
@@ -53,26 +53,26 @@ across the four comparisons.
 
 | baseline | baseline error | market − baseline | 95% CI | p (adj) | verdict |
 |---|---|---|---|---|---|
-| best single agent (hindsight) | 0.00272 | **+0.02836** | [+0.023, +0.034] | <0.0001 | market loses |
-| simple mean | 0.02957 | +0.00151 | [−0.002, +0.006] | 0.59 | **no difference** |
-| precision-weighted | 0.01436 | **+0.01672** | [+0.012, +0.022] | <0.0001 | market loses |
-| extremized log-odds | 0.02980 | +0.00128 | [−0.003, +0.006] | 0.59 | **no difference** |
+| best single agent (hindsight) | 0.00272 | **+0.02865** | [+0.023, +0.035] | <0.0001 | market loses |
+| simple mean | 0.02960 | +0.00177 | [−0.002, +0.006] | 0.54 | **no difference** |
+| precision-weighted | 0.01436 | **+0.01701** | [+0.012, +0.023] | <0.0001 | market loses |
+| extremized log-odds | 0.02980 | +0.00157 | [−0.003, +0.007] | 0.54 | **no difference** |
 
-Market error: **0.03108**. Extremization factor, fitted out of sample:
+Market error: **0.03137**. Extremization factor, fitted out of sample:
 **0.95 / 1.10** across the two folds.
 
 The market is statistically indistinguishable from an unweighted average of its
-agents. It is 11× worse than the best agent picked with hindsight, and **2.2×
+agents. It is 11.5× worse than the best agent picked with hindsight, and **2.2×
 worse than the same agents weighted by evidence**.
 
 ## Why: three ablations, each ruling something out
 
 | condition | market error | vs default |
 |---|---|---|
-| default (8 dispersed agents, 8 noise, limit 800) | 0.03108 | n/a |
-| noise traders removed entirely | 0.02818 | −9%, comparisons unchanged |
-| position limits raised 5× (800 → 4000) | 0.03152 | no change |
-| all 10,319 battles held by **one** agent | 0.08424 | **2.7× worse** |
+| default (8 dispersed agents, 8 noise, limit 800) | 0.03137 | n/a |
+| noise traders removed entirely | 0.02796 | −11%, comparisons unchanged |
+| position limits raised 5× (800 → 4000) | 0.03159 | no change |
+| all 10,319 battles held by **one** agent | 0.08554 | **2.7× worse** |
 
 Plus a convergence check: market error by session length was 0.0144 (60s),
 0.0095 (300s), 0.0113 (600s), 0.0113 (1800s), **flat from 300s onward**. The
@@ -128,19 +128,19 @@ specifies, a boundary value would have been reported as an interior optimum.
   counts, which no real study can observe. Losing to these is not embarrassing;
   it is the point of putting them on the ladder.
 - **Secondary (outcome-based) Brier** tells the same story more noisily: market
-  0.196, simple mean 0.201, precision-weighted 0.181, best agent 0.176. The
+  0.198, simple mean 0.201, precision-weighted 0.182, best agent 0.176. The
   ordering is preserved, and the noise is exactly why the primary metric scores
   against the known truth instead.
 - **The market is healthy**, so it is not winning or losing for the wrong
-  reason: 2,360 trades per trial, two-sided 99.9% of the time, conservation
-  exact in every trial, reliability 0.0098 (well calibrated).
+  reason: 2,370 trades per trial, two-sided 99.8% of the time, conservation
+  exact in every trial, reliability 0.0076 (well calibrated).
 
 ---
 
 # Experiment 2: Is it the mechanism?
 
 **Answer: no. Swapping the limit order book for a logarithmic scoring rule
-changes nothing at all.**
+makes no detectable difference.**
 
 ```bash
 python experiments/information_aggregation/run.py --compare-venues --full --workers 8
@@ -157,14 +157,22 @@ only thing that varies is where liquidity comes from.
 
 | mechanism | error to truth | trades/trial |
 |---|---|---|
-| limit order book | 0.03108 | 2,360 |
-| logarithmic scoring rule | 0.03115 | 1,780 |
+| limit order book | 0.03137 | 2,370 |
+| logarithmic scoring rule | 0.03063 | 1,782 |
 
-Paired difference **+0.00007**, 95% CI **[−0.0035, +0.0031]**, p = 0.97.
+Paired difference **−0.00074**, 95% CI **[−0.0045, +0.0024]**, p = 0.68.
 
-This is a tight null, not an underpowered one: the interval excludes any effect
-larger than ±0.0035, against a 0.0167 gap to precision-weighting. The mechanism
-accounts for **none** of it. The scoring rule lands on the simple mean too.
+This is a tight null, not an underpowered one: the interval runs from −0.0045 to
++0.0024, against a 0.0170 gap to precision-weighting. The mechanism accounts for
+**none** of it. The scoring rule lands on the simple mean too, at p = 0.58.
+
+**The sign of that difference flipped between runs, and it is published
+flipped.** The table here before the open-order reserve had the order book
+ahead by +0.00007; on the current code the scoring rule is ahead by 0.00074.
+Both sit inside the same null, which is what the reversal is evidence for: an
+estimate that changes sign under a collateral change the experiment was not
+testing had nothing in it to begin with. The conclusion does not move, because
+it never rested on the sign.
 
 ## Depth doesn't rescue it either
 
@@ -175,11 +183,11 @@ at full 200-trial power:
 
 | shares/tick | subsidy | error to truth |
 |---|---|---|
-| 5 | 87 | 0.03270 |
-| 12 | 208 | 0.03149 |
-| **40** | **693** | **0.03118** |
-| 115 | 1,993 | 0.03542 |
-| 346 | 5,997 | 0.04641 |
+| 5 | 87 | 0.03255 |
+| 12 | 208 | 0.03225 |
+| **40** | **693** | **0.03079** |
+| 115 | 1,993 | 0.03546 |
+| 346 | 5,997 | 0.04646 |
 
 A shallow U with its minimum at the depth-matched point, degrading in both
 directions, too deep and informed trading cannot move price, too thin and noise
@@ -188,7 +196,7 @@ traders push it around. Nothing anywhere near precision-weighting's 0.01436.
 > An 8-trial pilot of this sweep showed a clean monotonic improvement toward
 > shallow markets (0.0184 at 12 shares/tick) and would have supported a tidy
 > story about depth being the binding constraint. At 200 trials that number is
-> 0.0315. The pilot was noise. It is recorded here because it is exactly the
+> 0.0322. The pilot was noise. It is recorded here because it is exactly the
 > result that would have been reported if the sweep had stopped where it looked
 > most interesting.
 
@@ -201,6 +209,15 @@ do not:
 |---|---|---|---|---|
 | order book | 0.47 | 38% | 19.1 ticks | 40.8 ticks |
 | scoring rule | 0.44 | 38% | 18.9 ticks | 40.8 ticks |
+
+> These four columns were measured on the build before the open-order reserve
+> and have not been re-measured. `TrialResult` carries forecasts, not
+> end-of-session positions, so neither command on this page reproduces them and
+> the run that produced them was instrumented separately. Every other figure on
+> this page is from the current code. Since the reserve charges collateral for
+> a working order from the moment it is acknowledged, capacity is exactly the
+> axis it could have moved, so treat this table as the weakest evidence here
+> until it is run again.
 
 Agents use under half their capacity, and the price ends up **well inside** each
 one's uncertainty band. They stop because they are satisfied, not because they

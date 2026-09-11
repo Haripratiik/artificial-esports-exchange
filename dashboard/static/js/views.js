@@ -327,7 +327,7 @@ export function question(contract) {
 
   if (p.kind === 'binary') {
     const direction = String(p.comparison).includes('>') ? 'above' : 'below';
-    return `Will ${what} finish ${direction} ${p.threshold}?`;
+    return `Will ${what} finish ${direction} ${level(p.threshold)}?`;
   }
   // For a delivery contract the week *is* the contract: the same deliverable in
   // a different week is a different instrument, which is what gives a commodity
@@ -347,8 +347,8 @@ export function question(contract) {
   if (contract?.underlying?.ref?.kind === 'quantity') {
     return `How many thousand matches ${subject} plays, delivered ${esc(week(contract))}`;
   }
-  if (p.kind === 'call') return `${what} above ${p.strike} at settlement`;
-  if (p.kind === 'put') return `${what} below ${p.strike} at settlement`;
+  if (p.kind === 'call') return `${what} above ${level(p.strike)} at settlement`;
+  if (p.kind === 'put') return `${what} below ${level(p.strike)} at settlement`;
   return `Where ${what} settles`;
 }
 
@@ -367,6 +367,27 @@ function week(contract) {
   const when = new Date(raw);
   if (Number.isNaN(when.getTime())) return 'that week';
   return `week to ${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+}
+
+/**
+ * A strike or a threshold, written the way a person writes it.
+ *
+ * These arrive as JSON numbers, so they arrive as doubles, and a double does
+ * not hold 0.06. Interpolated raw, the most-read line on the exchange asked
+ * "Will VANTA's win rate finish above 0.060000000000000005?", which is a
+ * contract nobody would take seriously about a venue whose whole claim is that
+ * its arithmetic is exact.
+ *
+ * Ten significant figures is far more precision than any level this venue
+ * lists carries, and stops short of where the representation noise lives. The
+ * prices themselves never take this path: they are strings on the wire for
+ * exactly this reason, and only the contract's own terms come across as
+ * numbers.
+ */
+function level(raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return esc(String(raw));
+  return String(Number(value.toPrecision(10)));
 }
 
 function subjectName(underlying) {

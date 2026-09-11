@@ -68,18 +68,12 @@
     </header>
 
     <nav aria-label="Sections">
-      <!-- Split deliberately. Rebuilding the market with a different seed is
-           not something a person trading on the exchange should be offered
-           beside "Portfolio"; it is an operator's control and is labelled as
-           one. -->
-      <div class="nav-links" id="nav">
-        <button type="button" data-view="markets" aria-current="page">Markets</button>
-        <button type="button" data-view="trade">Trade</button>
-        <button type="button" data-view="portfolio">Portfolio</button>
-        <p class="nav-group">Operator</p>
-        <button type="button" data-view="research">Research</button>
-        <button type="button" data-view="lab">Lab</button>
-      </div>
+      <!-- Painted by `main.js` from the view registry, because which sections
+           exist depends on which front end this is. `/` offers a trader the
+           exchange; `/desk` offers an operator the same exchange plus the
+           controls that rebuild and measure it. Writing the rail out here
+           would put the answer in two places and let them disagree. -->
+      <div class="nav-links" id="nav"></div>
       <div class="search">
         <label for="q" class="visually-hidden">Search markets</label>
         <input id="q" type="search" placeholder="Search markets&hellip;"

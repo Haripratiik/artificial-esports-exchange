@@ -691,6 +691,13 @@ tbody tr:hover { background: var(--raised); }
   transition: border-color var(--tick), transform var(--tick);
 }
 .card:hover { border-color: var(--rule-bright); transform: translateY(-1px); }
+/* A card is usually a button: a market you can open, a position you can act
+   on. The players directory is the exception, where a card is a description
+   and nothing happens when it is clicked. A pointer cursor over something
+   inert is a promise the interface does not keep, so the affordance follows
+   the element rather than the class. */
+article.card { cursor: default; }
+article.card:hover { transform: none; }
 /* State ribbon down the left edge, the fastest read of session state. */
 .card::before {
   content: '';

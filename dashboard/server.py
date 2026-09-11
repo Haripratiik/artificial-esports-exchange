@@ -207,6 +207,27 @@ async def index(request: Request) -> FileResponse:
     return response
 
 
+@app.get("/desk")
+async def desk(request: Request) -> FileResponse:
+    """The same page, for the person running the exchange rather than trading on it.
+
+    The same file deliberately. The header, the socket, the watchlist and the
+    order ticket are identical on both surfaces, and `main.js` reads the path
+    to decide which sections to offer: a trader is not shown the control that
+    rebuilds the market on a new seed, because it is somebody else's job and
+    not an advanced version of theirs.
+
+    Serving rather than guarding, because the guard is elsewhere and is real.
+    Every operator action carries a token this server checks, so reaching this
+    page buys the screens and not the controls on them. Refusing the page here
+    as well would be a second, weaker copy of that check in a place where being
+    wrong is invisible.
+    """
+    response = FileResponse(STATIC / "index.html")
+    _ensure_session(request, response)
+    return response
+
+
 def _session_id(request_or_socket: Any) -> str:
     """The signed session id this connection carries, or ``""``."""
     payload = verify(request_or_socket.cookies.get(COOKIE))
@@ -336,6 +357,22 @@ async def api_session() -> dict[str, Any]:
 @app.get("/api/agents")
 async def api_agents() -> dict[str, Any]:
     return {"agents": runner.agents()}
+
+
+@app.get("/api/players")
+async def api_players() -> dict[str, Any]:
+    """Who is on this exchange, and what each of them is doing.
+
+    Public rather than behind the operator token, because none of it is a
+    secret and most of it is already in the repository: what a market maker
+    does, why the arbitrageur exists, and which outside systems connect through
+    the published API. What it adds is that the answer is about *this* running
+    market rather than about the code in general, so an agent that is switched
+    off says so instead of being described as though it were trading.
+    """
+    from dashboard.participants import directory
+
+    return directory(runner.market)
 
 
 @app.get("/api/history/{symbol}")

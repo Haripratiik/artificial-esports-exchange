@@ -15,6 +15,7 @@
 import { clock, count, impliedProbability, money, move, percent, price, signed, cls,
          walkBook, worstCase } from './format.js';
 import { lab, markets, matches, portfolio, research, trade } from './views.js';
+import { players } from './players.js';
 import { countTo, press, revealAll } from './motion.js';
 
 const store = {
@@ -41,9 +42,62 @@ const store = {
   expanded: new Set(),
   // Which asset class the markets list is narrowed to, or null for all.
   classFilter: null,
+  // The participant directory, on the operator surface only.
+  players: null,
 };
 
-const VIEWS = { markets, trade, portfolio, research, lab };
+/* -- which exchange you are looking at -------------------------------- */
+
+/**
+ * Two front ends, one application.
+ *
+ * `/` is the exchange as a trader meets it: markets, a ticket, a portfolio.
+ * `/desk` is the same exchange plus the instruments an operator needs, which
+ * is a different job rather than a power user's version of the same one.
+ * Rebuilding the market on a new seed, or reading the stylised fact
+ * diagnostics, is not something to offer somebody beside their own P and L.
+ *
+ * Derived from the path rather than duplicated into two pages, because the
+ * header, the socket, the watchlist and the ticket are identical on both and a
+ * second copy of them would drift inside a week.
+ *
+ * This is a product boundary and not a security one, and the difference is
+ * worth stating. Every operator *action* carries an `arena-operator-token`
+ * that the server checks, so a trader who types `/desk` reaches the screens
+ * and still cannot use the controls on them. What the split buys is that
+ * nobody is offered a lever that will refuse them.
+ */
+const SURFACE = /\/desk\/?$/.test(location.pathname) ? 'desk' : 'public';
+
+const PUBLIC_VIEWS = { markets, trade, portfolio };
+const VIEWS = SURFACE === 'desk'
+  ? { ...PUBLIC_VIEWS, players, research, lab }
+  : PUBLIC_VIEWS;
+
+// The rail, built from the registry rather than written out twice in HTML. A
+// view that exists and is not offered is a dead end a keyboard still reaches.
+const NAV = SURFACE === 'desk'
+  ? [['markets', 'Markets'], ['trade', 'Trade'], ['portfolio', 'Portfolio'],
+     ['operator', 'Operator'],
+     ['players', 'Players'], ['research', 'Research'], ['lab', 'Lab']]
+  : [['markets', 'Markets'], ['trade', 'Trade'], ['portfolio', 'Portfolio']];
+
+function paintNav() {
+  document.getElementById('nav').replaceChildren(...NAV.map(([view, label]) => {
+    if (view === 'operator') {
+      const heading = document.createElement('p');
+      heading.className = 'nav-group';
+      heading.textContent = label;
+      return heading;
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.view = view;
+    button.textContent = label;
+    return button;
+  }));
+}
+
 const main = document.getElementById('main');
 const HISTORY_POINTS = 400;
 
@@ -216,14 +270,21 @@ async function operatorJson(url, options = {}) {
 
 async function refreshSlow() {
   try {
-    const [instruments, session, agents] = await Promise.all([
+    // The players directory is fetched only where it is shown. It describes
+    // the whole population rather than one book, so it is the same answer for
+    // everybody and there is no reason for a trader's browser to ask for it
+    // eight times a minute.
+    const wanted = [
       json('/api/instruments'),
       json('/api/session'),
       json('/api/agents'),
-    ]);
+    ];
+    if (SURFACE === 'desk') wanted.push(json('/api/players'));
+    const [instruments, session, agents, roster] = await Promise.all(wanted);
     store.instruments = instruments.instruments;
     store.session = session;
     store.agents = agents.agents;
+    if (roster) store.players = roster;
     render({ force: true });
   } catch (failure) {
     // A slow-data hiccup must not take the live view down with it.
@@ -871,6 +932,9 @@ function syncUrl() {
 function readUrl() {
   const params = new URLSearchParams(location.search);
   const view = params.get('view');
+  // `in VIEWS` is what keeps `?view=lab` from rendering the lab on the public
+  // surface. The registry is the boundary, so a link, a bookmark and a typed
+  // URL all get the same answer.
   if (view && view in VIEWS) store.view = view;
   const symbol = params.get('symbol');
   if (symbol) store.symbol = symbol;
@@ -925,6 +989,7 @@ function toast(message, bad = false) {
 
 /* ── go ──────────────────────────────────────────────────────────────── */
 
+paintNav();
 readUrl();
 syncNav();
 connect();

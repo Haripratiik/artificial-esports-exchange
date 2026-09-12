@@ -167,15 +167,18 @@ lines and was measured rather than assumed. Its ensemble is a bag of drawn
 `MatchResult` objects and its `settlement` scores the whole book against one of
 them, so bucketing the ensemble by which side won and averaging the settlements
 inside each bucket is the conditional expectation this wants, in the book's own
-units. Measured on `list_match(7, 0, "solo")`, all 270 contracts at 4,000 draws:
-the listing builds in 0.60s, the maker's fair values sit within 0.0070 of
-`coherent_prices` on the same ensemble, which is the sampling gap between the
-Luce winner marginal and the ensemble's own frequency that `match_book` records
-as 0.0100 at that draw count, and every one of its `exclusive_sets` sums to its
-declared total to nine decimals under the maker's quotes: the winner set to
-1.000000000, the top-two ladder to 2.000000000, the top-three to 3.000000000.
-Over 20 random beliefs and inventory states on that book the exhaustive
-enumeration finds a maximum arbitrage of 0. This module imports none of it: the
+units. Measured on `list_match(7, 0, "solo")`, all 50 contracts at 4,000 draws:
+the listing builds in 0.43s, the maker's fair values sit within 0.0100 of
+`coherent_prices` on the same ensemble, which is exactly the sampling gap
+between the Luce winner marginal and the ensemble's own frequency that
+`match_book` records at that draw count, and every one of its `exclusive_sets`
+sums to its declared total to nine decimals: the winner set to 1.000000000 and
+the top five set to 5.000000000. Quoted mids sum to 1.000000000 and 5.005000000,
+the second being half a tick spread over ten contracts rather than a gap in the
+measure. Over 20 random beliefs and inventory states on that book the exhaustive
+enumeration finds a maximum arbitrage of 0. The figures moved when `match_book`
+cut a match from 270 contracts to 50; nothing here changed, which is the
+coupling working. This module imports none of it: the
 adapter belongs to whatever wires the two together, so a change to either side's
 internals cannot reach across.
 """

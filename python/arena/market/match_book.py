@@ -14,13 +14,43 @@ disagree under a single ``F``.
 
 A match carries many more identities than a strike ladder does, so listing one
 the standalone way would be listing many more free trades. A ten entrant solo
-match here lists 270 contracts across four families and 395 exact relations
+match here lists 50 contracts across four families and 47 exact relations
 between them, and every one of those relations is a statement that holds
 outcome by outcome rather than on average: exactly one competitor wins, exactly
-three finish in the top three, exactly nine eliminations are credited, and a
-competitor who wins is above every other competitor. Policing 395 relations
-after the fact is not a plan. Making them unbreakable is, and that is the whole
-of what this module does.
+five finish in the top five, a competitor credited with more than one
+elimination was credited with more than none, and a competitor who wins is
+above every other competitor. Policing 47 relations after the fact is not a
+plan. Making them unbreakable is, and that is the whole of what this module
+does.
+
+**What a match lists, and what it deliberately does not.** The first version of
+this listing wrote down every rung and every ordered pair its formats admitted,
+which came to 270 contracts on a ten entrant solo and 38 on the 3v3. Measured
+on the default board at 120 simulated seconds, that put 626 of the exchange's
+666 listed contracts in the event class, 616 of them written on live matches,
+and left the other eight asset classes holding 40 between them: a venue built
+to demonstrate nine asset classes was 94% one of them, and the match board
+alone was 92% of it. A real prediction venue lists a handful of markets on one
+game. So the listing is now 10 + 10 + 20 + 10 = 50 on the ten entrant solo and
+2 + 0 + 12 + 6 = 20 on the 3v3, and the three rules that pick them are
+``_placement_rungs``, ``_elimination_rungs`` and ``_featured_pairs``, each
+derived from the format so a format registered later is listed rather than
+special cased. What went, and what it cost, is set out there and in
+``list_match``. The short version is that the placement ladder keeps the median
+cut alone, the eliminations ladder keeps the two rungs the count is actually
+likely to cross, the head to heads keep a bracket of featured matchups instead
+of the complete tournament of them, and **the eliminations conservation set is
+gone**: a two rung ladder cannot add up to the field's nine credits, so the
+board no longer quotes the conservation law, though the format still enforces
+it on every result.
+
+The same board, measured the same way afterwards: 190 contracts, 150 of them
+events, 140 written on live matches. So the match board fell from 92% of the
+exchange to 74%, the event class from 94% to 79%, and the other eight asset
+classes hold the same 40 contracts they always did while being a quarter of the
+board instead of a sixteenth. That is the number the trim was aimed at. It is
+still the largest family on the exchange by a distance, which is honest: a match
+is the only thing here that opens and settles while somebody is watching.
 
 **The mechanism is one bag of outcomes.** The one distribution is a finite
 ensemble of hypothetical ``MatchResult`` objects drawn under the caller's
@@ -31,12 +61,13 @@ prices as arithmetic: the winner set sums to one because each drawn match has
 exactly one winner, not because anything was normalised afterwards. Prices come
 back as ``Fraction`` with denominator equal to the draw count, so the identities
 are exact rather than exact to within a rounding. Both are measured over 50
-random beliefs on each format: every one of the 395 relations sits at excess
-exactly 0 in rational arithmetic, and after converting the prices to float the
-worst excess anywhere is 3.9e-15, on the conservation set that adds 90
-contracts up to nine. The two ladders and the head to head floor, which are
-most of the list, are still exactly 0 in float, because those compare two
-prices and a float comparison cannot invert what the exact one said.
+random beliefs on each format: every one of the 47 solo relations and 22 team
+relations sits at excess exactly 0 in rational arithmetic, and after converting
+the prices to float the worst excess anywhere is 1.3e-15, on the cross
+sectional set that adds ten contracts up to five. The two ladders and the head
+to head floor, which are most of the list, are still exactly 0 in float,
+because those compare two prices and a float comparison cannot invert what the
+exact one said.
 
 **Where this approximates, and why it is the honest place to do it.** The
 ensemble is Monte Carlo, so a price is an exact expectation under an
@@ -49,8 +80,11 @@ used: mixing a closed form for one family with an ensemble for another is two
 measures, which is exactly the defect above wearing better clothes. What that
 costs is sampling error, measured on the default solo field: the worst winner
 price sits 0.0297 from ``w_i / W`` at 1,000 draws, 0.0100 at the default 4,000
-and 0.0042 at 16,000, against a quoting increment of 0.01, while the whole 270
-contract book takes 0.14s, 0.59s and 2.34s to price. The eliminations family
+and 0.0042 at 16,000, against a quoting increment of 0.01, while the whole 50
+contract book takes 0.06s, 0.24s and 0.96s to price. The sampling error is
+untouched by the trim and the wall clock fell with it, which is the expected
+shape: the draws are shared across the book and the settlement pass is what
+scales with the listing. The eliminations family
 has no closed form to be tempted by at all, because a credit goes to somebody
 still alive at the moment it happens, so the count depends on the whole
 finishing order rather than on the weights alone. Exact enumeration is not an
@@ -60,16 +94,26 @@ on top of that, which is 100k states at ten entrants and 16M at sixteen.
 
 One consequence of a finite ensemble is worth naming rather than leaving to be
 discovered. Its support is smaller than the world's, so an outcome it never
-drew prices at exactly zero. Measured at 4,000 draws over 20 beliefs, as many
-as 34 of the 270 solo contracts priced at exactly 0 or 1 on a single belief, and
-of the 612 such prices across all twenty, 611 were rungs of an eliminations
-ladder, which is where the tail is. Those prices are coherent, they are simply
-at the boundary, and a maker that published a zero as its offer would be selling
-a lottery ticket for nothing. That is the other thing ``two_sided_quote`` is
-for: a zero fair value with a one tick half spread quotes 0 bid against a 0.01
-offer, because the offer is a ceiling and never a floor. Wanting a finer
-answer on a rare rung is a reason to raise the draw count, not to reach for a
-second measure.
+drew prices at exactly zero. On the untrimmed listing that was most of the
+eliminations ladder: at 4,000 draws over 20 beliefs, as many as 34 of the 270
+solo contracts priced at exactly 0 or 1 on a single belief, and 611 of the 612
+such prices across all twenty were elimination rungs, which is where the tail
+is. Dropping the rungs above ``> 1`` dropped almost all of that with them. Same
+sweep on the 50 contract listing: 0 prices at a boundary, on any of the twenty
+beliefs, at 800 draws or at 4,000.
+
+That is a real improvement and it is not a fix, so the guard stays. Widen the
+beliefs from a lognormal sigma of 0.7 to 1.8, roughly a factor of a thousand
+across the field, and as many as 5 of the 50 still pin on a single belief at
+4,000 draws and 11 at 800. Across all twenty of those beliefs that is 29 prices
+at 4,000, 25 of them elimination rungs and 4 placement, and 57 at 800, which
+reach the winner and head to head families too. Those prices are coherent, they
+are simply at the boundary, and a maker that published a zero as its offer
+would be selling a lottery ticket for nothing. That is the other thing
+``two_sided_quote`` is for: a zero fair value with a one tick half spread quotes
+0 bid against a 0.01 offer, because the offer is a ceiling and never a floor.
+Wanting a finer answer on a rare rung is a reason to raise the draw count, not
+to reach for a second measure.
 
 **The model of the world is the format's own rules.** The sampler mirrors
 ``match.play``: a weighted sample without replacement for an elimination
@@ -179,11 +223,15 @@ TICK = "0.01"
 # 4,000 draws. Chosen by measurement rather than by taste: the largest gap
 # between an ensemble winner price and the closed form w_i/W was 0.0297 at 1,000
 # draws, 0.0100 at 4,000 and 0.0042 at 16,000, against a quoting increment of
-# 0.01, while the 270 contract solo book takes 0.14s, 0.59s and 2.34s to price.
-# So 4,000 is where one tick of noise stops costing a second of wall clock. The
-# error falls as 1/sqrt(draws) and the cost rises linearly, which is the whole
-# trade, and a caller who needs a finer fair value passes a larger number rather
-# than being given one nobody priced the cost of.
+# 0.01, while the 50 contract solo book takes 0.06s, 0.24s and 0.96s to price.
+# So 4,000 is the first count at which the sampling noise is down to the tick a
+# price is quoted on, and the next step buys 2.4 times the accuracy for 4 times
+# the wall clock. The error falls as 1/sqrt(draws) and the cost rises linearly,
+# which is the whole trade, and a caller who needs a finer fair value passes a
+# larger number rather than being given one nobody priced the cost of. The trim
+# from 270 contracts to 50 moved none of the accuracy figures, because the draws
+# are the same draws; it moved only the three wall clocks, and by less than five
+# times, since drawing the ensemble is not part of what got shorter.
 DEFAULT_DRAWS = 4_000
 
 
@@ -218,12 +266,28 @@ class ExclusiveSet:
     The mutually exclusive and exhaustive winner set is the ``total == 1`` case
     and the one worth naming, because a set of claims that sum to one is what
     everybody means by a probability and what nothing in the old prediction
-    listing enforced. The same object says two other true things about a match
-    without changing shape. Exactly ``N * team_size`` competitors finish in the
-    top N, so a top N ladder read across the field sums to that; and a format
-    that pins its eliminations pins the sum of the whole eliminations ladder
-    across the field, since ``E[X] = sum_k P(X > k)`` for a count and the rungs
-    here are every integer threshold the count can cross.
+    listing enforced. The same object says one other true thing about a match
+    without changing shape: exactly ``N * team_size`` competitors finish in the
+    top N, so a top N rung read across the whole field sums to that.
+
+    **Exhaustive is not decoration, it is the precondition.** Both cases above
+    are sums over the *entire* field at one rung, and the moment a member is
+    missing the total is a number the remaining contracts cannot produce and the
+    relation handed to the arbitrageur becomes a false statement it will trade
+    on. So a rung is listed for every competitor or not at all, and
+    ``_placement_rungs`` chooses which rungs exist rather than which competitors
+    get them.
+
+    There used to be a third case and it is worth saying plainly why it is gone
+    rather than leaving a reader to notice. A format that pins its eliminations
+    pins the sum of the *whole* eliminations ladder across the field, since
+    ``E[X] = sum_k P(X > k)`` for a count, but only when the rungs are every
+    integer threshold the count can cross. ``_elimination_rungs`` now lists two
+    of them, so that sum is no longer the field's nine credits and no
+    ``ExclusiveSet`` claims it is. The law itself did not change: ``modes.py``
+    still refuses a result whose eliminations do not close, and
+    ``MatchBook.elimination_total`` still records the constant. The board simply
+    has no package that trades it.
 
     Kept as an object rather than as a comment next to a loop for one reason:
     the thing that went wrong before was that the identity existed only in
@@ -282,6 +346,12 @@ class MatchBook:
     # None for a race, whose length is not fixed: a race to 3 ends after
     # anything from 3 to 5 points, so there is no constant to write down and no
     # relation is formed rather than one being approximated.
+    #
+    # A fact about the format, not a claim about the listing. Since the
+    # eliminations ladder was cut to two rungs no ``ExclusiveSet`` is built from
+    # this, and it is kept because callers that reason about the world want it:
+    # the tests draw arbitrary settleable results from it, and it is what
+    # ``modes.py`` checks every result against.
     elimination_total: int | None
 
     @property
@@ -330,6 +400,12 @@ class _Mechanic:
     cap: int
     total: int | None
     target: int
+    # What one competitor is credited on average, over the whole field. Read
+    # off the format's own arithmetic rather than off a belief, because the
+    # rungs the book lists are chosen from it and a listing that read a
+    # strength would be writing the answer into the contract. It is the figure
+    # ``_elimination_rungs`` picks its two thresholds around.
+    credit_mean: float
 
 
 def _mechanic(fmt: MatchFormat) -> _Mechanic:
@@ -346,6 +422,10 @@ def _mechanic(fmt: MatchFormat) -> _Mechanic:
             cap=fmt.entrants - 1,
             total=fmt.entrants - 1,
             target=0,
+            # Exactly ``entrants - 1`` credits are handed out to ``entrants``
+            # competitors, so the mean is below one for every field size there
+            # can ever be, and the two rungs that straddle it are 0 and 1.
+            credit_mean=(fmt.entrants - 1) / fmt.entrants,
         )
 
     if fmt.entrants % fmt.team_size:
@@ -377,7 +457,20 @@ def _mechanic(fmt: MatchFormat) -> _Mechanic:
     # collect at most its own side's points, and the most any side scores is the
     # target that ends the race. The field's total is not fixed, because the
     # loser can end anywhere from 0 to target - 1.
-    return _Mechanic(kind="race", places=2, cap=target, total=None, target=target)
+    return _Mechanic(
+        kind="race",
+        places=2,
+        cap=target,
+        total=None,
+        target=target,
+        # A race ends the moment one side reaches the target, so the field is
+        # credited at least ``target`` points and at most ``2 * target - 1``.
+        # Nothing here may narrow that further without a belief, so the mean is
+        # taken at the midpoint of the range the format's own arithmetic pins.
+        # On the 3v3 that is 8/12 = 0.667 against 0.6813 measured over 2,000
+        # played matches, which moves no rung: both floor to the same pair.
+        credit_mean=(3 * target - 1) / (2 * fmt.entrants),
+    )
 
 
 # -- listing ---------------------------------------------------------------
@@ -391,6 +484,111 @@ def _side_subject(members: Sequence[str]) -> str:
     the two mechanics.
     """
     return SIDE_SEPARATOR.join(sorted(members))
+
+
+# -- what a match is worth listing, and what it is not --------------------
+#
+# The three rules below are the whole of the trim, and they exist because the
+# first version listed every rung and every ordered pair a format admitted. On
+# the ten entrant solo that was 270 contracts, against 50 for everything else on
+# the same board put together, so the exchange was a match board with an option
+# chain attached. What follows picks the rungs by what they are
+# worth rather than by what is available, and each rule is derived from the
+# format so a format registered later gets a listing rather than a special case.
+
+
+def _placement_rungs(mechanic: _Mechanic) -> tuple[int, ...]:
+    """The one placement cutoff a match lists: the median finish.
+
+    One rung rather than eight, and this one rather than another, by
+    measurement. Priced over 24 lognormal beliefs on the default solo field at
+    2,000 draws, a rung's mean distance from the nearer of 0 and 1 runs 0.195 at
+    the top 2, 0.271 at the top 3, 0.322 at the top 4, **0.334 at the top 5**,
+    0.312, 0.259, 0.187, and 0.099 at the top 9, where a quarter of all prices
+    sit within a tick of a boundary. So the ladder's information is a hump with
+    its peak at the median cut, and the rungs at the ends are contracts that
+    price at a near certainty most of the time.
+
+    ``places // 2`` and not the number 5, so a four place format lists its top 2
+    and a two place format lists nothing at all: there the rung at 1 is the
+    winner contract under another name and the rung at 2 is a certainty, which
+    is why a race listed no placement ladder before this trim either.
+
+    Keeping exactly one rung is what keeps the cross-sectional ``ExclusiveSet``
+    honest. Exactly ``N * team_size`` competitors finish in the top N, and that
+    is a statement about the whole field at one rung, so a rung is listed for
+    every competitor or not at all. Thinning a rung across competitors would
+    leave the set claiming a sum the remaining contracts cannot produce.
+    """
+    cut = max(2, mechanic.places // 2)
+    return (cut,) if cut <= mechanic.places - 1 else ()
+
+
+def _elimination_rungs(mechanic: _Mechanic) -> tuple[int, ...]:
+    """The two eliminations thresholds the count is actually likely to cross.
+
+    Same measurement, same field, and a much steeper hump. Mean distance from
+    the nearer boundary by rung: 0.284 at ``> 0``, 0.186 at ``> 1``, 0.106 at
+    ``> 2``, then 0.055, 0.024, 0.009, 0.003, 0.0006 and 0.0000 at ``> 8``,
+    where the share of prices sitting within a tick of a boundary runs 0.8%,
+    6.7%, 27.1%, 54.2%, 79.2%, 90.0%, 96.7%, 99.6% and 100%. The top rung of a
+    ten entrant ladder is a contract that has never once priced away from zero
+    in this sweep. The 3v3 is the same shape over three rungs: 0.333, 0.153,
+    0.034, the last of them pinned on 63.9% of prices.
+
+    So the rungs are chosen around ``credit_mean``, which is what the format
+    pins the average credit at, and two of them are kept rather than one so the
+    ladder still has an adjacent pair for ``derive_match_relations`` to write a
+    monotonicity relation between. One rung would list a family with no internal
+    identity at all, which is the thing this module exists not to do.
+    """
+    # floor(mean) and one above it, pulled back far enough that both rungs exist
+    # on a short ladder. A format crediting at most one elimination gets the
+    # single rung at 0 and no relation, because there is no second threshold to
+    # write one against.
+    low = min(math.floor(mechanic.credit_mean), max(mechanic.cap - 2, 0))
+    return tuple(rung for rung in (low, low + 1) if 0 <= rung < mechanic.cap)
+
+
+def _featured_pairs(
+    sides: Sequence[Sequence[str]],
+) -> tuple[tuple[str, str], ...]:
+    """The head to heads a match features: the draw's own bracket.
+
+    Every ordered pair was 90 contracts on a ten entrant solo, a third of the
+    old listing and the least defensible third of it. A real venue lists a
+    handful of featured matchups, not the complete tournament of them, and the
+    honest question is which handful.
+
+    Nothing here may answer "the close ones". A listing runs before any belief
+    exists and must never read a latent strength, for the reason
+    ``build_market`` gives about every threshold it writes: a rung chosen from a
+    settlement value is the answer written into the contract. Closeness is a
+    property of a belief, so it is not available and pretending otherwise would
+    be worse than an arbitrary bracket.
+
+    What is available is the draw. Sides are taken two at a time in the order
+    the roster dealt them, and inside a pairing competitors are matched slot for
+    slot, so a ten entrant solo features 5 matchups and the 3v3 features 3, one
+    per lane. That rule has one property worth having: with an even number of
+    sides every competitor appears in exactly one head to head, so the family
+    covers the field evenly instead of concentrating on whoever a listing
+    thought was interesting. An odd side out wraps onto the first side, which
+    gives that side a second matchup and is the price of nobody being left
+    without one. Neither current format pays it: both seat an even number.
+
+    Both directions of each matchup are listed, which is what a two way market
+    is, and it is what makes the complement identity ("exactly one of them
+    finishes above the other") a thing the board states rather than implies.
+    """
+    pairs: list[tuple[str, str]] = []
+    count = len(sides)
+    for index in range(0, count - 1, 2):
+        left, right = sides[index], sides[index + 1]
+        pairs.extend(zip(left, right))
+    if count % 2 and count > 2:
+        pairs.extend(zip(sides[count - 1], sides[0]))
+    return tuple(pairs)
 
 
 def match_window(
@@ -478,19 +676,52 @@ def list_match(
     """Every contract one match carries, derived from its format and its field.
 
     Four families, each of which exists because it has exact identities against
-    the others rather than because it sounded like a market. Winner, one per
-    side, mutually exclusive and exhaustive. Top N, one per competitor per rung
-    from 2 up to one below the last place, the rung at 1 being the winner
-    contract already listed and the last rung being a certainty. Eliminations,
-    an over/under rung per competitor at every integer threshold the count can
-    cross. Head to head, both directions, for every pair that cannot finish
-    level.
+    the others rather than because it sounded like a market.
 
-    A ten entrant solo match lists 10 + 80 + 90 + 90 = 270 contracts; the 3v3
-    lists 2 + 0 + 18 + 18 = 38, and the empty family is not an oversight. With
-    only two places, a top 1 rung is the winner contract listed a second time
-    under a different name and a top 2 rung is a certainty, so the ladder would
-    be six duplicates and six contracts nobody can lose money on.
+    * **Winner**, one per side, mutually exclusive and exhaustive. Never
+      trimmed, because this is the partition that makes the board a probability
+      space and everything else is anchored to it.
+    * **Top N**, one rung across the whole field, at the median finish. See
+      ``_placement_rungs``.
+    * **Eliminations**, two over/under rungs per competitor, at the thresholds
+      the credit count is actually likely to cross. See ``_elimination_rungs``.
+    * **Head to head**, both directions, on a bracket of featured matchups drawn
+      from the seating rather than on every ordered pair. See
+      ``_featured_pairs``.
+
+    A ten entrant solo match lists 10 + 10 + 20 + 10 = 50 contracts and the 3v3
+    lists 2 + 0 + 12 + 6 = 20. The empty family is not an oversight: with only
+    two places a top 1 rung is the winner contract listed a second time under a
+    different name and a top 2 rung is a certainty, so a race lists no placement
+    ladder at all.
+
+    **What this listing used to be, and what the difference costs.** It was
+    10 + 80 + 90 + 90 = 270 and 2 + 0 + 18 + 18 = 38, every rung and every
+    ordered pair the format admitted, and on the default board that made 92% of
+    the exchange's 666 contracts match markets. Three things went:
+
+    1. Seven of the eight placement rungs. The board can no longer be asked
+       whether a competitor makes the podium, or avoids finishing last, only
+       whether they finish in the top half. The rungs that went were the weak
+       ones by measurement (``_placement_rungs`` has the numbers) but
+       "measurably weak" is not "worthless": a podium market is a market people
+       want and this board does not have one.
+    2. Seven of the nine elimination rungs, and with them the ``ExclusiveSet``
+       that added the field's whole ladder up to the nine credits a solo match
+       conserves. That was the board's only cross-sectional statement about
+       eliminations and it is genuinely lost: the conservation law still holds
+       and is still checked at settlement, but no package of listed contracts
+       trades it any more.
+    3. Eighty of the ninety head to heads. Every pair of competitors used to be
+       quotable against every other; now only the five featured matchups are,
+       and a trader with a view on two competitors who did not draw into the
+       same matchup has no contract to express it with.
+
+    What survives is every *kind* of identity the module ever derived: the
+    winner partition, a cross-sectional top N count, a monotone placement chain
+    from the winner contract upward, a monotone elimination pair, and the head
+    to head complement with its two bounds against the winner set. Measured,
+    47 relations on the solo book against 395, and 22 on the 3v3 against 58.
     """
     if format_name not in FORMATS:
         raise KeyError(
@@ -608,12 +839,13 @@ def list_match(
         ExclusiveSet(name=f"{tag}_WIN", symbols=tuple(winner_symbols), total=1.0)
     )
 
-    # -- top N: the placement ladder, and its cross-sectional count ---------
+    # -- top N: the placement cutoff, and its cross-sectional count ---------
     #
     # The rung at N is a Binary("<=", N) on the placement itself rather than a
     # new metric per rung, so a ladder is one metric read at several thresholds
     # and the monotonicity below is a property of the payoff, not a convention.
-    for rung in range(2, mechanic.places):
+    # One rung, across the whole field, for the reasons in ``_placement_rungs``.
+    for rung in _placement_rungs(mechanic):
         rung_symbols: list[str] = []
         for key in field:
             symbol = f"{tag}_TOP{rung}_{key}"
@@ -636,14 +868,21 @@ def list_match(
             )
         )
 
-    # -- eliminations: an over/under rung at every threshold the count crosses
-    elim_symbols: list[str] = []
+    # -- eliminations: the two rungs the count is likely to cross ------------
+    #
+    # And no ``ExclusiveSet`` over them, which is the one guarantee this trim
+    # spends. ``E[X] = sum over k >= 0 of P(X > k)`` needs *every* threshold from
+    # 0 to cap - 1 on every competitor before the ladder read across the field
+    # adds up to what the format conserves, so a two rung ladder cannot make
+    # that claim and does not. The conservation law itself is untouched: the
+    # format still checks it on every result and ``elimination_total`` still
+    # records it. What the board no longer does is quote it.
+    elim_rungs = _elimination_rungs(mechanic)
     for key in field:
-        for threshold in range(mechanic.cap):
-            symbol = f"{tag}_ELIM_{key}_GT{threshold}"
+        for threshold in elim_rungs:
             contracts.append(
                 build(
-                    symbol,
+                    f"{tag}_ELIM_{key}_GT{threshold}",
                     Single(elim_ref[key]),
                     Binary(">", float(threshold)),
                     ELIMINATIONS,
@@ -651,42 +890,33 @@ def list_match(
                     threshold=threshold,
                 )
             )
-            elim_symbols.append(symbol)
-    if mechanic.total is not None:
-        # ``E[X] = sum over k >= 0 of P(X > k)`` for a count, and the rungs are
-        # every threshold from 0 to cap - 1, so this ladder read across the
-        # whole field is the field's expected eliminations, which the format
-        # fixes. The same conservation law modes.py refuses to settle without.
-        exclusive.append(
-            ExclusiveSet(
-                name=f"{tag}_ELIM",
-                symbols=tuple(elim_symbols),
-                total=float(mechanic.total),
-            )
-        )
 
-    # -- head to head: both directions, for pairs that cannot finish level ---
+    # -- head to head: both directions, on the featured matchups only --------
     #
     # Written as a Binary on the Difference of two placements, which is the
     # contract algebra already in the box: no new metric, and the settlement
-    # range falls out of interval arithmetic. Same side pairs are left off. In a
-    # team format two team mates always place equally, so "A above B" and "B
-    # above A" would both settle at zero and the pair would not complement.
-    # Listing them with an identity that is false a third of the time is how a
-    # relation stops meaning anything.
+    # range falls out of interval arithmetic. Same side pairs cannot appear,
+    # because the bracket only ever pairs one side against another, and that is
+    # load bearing rather than tidy. In a team format two team mates always
+    # place equally, so "A above B" and "B above A" would both settle at zero
+    # and the pair would not complement. Listing them with an identity that is
+    # false a third of the time is how a relation stops meaning anything.
     side_of = {key: side for side in sides for key in side}
-    for a in field:
-        for b in field:
-            if a == b or b in side_of[a]:
-                continue
+    for a, b in _featured_pairs(sides):
+        if a == b or b in side_of[a]:  # pragma: no cover - the bracket cannot
+            raise ValueError(
+                f"match {match_id}: {a} and {b} share a side, so they finish "
+                "level and their head to heads would not complement"
+            )
+        for subject, versus in ((a, b), (b, a)):
             contracts.append(
                 build(
-                    f"{tag}_H2H_{a}_OVER_{b}",
-                    Difference(Single(place_ref[a]), Single(place_ref[b])),
+                    f"{tag}_H2H_{subject}_OVER_{versus}",
+                    Difference(Single(place_ref[subject]), Single(place_ref[versus])),
                     Binary("<", 0.0),
                     HEAD_TO_HEAD,
-                    a,
-                    versus=b,
+                    subject,
+                    versus=versus,
                 )
             )
 
@@ -798,8 +1028,10 @@ def settlement(book: MatchBook, result: MatchResult) -> dict[str, float]:
     thing ``coherent_prices`` averages, so a price is by construction the mean
     of the number the contract will actually pay. Going through the contract's
     own underlying and payoff rather than reading the placement dict directly is
-    what costs the pricing loop its time: of the 0.59s a 4,000 draw solo book
-    takes, 0.06s is drawing the outcomes and 0.52s is this. A second, faster
+    what costs the pricing loop its time: of the 0.25s a 4,000 draw solo book
+    takes, 0.07s is drawing the outcomes and 0.15s is this. Drawing is what the
+    trim could not touch, which is why the book got five times shorter and the
+    pricing pass only twice as fast. A second, faster
     settlement rule written for the pricing loop would buy that back and would
     be two things that are correct about different questions sharing one
     surface, which is a bug class in CONTRIBUTING with four instances already.
@@ -833,22 +1065,33 @@ def derive_match_relations(book: MatchBook) -> list[Relation]:
 
     Every relation here is a statement about a single match outcome, not a
     statistical regularity, which is what makes trading them riskless rather
-    than a bet. A ten entrant solo book yields 395 of them: 10 exclusive sets,
-    80 placement rungs, 80 eliminations rungs, 45 head to head complements and
-    180 head to head bounds against the winner set. The 3v3 yields 58 from a
-    38 contract book, which is the same density from a fifth of the listing.
+    than a bet. A ten entrant solo book yields 47 of them: 2 exclusive sets, 10
+    placement rungs, 10 eliminations rungs, 5 head to head complements and 20
+    head to head bounds against the winner set. The 3v3 yields 22 from a 20
+    contract book.
+
+    Relations per contract fell with the trim, from 1.46 on the untrimmed solo
+    book to 0.94, and that is the expected direction rather than a loss of
+    grip. A long ladder is cheap in relations: each extra rung brings one more
+    contract and one more comparison against the rung beside it, so it raises
+    the ratio without the board saying anything it could not say before. What
+    the ratio now counts is mostly relations that reach across families, which
+    are the ones a single mispriced contract cannot hide inside.
     """
     relations = [exclusive.relation() for exclusive in book.exclusive_sets]
     contracts = book.contracts
 
     # -- the placement ladder is monotone in N ------------------------------
     #
-    # Finishing in the top N implies finishing in the top N+1, so the wider rung
-    # is worth at least the narrower one. The rung below the first listed one is
-    # the winner contract, because placing first and one's side winning are the
-    # same event in both mechanics, which is what ties the ladder to the
-    # exclusive set and gives "a competitor's win price cannot exceed its top 3
-    # price" without anybody writing that down.
+    # Finishing in the top N implies finishing in the top M for any wider M, so
+    # the wider rung is worth at least the narrower one, and that holds between
+    # any two listed rungs rather than only between adjacent integers, which is
+    # what lets the ladder be thinned without the chain breaking. The rung below
+    # the first listed one is the winner contract, because placing first and
+    # one's side winning are the same event in both mechanics, which is what
+    # ties the ladder to the exclusive set and gives "a competitor's win price
+    # cannot exceed its top 5 price" without anybody writing that down. With one
+    # listed rung that is now the whole chain.
     winner_of: dict[str, str] = {}
     for contract in contracts:
         if contract.family == WINNER:
@@ -888,9 +1131,12 @@ def derive_match_relations(book: MatchBook) -> list[Relation]:
     for _subject, ladder in sorted(ladders.items()):
         ladder.sort()
         for (_low, dear), (_high, cheap) in zip(ladder, ladder[1:]):
-            # More than k is implied by more than k+1, so the lower threshold is
-            # the dearer contract. Same shape as a vertical on a call ladder,
-            # for the same reason: one payoff dominates the other everywhere.
+            # More than a low threshold is implied by more than a high one, so
+            # the lower threshold is the dearer contract. True of any two
+            # thresholds and not only of adjacent integers, which is what lets
+            # ``_elimination_rungs`` list two of nine and still write a relation
+            # between them. Same shape as a vertical on a call ladder, for the
+            # same reason: one payoff dominates the other everywhere.
             relations.append(
                 Relation(
                     name=f"elimination:{dear}/{cheap}",

@@ -272,12 +272,17 @@ def test_a_match_tells_the_market_it_exists():
 
 
 def test_the_identities_arrive_with_the_match_and_leave_with_it():
-    """395 of them for a solo match, in the arbitrageur's own vocabulary.
+    """47 of them for a solo match, in the arbitrageur's own vocabulary.
 
     So enforcing them needs no new execution path: an agent already built on
     these relations simply has a longer list. And they go when the match does,
     because a relation whose legs have settled can never be traded again and
     would price against a mark that no longer moves.
+
+    It was 395 when a solo match listed 270 contracts. What the trim took out
+    was mostly a ladder comparing each rung to the rung beside it, so the count
+    fell further than the listing did; every kind of identity the operator hands
+    over still arrives.
     """
     market = build(seed=7)
     watcher = _Watcher()
@@ -288,7 +293,7 @@ def test_the_identities_arrive_with_the_match_and_leave_with_it():
     ctx = _Ctx()
     operator.on_start(ctx)
     during = len(watcher.relations)
-    assert during == 395
+    assert during == 47
 
     ctx.now = int(seconds(200))
     operator.on_wakeup(ctx)

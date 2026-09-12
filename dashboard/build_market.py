@@ -894,14 +894,16 @@ def match_maker_capital(
 
     Derived from a real book rather than named, for the reason `maker_capital`
     gives: a figure is right only for the list it was written against, and a
-    match lists 270 contracts where the statistical listing lists 50. Measured
+    solo match lists 50 contracts against the statistical listing's 50. Measured
     at build time off match zero of each format, which is representative because
     every match of a format lists the same families over the same field size.
 
     Cheaper per contract than the statistical listing by a wide margin, and that
     is the bounded payoff doing its work: a winner contract settles in [0, 1]
-    where a win rate future settles in [0, 10000], so 270 match contracts cost
-    less to make a market in than a handful of futures.
+    where a win rate future settles in [0, 10000], so a whole match book costs
+    less to make a market in than a handful of futures. That was the argument
+    when a match listed 270 of them and it did not depend on the count, which is
+    why trimming the listing to 50 changed this function not at all.
     """
     from arena.market.match_book import list_match
 

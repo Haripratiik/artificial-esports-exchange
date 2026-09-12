@@ -9,19 +9,25 @@ thousand outcomes drawn from the settleable space directly, rather than on an
 example.
 
 Two tests carry the weight. ``test_one_distribution_violates_no_relation``
-prices a whole book off the single ensemble and finds every one of the 395
+prices a whole book off the single ensemble and finds every one of the 47
 derived relations at excess exactly zero, in rational arithmetic, on 50 random
 beliefs for each format. ``test_pricing_each_contract_on_its_own_law_is_where
 _the_arbitrage_comes_from`` prices the same contracts off eight unrelated
 ensembles instead, which is what the old prediction listing did by accident,
-and 53 of those 395 relations are then breached by up to 0.1163 even though
+and 7 of those 47 relations are then breached by up to 0.0663 even though
 all eight ensembles were drawn from one belief and disagree only by sampling
 noise. The second number is what the first one is worth: without it, zero
 violations could just mean the relations have no teeth.
+
+The counts here are smaller than they were, and deliberately. A match used to
+list 270 contracts and 395 relations, which made the exchange's event class 94%
+of its own board; the listing now carries 50 and 47. Nothing about the property
+changed, only how much of it there is to check.
 """
 
 from __future__ import annotations
 
+import collections
 import math
 import random
 from dataclasses import dataclass, replace
@@ -97,31 +103,44 @@ def priced():
 
 
 def test_each_format_lists_the_families_its_shape_supports():
-    """270 contracts for the solo, 38 for the 3v3, and the difference is real.
+    """50 contracts for the solo, 20 for the 3v3, and the difference is real.
+
+    These counts are a listing decision and not an arithmetic consequence, which
+    is why they are asserted rather than derived. The first version wrote down
+    every rung and every ordered pair its formats admitted, 270 on the solo and
+    38 on the 3v3, and that made 92% of a 666 contract exchange a match board.
+    Now it is one placement cutoff across the field, two eliminations rungs per
+    competitor, and a bracket of featured head to heads.
 
     The 3v3 lists no placement ladder and that is not an omission. With two
     places, "top 1" is the winner contract already listed and "top 2" is a
     certainty, so a placement ladder there would be six contracts nobody can
-    lose money on. The eliminations ladder is shorter for the same kind of
-    reason: a point is credited inside the side that scored it, so a competitor
-    can be credited at most the three that end the race, against nine in a ten
-    entrant elimination.
+    lose money on. The winner family is the one thing never trimmed: it is the
+    partition that makes the board a probability space.
     """
     solo = list_match(SEED, 0, "solo")
-    assert len(solo.contracts) == 270
+    assert len(solo.contracts) == 50
     assert len(solo.of_family(WINNER)) == 10
-    assert len(solo.of_family(PLACEMENT)) == 80
-    assert len(solo.of_family(ELIMINATIONS)) == 90
-    assert len(solo.of_family(HEAD_TO_HEAD)) == 90
+    assert len(solo.of_family(PLACEMENT)) == 10
+    assert len(solo.of_family(ELIMINATIONS)) == 20
+    assert len(solo.of_family(HEAD_TO_HEAD)) == 10
     assert solo.places == 10 and solo.elimination_cap == 9
     assert solo.elimination_total == 9
+    # The median cut, and the two rungs straddling the 0.9 credits a ten entrant
+    # field hands to ten competitors.
+    assert {c.threshold for c in solo.of_family(PLACEMENT)} == {5}
+    assert {c.threshold for c in solo.of_family(ELIMINATIONS)} == {0, 1}
+    # Every competitor is covered by each family it appears in at all, which is
+    # what the exclusive sets below rest on.
+    assert {c.subject for c in solo.of_family(PLACEMENT)} == set(solo.field)
+    assert {c.subject for c in solo.of_family(ELIMINATIONS)} == set(solo.field)
 
     objective = list_match(SEED, 0, "objective")
-    assert len(objective.contracts) == 38
+    assert len(objective.contracts) == 20
     assert len(objective.of_family(WINNER)) == 2
     assert len(objective.of_family(PLACEMENT)) == 0
-    assert len(objective.of_family(ELIMINATIONS)) == 18
-    assert len(objective.of_family(HEAD_TO_HEAD)) == 18
+    assert len(objective.of_family(ELIMINATIONS)) == 12
+    assert len(objective.of_family(HEAD_TO_HEAD)) == 6
     assert objective.places == 2 and objective.elimination_cap == 3
     # A race ends after anything from three to five points, so there is no
     # constant for the field's eliminations to conserve and no relation claiming
@@ -129,11 +148,55 @@ def test_each_format_lists_the_families_its_shape_supports():
     assert objective.elimination_total is None
 
 
+def test_no_exclusive_set_claims_a_total_its_members_cannot_produce():
+    """The structural half of the guarantee the trim had to be careful with.
+
+    ``test_every_exclusive_set_settles_to_its_declared_total`` checks the same
+    thing empirically over 500 real matches per format, which is the stronger
+    evidence. This one checks the property the trim could break silently: an
+    exclusive set here is a sum over the *whole* field at one rung, so the
+    moment a rung is listed for some competitors and not others, the total is a
+    number the listed contracts cannot reach and the relation handed to the
+    arbitrageur is a false statement it will trade on.
+
+    The eliminations conservation set is asserted gone rather than left
+    untested. It summed the whole ladder to the field's nine credits, which
+    needs every threshold from 0 to 8 on every competitor, and the listing now
+    carries two of them. Nothing may claim it.
+    """
+    for name in FORMAT_NAMES:
+        book = list_match(SEED, 0, name)
+        by_symbol = book.by_symbol()
+        totals = {}
+        for exclusive in book.exclusive_sets:
+            members = [by_symbol[symbol] for symbol in exclusive.symbols]
+            families = {member.family for member in members}
+            assert len(families) == 1, f"{exclusive.name} mixes {families}"
+            subjects = [
+                subject
+                for member in members
+                for subject in member.subject.split(SIDE_SEPARATOR)
+            ]
+            assert sorted(subjects) == sorted(book.field), (
+                f"{exclusive.name} sums over {sorted(subjects)}, which is not "
+                f"the field {sorted(book.field)}"
+            )
+            assert len({m.threshold for m in members}) == 1
+            totals[families.pop()] = exclusive.total
+
+        assert totals[WINNER] == 1.0
+        if book.of_family(PLACEMENT):
+            rung = next(iter({c.threshold for c in book.of_family(PLACEMENT)}))
+            assert totals[PLACEMENT] == rung * FORMATS[name].team_size
+        assert ELIMINATIONS not in totals
+        assert HEAD_TO_HEAD not in totals
+
+
 def test_the_listing_is_something_the_venue_can_actually_carry():
     """These are instruments, not a private structure with a price attached.
 
     Every contract is a Binary on a bounded metric, so the venue classifies all
-    270 as events, every one settles inside [0, 1], and a short's worst case is
+    50 as events, every one settles inside [0, 1], and a short's worst case is
     arithmetic: one lot sold at 0.40 can lose 0.60 and never more. The digests
     are distinct too, which is the check that no two derived contracts are
     secretly the same claim listed twice under different names.
@@ -161,20 +224,36 @@ def test_the_listing_is_something_the_venue_can_actually_carry():
         assert instrument.expiry == book.window.end
 
 
-def test_head_to_head_is_listed_only_where_the_pair_can_be_separated():
+def test_head_to_head_is_a_bracket_across_sides_that_covers_the_field_once():
     """Team mates always finish level, so their pair would not complement.
 
     Listed anyway, "A above B" and "B above A" would both settle at zero every
     time the two are on the same side, and the complement identity that the
     whole family is anchored on would be false on every one of those pairs. The
-    3v3 lists 18 head to heads, which is the 30 ordered pairs of six
-    competitors less the 12 that share a side.
+    bracket cannot produce such a pair, because it only ever matches one side
+    against another, and that is asserted here rather than trusted.
+
+    The other half is coverage. Featuring a handful of matchups instead of all
+    90 ordered pairs is only defensible if the handful is not a judgement about
+    who is interesting, which a listing has no way to make: it runs before any
+    belief exists and must not read a strength. So it is the draw's own bracket,
+    and what makes that honest is that every competitor appears in exactly one
+    matchup rather than the family clustering on whoever was listed first.
     """
-    book = list_match(SEED, 0, "objective")
-    pairs = {(c.subject, c.versus) for c in book.of_family(HEAD_TO_HEAD)}
-    assert len(pairs) == 18
-    for a, b in pairs:
-        assert book.side_of(a) != book.side_of(b)
+    for name, expected in (("solo", 5), ("objective", 3)):
+        book = list_match(SEED, 0, name)
+        ordered = {(c.subject, c.versus) for c in book.of_family(HEAD_TO_HEAD)}
+        unordered = {frozenset(pair) for pair in ordered}
+        assert len(unordered) == expected
+        # Both directions of each, which is what a two way market is and what
+        # makes the complement identity a thing the board states.
+        assert len(ordered) == 2 * expected
+        for a, b in ordered:
+            assert (b, a) in ordered
+            assert book.side_of(a) != book.side_of(b)
+
+        appearances = [competitor for pair in unordered for competitor in pair]
+        assert sorted(appearances) == sorted(book.field)
 
 
 @dataclass(frozen=True)
@@ -233,23 +312,33 @@ def test_a_newly_registered_format_lists_and_prices_with_no_edit_here(
 
     This is the test that says the derivation is real rather than a list that
     happens to match. Neither format below exists in the source: a four entrant
-    elimination lists 4 + 8 + 12 + 12 = 36 contracts and a 2v2 race to two lists
-    2 + 0 + 8 + 8 = 18, both counts falling out of the entrants, the team size
+    elimination lists 4 + 4 + 8 + 4 = 20 contracts and a 2v2 race to two lists
+    2 + 0 + 8 + 4 = 14, both counts falling out of the entrants, the team size
     and the target alone. Both then price off the same ensemble with no
     violations, which matters more than the counts: a contract set derived for a
     format the pricer cannot draw would be a listing nobody can quote.
+
+    It is also where the trim is checked for having been written as a rule
+    rather than as a number. The four entrant field lists its top 2 where the
+    ten entrant lists its top 5, because the cutoff is the median finish; the
+    2v2 race gets 8 elimination contracts from 4 competitors where the 3v3 gets
+    12 from 6, because the rungs are per competitor and the count is the same
+    two either way; and the head to head bracket is 2 matchups in both, because
+    both seat four. Nothing here would have followed from a trim that hardcoded
+    ten entrants.
     """
     fourway, pairs = throwaway_formats
 
     book = list_match(SEED, 1, fourway.name)
-    assert len(book.contracts) == 36
+    assert len(book.contracts) == 20
     families = (WINNER, PLACEMENT, ELIMINATIONS, HEAD_TO_HEAD)
-    assert [len(book.of_family(f)) for f in families] == [4, 8, 12, 12]
+    assert [len(book.of_family(f)) for f in families] == [4, 4, 8, 4]
     assert book.places == 4 and book.elimination_cap == 3 and book.elimination_total == 3
+    assert {c.threshold for c in book.of_family(PLACEMENT)} == {2}
 
     team = list_match(SEED, 1, pairs.name)
-    assert len(team.contracts) == 18
-    assert [len(team.of_family(f)) for f in families] == [2, 0, 8, 8]
+    assert len(team.contracts) == 14
+    assert [len(team.of_family(f)) for f in families] == [2, 0, 8, 4]
     assert team.places == 2 and team.elimination_cap == 2
 
     for listing in (book, team):
@@ -262,6 +351,69 @@ def test_a_newly_registered_format_lists_and_prices_with_no_edit_here(
             for relation in derive_match_relations(listing)
         )
         assert worst == 0
+
+
+def test_an_odd_field_leaves_nobody_without_a_head_to_head():
+    """The one branch of the bracket neither registered format reaches.
+
+    Both formats in the source seat an even number of sides, so the wrap that
+    handles an odd one is dead code until somebody registers a five entrant
+    mode, and dead code that has never run is code that does not work. A five
+    entrant elimination pairs sides 0-1 and 2-3 and then has one side left over,
+    which wraps onto the first rather than being listed with no matchup at all.
+
+    The price of the wrap is asserted too, because it is real: the first side
+    gets two head to heads where everybody else gets one. That is the tradeoff
+    taken deliberately, and the alternative was a competitor the board cannot be
+    asked a single question about relative to anyone.
+    """
+
+    @dataclass(frozen=True)
+    class FiveWay:
+        name: str = "fiveway"
+        entrants: int = 5
+        team_size: int = 1
+
+        @property
+        def teams(self) -> int:
+            return self.entrants
+
+        def check(self, placements, eliminations, sides=None) -> None:
+            if sorted(placements.values()) != list(range(1, self.entrants + 1)):
+                raise ValueError(f"{self.name}: placements are not a permutation")
+            if sum(eliminations.values()) != self.entrants - 1:
+                raise ValueError(f"{self.name}: eliminations do not close")
+
+    register_format(FiveWay())
+    try:
+        book = list_match(SEED, 2, "fiveway")
+        # 5 winners, 5 at the top 2 cutoff, 5 x 2 elimination rungs, and 3
+        # matchups both ways.
+        assert len(book.contracts) == 26
+        assert [
+            len(book.of_family(f))
+            for f in (WINNER, PLACEMENT, ELIMINATIONS, HEAD_TO_HEAD)
+        ] == [5, 5, 10, 6]
+
+        unordered = {
+            frozenset((c.subject, c.versus)) for c in book.of_family(HEAD_TO_HEAD)
+        }
+        assert len(unordered) == 3
+        appearances = collections.Counter(
+            competitor for pair in unordered for competitor in pair
+        )
+        assert set(appearances) == set(book.field), "somebody has no head to head"
+        assert appearances[book.field[0]] == 2
+        assert sorted(appearances.values()) == [1, 1, 1, 1, 2]
+
+        rng = random.Random(17)
+        belief = {k: math.exp(rng.gauss(0.0, 0.6)) for k in book.field}
+        prices = coherent_prices(book, belief, draws=400)
+        assert max(
+            abs(excess_exact(r, prices)) for r in derive_match_relations(book)
+        ) == 0
+    finally:
+        FORMATS.pop("fiveway", None)
 
 
 def test_a_format_whose_mechanic_is_not_modelled_refuses_to_list():
@@ -319,16 +471,23 @@ def test_the_winner_set_settles_to_exactly_one_on_every_match():
 
 
 def test_every_exclusive_set_settles_to_its_declared_total():
-    """The other two things an exclusive set says, checked the same way.
+    """The other thing an exclusive set says, checked the same way.
 
-    Exactly N times the team size finish in the top N, and the field's
-    eliminations add to the number the format conserves. Both are the same
-    object as the winner set with a different total, and both have to hold on a
-    real result or the relations derived from them are trading on a fiction.
+    Exactly N times the team size finish in the top N. Same object as the winner
+    set with a different total, and it has to hold on a real result or the
+    relation derived from it is trading on a fiction.
+
+    There used to be a third case, summing the whole eliminations ladder to the
+    number the format conserves, and it is gone because the ladder is now two
+    rungs rather than nine. That is asserted next door in
+    ``test_no_exclusive_set_claims_a_total_its_members_cannot_produce`` rather
+    than left as an absence here, since the dangerous version of this change is
+    the set surviving with a total its members cannot reach.
     Five hundred matches per format rather than the two thousand the winner set
-    gets, which is the honest tradeoff: this sweep settles ten exclusive sets
-    per match instead of one and buys the same evidence at a quarter of the
-    matches, and the wall clock is the reason.
+    gets, which is the honest tradeoff: this sweep settles every exclusive set
+    a match carries instead of only its winner set, and buys the same evidence
+    at a quarter of the matches. Two sets on the solo book and one on the 3v3,
+    where before the trim there were ten and one.
     """
     for name in FORMAT_NAMES:
         for match_id in range(500):
@@ -344,8 +503,8 @@ def test_settlement_agrees_with_the_match_result_contract_by_contract():
     The expected value here is worked out from ``placements`` and
     ``eliminations`` directly rather than by asking the module a second time, so
     this is a check on the settlement rule and not a check that a function
-    equals itself. It covers all four families on every match, which is 540,000
-    settled claims on the solo book and 76,000 on the 3v3.
+    equals itself. It covers all four families on every match, which is 100,000
+    settled claims on the solo book and 40,000 on the 3v3.
     """
     for name in FORMAT_NAMES:
         for match_id in range(MATCHES):
@@ -498,8 +657,8 @@ def test_one_distribution_violates_no_relation(priced):
 
     Exact means exact. The prices are Fractions over the draw count and every
     relation coefficient is +1 or -1 against a whole number constant, so this
-    arithmetic has no rounding in it to hide behind. 395 relations on the solo
-    book and 58 on the 3v3, so the sweep is 22,650 checks and the worst excess
+    arithmetic has no rounding in it to hide behind. 47 relations on the solo
+    book and 22 on the 3v3, so the sweep is 3,450 checks and the worst excess
     across all of them is 0.
     """
     for name in FORMAT_NAMES:
@@ -515,9 +674,11 @@ def test_float_prices_survive_the_conversion(priced):
 
     The exact prices are Fractions, and everything downstream of a quote works
     in floats, so the honest question is what the conversion costs. Measured
-    over 100 priced beliefs: 3.9e-15 at worst, on the conservation set that adds
-    90 contracts up to nine, and a half ulp on the two families that subtract
-    from a constant. The families that do no arithmetic at all, the two ladders
+    over 100 priced beliefs: 1.3e-15 at worst, on the cross sectional set that
+    adds ten contracts up to five, and a half ulp on the two families that
+    subtract from a constant. It was 3.9e-15 when the board still carried the
+    set that added 90 contracts up to nine, which is the arithmetic saying what
+    it should: a shorter sum rounds less. The families that do no arithmetic at all, the two ladders
     and the head to head floor, come back at exactly 0.0, because those compare
     two prices and a float comparison cannot invert what the exact one said. So
     a consumer working in floats needs a tolerance of a few ulps and nothing
@@ -558,13 +719,20 @@ def test_pricing_each_contract_on_its_own_law_is_where_the_arbitrage_comes_from(
     incoherence available, because all eight ensembles are drawn from the *same*
     belief and differ only by sampling noise, so nothing here is biased or
     broken and every individual price is a sound estimate of the same number.
-    Measured anyway: 53 of the 395 solo relations breached, 13.4%, by up to
-    0.1163 on the set that conserves the field's nine eliminations, and 31 of
-    58 on the 3v3. The breaches land on the sums first, because the noise at 800
-    draws is smaller than the gap between two adjacent ladder rungs and larger
-    than nothing at all, which is the whole point: an identity is violated by
-    any disagreement whatever, and disagreement is the default when two prices
-    come from two laws.
+    Measured anyway: 7 of the 47 solo relations breached, 14.9%, by up to
+    0.0663 on the set that counts the field's top five, and 9 of 22 on the 3v3.
+    The breaches land on the sums first, because the noise at 800 draws is
+    smaller than the gap between two ladder rungs and larger than nothing at
+    all, which is the whole point: an identity is violated by any disagreement
+    whatever, and disagreement is the default when two prices come from two
+    laws.
+
+    The worst breach fell from 0.1163 with the trim, and the reason is worth
+    stating rather than reading as the control getting weaker. The old figure
+    was on the set that added 90 contracts up to nine, and a sum over 90 noisy
+    prices is simply a longer accumulation of the same per contract noise. The
+    largest sum left is ten contracts, so the largest breach is about a third
+    the size. Every relation that could be breached still is.
     """
     worst = 0.0
     for name in FORMAT_NAMES:
@@ -594,8 +762,9 @@ def test_the_eliminations_ladder_is_monotone_in_the_threshold(priced):
     Exact in the prices because it is exact in every outcome: the ensemble
     counts the same drawn match into both rungs or into neither, and an integer
     count over a common denominator cannot invert. Checked on both formats over
-    50 beliefs each, so 9 rungs on ten solo competitors and 3 on six team
-    competitors.
+    50 beliefs each, so 2 rungs on ten solo competitors and 2 on six team
+    competitors. Two is the floor for this test to say anything at all, which is
+    why ``_elimination_rungs`` keeps two: a one rung ladder cannot cross.
     """
     for name in FORMAT_NAMES:
         book, _relations, rows = priced[name]
@@ -611,22 +780,27 @@ def test_the_eliminations_ladder_is_monotone_in_the_threshold(priced):
                 assert all(0 <= rung <= 1 for rung in rungs)
 
 
-def test_a_win_never_prices_above_its_own_top_three(priced):
-    """Winning is finishing in the top three, so it cannot be worth more.
+def test_a_win_never_prices_above_its_own_top_five(priced):
+    """Winning is finishing in the top five, so it cannot be worth more.
 
-    The relation that enforces it is derived as a chain of adjacent rungs
-    starting at the winner contract, so this is the transitive statement rather
-    than the derived one, which is exactly why it is worth asserting separately:
-    it is the reading a trader would do, and it holds without anybody deriving
-    it directly.
+    The relation that enforces it is derived as a chain of rungs starting at the
+    winner contract, so this is the transitive statement rather than the derived
+    one, which is exactly why it is worth asserting separately: it is the
+    reading a trader would do, and it holds without anybody deriving it
+    directly.
+
+    It used to be the top three, and the rung moved because the placement ladder
+    was cut to the one cutoff that carries the most information. The claim did
+    not weaken with it: the implication is "top N implies top M for any wider
+    M", which never needed the rungs to be adjacent integers.
     """
     book, _relations, rows = priced["solo"]
-    top3 = {c.subject: c.symbol for c in book.of_family(PLACEMENT) if c.threshold == 3}
+    cut = {c.subject: c.symbol for c in book.of_family(PLACEMENT) if c.threshold == 5}
     winner = {c.subject: c.symbol for c in book.of_family(WINNER)}
-    assert len(top3) == 10 and len(winner) == 10
+    assert len(cut) == 10 and len(winner) == 10
     for _belief, prices in rows:
         for competitor in book.field:
-            assert prices[winner[competitor]] <= prices[top3[competitor]]
+            assert prices[winner[competitor]] <= prices[cut[competitor]]
 
 
 def test_the_placement_ladder_is_monotone_and_reaches_the_winner(priced):

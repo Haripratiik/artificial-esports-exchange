@@ -463,9 +463,17 @@ def test_a_build_with_matches_carries_both_families_without_conflict():
     in the instant the operator listed it. Starting it on publication day, a day
     before the circuit opens, is what buys the session.
 
-    Measured on seed 7: 358 symbols listed, 50 statistical and 308 across the
-    two open matches, none of either family closed at the open, and
-    conservation exactly zero after two simulated seconds of trading.
+    Measured on seed 7: 120 symbols listed, 50 statistical and 70 across the two
+    open matches, none of either family closed at the open, and conservation
+    exactly zero after two simulated seconds of trading.
+
+    It was 358 and 308 before the match listing was trimmed, and the balance is
+    the point of the number rather than the number itself. Two open matches used
+    to be six times the whole statistical listing, so a board built to show nine
+    asset classes was a match board with the other eight in the margin. Now the
+    two families are within a half of each other, and the assertion is an exact
+    count rather than a floor because a floor is what let the old figure drift
+    without anybody noticing it had.
     """
     statistical = {i.symbol for i in instruments()}
     market = build(seed=WORLD_SEED, matches=True)
@@ -474,11 +482,11 @@ def test_a_build_with_matches_carries_both_families_without_conflict():
     live = set(market.venue.registry.symbols)
     match_symbols = live - statistical
     assert statistical <= live
-    assert len(match_symbols) > 200, (
-        f"only {len(match_symbols)} match contracts listed; the operator opens "
-        "one match per format and a solo match alone carries 270"
+    assert len(match_symbols) == 70, (
+        f"{len(match_symbols)} match contracts listed; the operator opens one "
+        "match per format, and those carry 50 and 20"
     )
-    assert len(live) == len(statistical) + len(match_symbols)
+    assert len(live) == len(statistical) + len(match_symbols) == 120
 
     closed = [
         symbol for symbol in live if market.venue.session(symbol) is SessionState.CLOSED

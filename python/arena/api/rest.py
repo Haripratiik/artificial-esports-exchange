@@ -12,7 +12,7 @@ The shape follows Kalshi and Alpaca, because a client author should not have to
 learn a third convention: ``/v1`` prefixed paths, plural collections, HMAC-signed
 requests, machine codes on every refusal.
 
-Six decisions are worth stating up front, because each of them was arrived at
+Seven decisions are worth stating up front, because each of them was arrived at
 by something going wrong rather than by preference.
 
 **Market data is candles, and a candle has three OHLC blocks.**
@@ -58,6 +58,15 @@ a number somebody sent is how an order rests at a price they did not choose.
 **Every list has a cap, and says so.** Each list endpoint publishes ``limit``,
 ``cap`` and ``count`` in its own response, so a client can tell "that is all of
 them" from "that is all you asked for" without reading documentation.
+
+**One request per question, not one per symbol.** Three surfaces here are
+deliberately venue-wide rather than per contract, because a client watching
+three hundred symbols over a 20ms link cannot afford three hundred round trips
+a poll: ``GET /v1/instruments`` carries the touch on every row and takes
+``?symbols=`` so a named watchlist is one call, the settlement outcome rides on
+the same row, and ``GET /v1/trades`` is the whole venue's tape behind one
+cursor. The per-instrument endpoints remain, and remain the right thing for a
+client looking at one book.
 
 **A cancel is idempotent.** See :func:`cancel_order` for the argument.
 """
@@ -113,6 +122,15 @@ BOOK_DEPTH_CAP = 100
 # a busy symbol is unbounded by construction.
 TRADES_DEFAULT = 50
 TRADES_CAP = 500
+
+# The venue-wide tape. Larger than the per-instrument one because a page here
+# spans every book rather than one: a symbol's tape is a few dozen prints and
+# the feed's is the sum of every listed contract's, so a client sweeping the
+# venue at fifty a page spends its time in round trips rather than in trades.
+# The cap is the same order as Kalshi's own trade page, which a client asks for
+# a thousand at a time.
+TAPE_DEFAULT = 200
+TAPE_CAP = 1_000
 
 # Instruments and positions are bounded by the listing itself (twenty-eight
 # symbols on the default configuration), so these caps exist to keep the
@@ -251,6 +269,36 @@ _SEAT_ACCOUNTS: dict[str, tuple[Any, int]] = {}
 _CLIENT_ORDERS: dict[str, "OrderedDict[str, _ClientOrder]"] = {}
 _MESSAGES: dict[str, deque] = {}
 
+# The venue-wide tape, and how much of each engine's tape has been merged into
+# it. Each entry is ``(stamp, symbol, Traded)``: a reference to the print the
+# engine already holds rather than a copy of it, so this index costs a pointer
+# per trade on top of a structure that exists anyway. Rendering a page builds
+# the JSON from the reference at read time.
+#
+# Ordinals are positions in this list and are what ``GET /v1/trades`` pages by.
+# The list is append-only within a generation, which is the whole property a
+# cursor needs: a row's ordinal is assigned once and never moves, so a client
+# paging backwards into history cannot be shown a row twice by later prints
+# arriving, and cannot be skipped past one.
+_TAPE: list[tuple[int | None, str, Any]] = []
+_TAPE_SEEN: dict[str, int] = {}
+_TAPE_GENERATION: int = -1
+_TAPE_LOCK = threading.Lock()
+
+# Settlement outcomes, by symbol, for the market that is running now. A
+# settlement is final and deterministic, so one computed answer serves every
+# later read of it.
+#
+# The memo is not an optimisation, it is what makes the feature affordable.
+# Re-settling one contract against the oracle measured at 4.4ms across the
+# fifty on the default roster, so without it a full listing request would pay
+# that for every settled symbol on every poll: 221ms a call once the whole
+# board has run to its end, and proportionally worse on a wider one. With it,
+# each symbol is computed once for the life of the market and the cost is one
+# request rather than every request.
+_RESULTS: dict[str, dict[str, Any]] = {}
+_RESULTS_GENERATION: int = -1
+
 # Seating is a read-modify-write on the market's roster and it is not atomic:
 # ``LiveMarket.seat`` picks the next free id, opens an account under it and then
 # registers the agent, and ``Venue.open_account`` checks for an existing account
@@ -307,6 +355,14 @@ def configure(
             _SEAT_ACCOUNTS.clear()
             _CLIENT_ORDERS.clear()
             _MESSAGES.clear()
+            # Both of these are indexed by symbol in one particular market. A
+            # second runner can be at the same generation number as the first
+            # (a fresh one starts at zero), so the generation check the readers
+            # make cannot see this swap and the caches are dropped here
+            # instead.
+            _TAPE.clear()
+            _TAPE_SEEN.clear()
+            _RESULTS.clear()
         _RUNNER = runner
     if browser_seat is not None:
         _BROWSER_SEAT = browser_seat
@@ -1040,6 +1096,123 @@ def _touch(instrument: Any, book: Any) -> dict[str, Any]:
     }
 
 
+def _settlement(symbol: str) -> dict[str, Any]:
+    """How this contract resolved, or that it has not. Market data, no account.
+
+    The settlement feed a research client needs in shadow mode, and it is a
+    fact about the *contract* rather than about anybody's position, which is
+    why it rides on the listing and needs no credential. The account's own half
+    of the same question (which of *my* positions settled, and what they
+    realised) is on ``GET /v1/account/positions``, where the answer is
+    different for every caller.
+
+    **A live contract is never given a value, and that is the only rule here
+    that matters.** The oracle will answer for one: ``build_market`` settles
+    every listed instrument at construction to price the agents' priors, so
+    ``settlement_source`` returns a well formed number for a contract whose
+    window has not closed. Publishing it would hand a client the answer before
+    the market has it, and a backtest scored against a price it could read in
+    advance is not a backtest. So the value comes only from
+    :attr:`Venue.settled_symbols`, which is the set the venue has actually
+    paid out on.
+
+    The value is re-derived rather than remembered, because nothing remembers
+    it: ``Venue.settle`` applies a :class:`SettlementResult` to every account
+    and keeps only the symbol, and ``LiveMarket._settlement_log`` keeps only
+    the status. Re-deriving is exact rather than approximate, which is the
+    whole claim ``settlement/result.py`` makes for itself: the same spec and
+    the same oracle produce a byte-identical record, digest included, so this
+    is the record the venue settled on and not an estimate of it.
+
+    ``status`` is the vocabulary a client branches on:
+
+    ``open``     still trading, or closed for trading with settlement pending
+    ``settled``  paid out, and ``value`` is what it paid
+    ``void``     the world never produced the evidence, and nobody was paid
+    ``unknown``  settled, and the source could not be re-read to say at what
+
+    ``voided`` is carried separately as well, because a void is emphatically
+    not a resolution against the holder: every position came back at cost, and
+    a client that scored a void as a loss would be scoring a measurement that
+    was never taken.
+    """
+    global _RESULTS_GENERATION
+    runner = _runner()
+    generation = int(getattr(runner, "generation", 0))
+    if generation != _RESULTS_GENERATION:
+        _RESULTS_GENERATION = generation
+        _RESULTS.clear()
+
+    venue = runner.market.venue
+    if symbol not in venue.settled_symbols:
+        # Two phases share one answer on purpose. A contract closed for trading
+        # has had its outcome determined and not yet paid, and there is nothing
+        # a client can read about the outcome until it has, so telling it apart
+        # from a trading contract here would advertise a distinction with no
+        # content. ``session`` on the same row already says which it is.
+        return {
+            "status": "open",
+            "settled": False,
+            "voided": False,
+            "value": None,
+            "ticks": None,
+            "reason": None,
+            "digest": None,
+        }
+
+    remembered = _RESULTS.get(symbol)
+    if remembered is not None:
+        return dict(remembered)
+
+    instrument = venue.registry.require(symbol)
+    source = getattr(runner.market, "settlement_source", None)
+    row: dict[str, Any] = {
+        "status": "unknown",
+        "settled": True,
+        "voided": False,
+        "value": None,
+        "ticks": None,
+        "reason": None,
+        "digest": None,
+    }
+    if source is not None:
+        try:
+            result = source(instrument.spec)
+        except Exception as unreadable:  # noqa: BLE001
+            # Recorded rather than raised, which is ``LiveMarket.settle_due``'s
+            # judgement and is more forceful here: a contract whose oracle can
+            # no longer answer is a real outcome, and it must not take down a
+            # listing request that asked about three hundred other symbols.
+            row["reason"] = f"the settlement source could not be re-read: {unreadable!r}"
+        else:
+            voided = not getattr(result, "settled", False)
+            value = getattr(result, "settlement_value", None)
+            ticks = None
+            if value is not None:
+                try:
+                    ticks = int(instrument.to_ticks(Decimal(str(value))))
+                except (ArithmeticError, ValueError):
+                    # A settlement value is quantized onto the contract's own
+                    # grid before it is ever applied, so this cannot happen
+                    # from the settlement engine. It is caught anyway because
+                    # the alternative is that a contract listed on one grid and
+                    # settled on another answers every listing request with a
+                    # 500, and the price is readable either way.
+                    ticks = None
+            row.update(
+                {
+                    "status": "void" if voided else "settled",
+                    "voided": voided,
+                    "value": None if value is None else str(value),
+                    "ticks": ticks,
+                    "reason": getattr(result, "void_reason", None),
+                    "digest": getattr(result, "result_digest", None),
+                }
+            )
+    _RESULTS[symbol] = dict(row)
+    return row
+
+
 def _instrument_row(symbol: str) -> dict[str, Any]:
     venue = _venue()
     instrument = venue.registry.require(symbol)
@@ -1065,6 +1238,13 @@ def _instrument_row(symbol: str) -> dict[str, Any]:
         "trades": len(engine.tape),
         "contract_id": instrument.spec.contract_id,
         "spec_digest": instrument.spec.spec_digest,
+        # On the listing rather than behind a route of its own, because a
+        # settlement feed and a quote feed want the *same* rows: one client
+        # reads the touch off this row and another reads how the contract
+        # resolved, and serving them separately would mean two sweeps of one
+        # universe and two answers that can disagree about which of its
+        # contracts is listed.
+        "settlement": _settlement(symbol),
         **_touch(instrument, engine.book),
     }
 
@@ -1138,6 +1318,70 @@ def _candle_row(instrument: Any, candle: Any) -> dict[str, Any]:
     }
 
 
+def _queue(symbol: str, order: Any) -> dict[str, Any] | None:
+    """How much is in front of this order at its own price, and how much behind.
+
+    The number a shadow fill model cannot be honest without. A backtest that
+    knows only "my order was at 4,700 and the book traded at 4,700" has to
+    assume it was filled, and that assumption is an upper bound on its own
+    performance rather than a measurement of it: at the back of a queue of four
+    hundred lots, a print of ten reaches nobody but the front. The venue can
+    answer exactly, because the engine's priority is ``(price, arrival)`` and
+    arrival is a monotonic sequence rather than a clock, so the set of orders
+    ahead of any order is a fact rather than an estimate.
+
+    ``ahead`` counts the **visible** quantity only, which is not an
+    approximation of the hidden kind but the correct answer about it. An
+    iceberg in front of you shows a slice; when that slice is spent,
+    ``OrderBook.consume`` puts the order back at the *end* of the level with a
+    fresh one, behind you. So its reserve is not ahead of you and counting it
+    would overstate the queue by exactly the amount an iceberg exists to keep
+    out of the published depth.
+
+    Cancelled orders are skipped. The book tombstones a cancel rather than
+    splicing it out of the deque (``OrderBook.remove``, which keeps cancelling
+    O(1) in a market where cancelling is the common operation), so a naive walk
+    of the queue counts lots that nothing can trade against. Skipping them here
+    is the same correction ``depth_at`` makes, and ``ahead + own + behind`` is
+    therefore exactly the ``level`` this publishes.
+
+    ``None`` when the order is not resting: a market order, one that filled
+    outright, and one cancelled a moment ago all have no place in a queue, and
+    reporting zero for them would read as the front of one.
+    """
+    if not order.is_resting:
+        return None
+    book = _venue().engine(symbol).book
+    for level in book.live_levels(order.side):
+        if int(level.price) != int(order.price):
+            continue
+        ahead = behind = orders_ahead = orders_behind = 0
+        found = False
+        for resting in level.orders:
+            if resting.order_id == order.order_id:
+                found = True
+                continue
+            if resting.status.terminal or resting.remaining <= 0:
+                continue
+            if found:
+                behind += int(resting.shown)
+                orders_behind += 1
+            else:
+                ahead += int(resting.shown)
+                orders_ahead += 1
+        if not found:
+            return None
+        return {
+            "ahead": ahead,
+            "orders_ahead": orders_ahead,
+            "own": int(order.shown),
+            "behind": behind,
+            "orders_behind": orders_behind,
+            "level": int(book.depth_at(order.side, order.price)),
+        }
+    return None
+
+
 def _order_row(symbol: str, order: Any) -> dict[str, Any]:
     """One resting order, in prices, with the engine's own integer beside it.
 
@@ -1163,6 +1407,15 @@ def _order_row(symbol: str, order: Any) -> dict[str, Any]:
         "shown": int(order.shown),
         "post_only": bool(order.post_only),
         "status": order.status.value,
+        # A field on the order rather than a route beside it, which is what
+        # Kalshi has (``/portfolio/orders/{id}/queue_position``) and is the
+        # wrong shape here for two reasons. An order on this venue is keyed by
+        # ``(symbol, order_id)``, so the route would have to be a fourth path
+        # segment under one that already describes the order, and it would then
+        # describe the same order twice from two places that can drift. And a
+        # client running forty quotes wants forty queue positions: as a field
+        # it gets them from the one signed request it was already making.
+        "queue": _queue(symbol, order),
     }
 
 
@@ -1214,6 +1467,7 @@ def _working_orders(caller: _Caller) -> list[dict[str, Any]]:
                     "shown": None,
                     "post_only": None,
                     "status": "unknown",
+                    "queue": None,
                 }
             )
             continue
@@ -1222,9 +1476,31 @@ def _working_orders(caller: _Caller) -> list[dict[str, Any]]:
 
 
 def _position_rows(caller: _Caller) -> list[dict[str, Any]]:
+    """Every symbol this account has risk or a result in, settlements marked.
+
+    ``settled`` is read from the *account's* own set rather than from the
+    venue's, and the two are not the same question. The venue's set says a
+    contract paid out; the account's says this account was in it when it did,
+    which is the one an algorithm scores against. A symbol that settled while
+    this account held nothing is not one of its settlements and does not appear
+    here at all, because it has no position row.
+
+    It is a field on the position rather than a feed of its own because a
+    settlement *is* the end of a position, and the row already carries what the
+    caller needs beside it: ``realized_pnl`` is what the settlement paid, and
+    ``quantity`` is zero because the contract took the position away. Splitting
+    them would publish the same event twice and leave a client joining two
+    lists on a symbol to find out what one row already says.
+
+    Without it a closed position and a settled one are indistinguishable, and
+    they are different facts: one is a trade the account chose to make and the
+    other is the contract resolving, which is the only terminal event an
+    algorithm can be scored on.
+    """
     venue = _venue()
     marks = venue.marks()
     account = venue.account(caller.account)
+    settled = set(getattr(account, "settled", ()) or ())
     rows = []
     for symbol in venue.registry.symbols:
         position = account.positions.get(symbol)
@@ -1232,6 +1508,8 @@ def _position_rows(caller: _Caller) -> list[dict[str, Any]]:
             continue
         row = position.to_dict(marks.get(symbol))
         row["class"] = venue.registry.require(symbol).instrument_class
+        row["settled"] = symbol in settled
+        row["settlement"] = _settlement(symbol) if symbol in settled else None
         rows.append(row)
     return rows
 
@@ -1255,6 +1533,51 @@ def _paged(rows: list, limit: int, cap: int, key: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 # Public: the exchange itself
 # --------------------------------------------------------------------------
+
+
+def _candle_limits() -> list[dict[str, Any]]:
+    """The candle periods and the widest window each one can answer for.
+
+    Here, on the venue's own description, and not only inside a candle
+    response. ``GET /v1/instruments/{symbol}/candles`` refuses a range wider
+    than its ring retains rather than truncating it, which is the right
+    refusal and is worth nothing to a client that has to *provoke* it to learn
+    the number: a backfill chunks its window before it makes its first request,
+    so the cap has to be readable before that request, not after it. A client
+    that cannot read it either guesses low and makes ten times the calls, or
+    guesses high and spends its backfill collecting refusals.
+
+    The periods and the depths are the runner's rather than this module's (a
+    number restated in two files is a number that will disagree with itself),
+    so they are read off a live series. Every symbol's series is built the same
+    way, so one of them answers for all of them; a sorted symbol is taken
+    rather than an arbitrary one so two calls in a row cannot describe two
+    different symbols.
+    """
+    history = getattr(_runner(), "history", None) or {}
+    for symbol in sorted(history):
+        series = history[symbol]
+        rows = []
+        for period in getattr(series, "periods", ()) or ():
+            ring = series.ring(period)
+            if ring is None:
+                continue
+            rows.append(
+                {
+                    "period": int(period),
+                    "period_ns": int(ring.period_ns),
+                    "depth": int(ring.depth),
+                    # Both units, because the caller of this is chunking a
+                    # window and the venue's clock is in nanoseconds while the
+                    # period enum is in seconds. Publishing one and leaving the
+                    # client to convert is how a factor of a billion gets lost.
+                    "max_window_ns": int(ring.retains_ns),
+                    "max_window_s": int(ring.retains_ns // 1_000_000_000),
+                }
+            )
+        if rows:
+            return rows
+    return []
 
 
 @router.get("/exchange")
@@ -1296,6 +1619,9 @@ async def exchange() -> dict[str, Any]:
             "participants": len(market.agents),
             "seats": len(market.traders),
         },
+        # What the candle endpoint will answer for, readable before a client
+        # asks it anything. See :func:`_candle_limits`.
+        "candles": _candle_limits(),
         "session": {
             "phases": dict(sorted(sessions.items())),
             "fees": venue.fees.to_dict(),
@@ -1332,12 +1658,36 @@ async def instruments(
     request: Request,
     limit: str | None = None,
 ) -> dict[str, Any]:
-    """Everything listed, filtered by class or by subject.
+    """Everything listed, filtered by class, by subject, or by name.
 
-    Both filters are derived rather than declared: the class comes from the
-    payoff and the underlying, the subjects from the underlying's atoms. So
-    they work identically for all nine classes the venue lists and there is
-    nothing here that knows what a future or an option is.
+    The first two filters are derived rather than declared: the class comes
+    from the payoff and the underlying, the subjects from the underlying's
+    atoms. So they work identically for all nine classes the venue lists and
+    there is nothing here that knows what a future or an option is.
+
+    ``?symbols=A,B,C`` is the third, and it is what makes this endpoint a bulk
+    read rather than a full dump. A client watching a named universe (a
+    portfolio of forty, a research sweep of three hundred) wants exactly those
+    rows and wants them in one request: the quote is already on this row, so
+    with the filter the whole watchlist costs one call, and without it the
+    choice is between downloading the entire listing every poll and asking for
+    each symbol on its own. Three hundred round trips over a link with 20ms of
+    latency is six seconds to learn a touch that took one request to publish.
+    That is the same argument that put ``bid``/``ask`` on this row in the first
+    place, and a named filter is where it finishes.
+
+    A name that is not listed is reported in ``missing`` rather than refused.
+    A universe outlives any one market here: contracts expire, ``reconfigure``
+    replaces the whole roster, and a client that asked for three hundred
+    symbols and got two hundred and ninety needs to know *which* ten it lost,
+    which a 400 for the whole request does not tell it and a short list hides
+    entirely.
+
+    Rows come back in the venue's own listing order whatever was asked for, not
+    in the order the names were sent. That is what keeps ``limit`` stable: a
+    client paging a filtered listing gets the same rows in the same order every
+    time, and a row cannot move between pages because the request spelled its
+    name somewhere else.
 
     Filters arrive as query parameters and are matched case-insensitively;
     ``class`` is spelled out as a query parameter rather than an argument
@@ -1348,8 +1698,27 @@ async def instruments(
     wanted_subject = (params.get("subject") or "").strip().lower()
     page = _limit(limit, INSTRUMENTS_DEFAULT, INSTRUMENTS_CAP, "limit")
 
+    raw_symbols = (params.get("symbols") or "").strip()
+    names = [name.strip().upper() for name in raw_symbols.split(",") if name.strip()]
+    if len(names) > INSTRUMENTS_CAP:
+        # Bounded because ``missing`` is built from what the client sent, and a
+        # response whose size is chosen by the request is a way to spend the
+        # server's memory from outside it. The cap is the listing's own, so a
+        # request naming more symbols than this venue could ever list is a
+        # client bug rather than a large watchlist.
+        raise _refuse(
+            "invalid_request",
+            f"symbols names {len(names)} instruments and this venue serves at "
+            f"most {INSTRUMENTS_CAP} in one request",
+            named=len(names),
+            cap=INSTRUMENTS_CAP,
+        )
+    wanted_symbols = set(names)
+
     rows = []
     for symbol in _venue().registry.symbols:
+        if wanted_symbols and symbol.upper() not in wanted_symbols:
+            continue
         row = _instrument_row(symbol)
         if wanted_class and row["class"] != wanted_class:
             continue
@@ -1359,7 +1728,17 @@ async def instruments(
             continue
         rows.append(row)
     payload = _paged(rows, page, INSTRUMENTS_CAP, "instruments")
-    payload["filters"] = {"class": wanted_class or None, "subject": wanted_subject or None}
+    payload["filters"] = {
+        "class": wanted_class or None,
+        "subject": wanted_subject or None,
+        "symbols": sorted(wanted_symbols) or None,
+    }
+    # Only against the listing, never against the other two filters. A symbol
+    # that exists but was filtered out by ``class`` was found and excluded, and
+    # calling that missing would tell a client its universe had shrunk when it
+    # had only asked a narrower question.
+    listed = {symbol.upper() for symbol in _venue().registry.symbols}
+    payload["missing"] = sorted(wanted_symbols - listed)
     return payload
 
 
@@ -1498,6 +1877,183 @@ async def trades(symbol: str, limit: str | None = None) -> dict[str, Any]:
     payload["symbol"] = symbol
     payload["total"] = len(tape)
     return payload
+
+
+def _print_times(market: Any) -> dict[tuple[str, int], int]:
+    """When each recent print happened, by ``(symbol, sequence)``.
+
+    The engine reads no clock, by design: a ``Traded`` carries the engine's own
+    arrival sequence and nothing else, which is what lets a seeded replay
+    reproduce byte for byte. The venue agent stamps every print as it publishes
+    it, so the clock exists one layer up, in ``VenueAgent.public_log``, keyed by
+    exactly the pair a tape entry can be identified by.
+
+    That log is bounded at five thousand public messages and most of them are
+    quote updates, so it holds the recent past rather than the session. It is
+    enough: it is read on the way past to order prints this API has not seen
+    before, and any client polling more often than the log turns over gets
+    every one of its prints in true venue order.
+    """
+    stamps: dict[tuple[str, int], int] = {}
+    agent = getattr(market, "venue_agent", None)
+    for stamp, message in getattr(agent, "public_log", ()) or ():
+        symbol = getattr(message, "symbol", None)
+        sequence = getattr(message, "sequence", None)
+        if symbol is None or sequence is None or not hasattr(message, "aggressor_side"):
+            continue
+        stamps[(str(symbol), int(sequence))] = int(stamp)
+    return stamps
+
+
+def _tape_index() -> list[tuple[int | None, str, Any]]:
+    """The venue-wide tape, brought up to date, oldest first.
+
+    Merged here rather than kept by the exchange, because the exchange has no
+    reason to keep one: an engine's tape is per book and complete, and nothing
+    inside the simulation ever wants them interleaved. A recorder outside it
+    does, and the merge is cheap: each sweep reads only what has been printed
+    since the last one, and stores a reference to the print the engine already
+    holds rather than a copy.
+
+    The ordering is the point, so it is worth being exact about what it
+    promises. Within one symbol it is the engine's own sequence and is exact
+    always. Across symbols it is the stamp the venue agent put on the print,
+    which is exact for every print still in ``public_log`` when this API first
+    saw it, and that is every print for a client polling faster than that log
+    turns over. A print older than the log when it was first merged carries no
+    stamp, sorts before the stamped ones and is grouped with its symbol, and it
+    says so by publishing ``t: null`` rather than a guess.
+
+    An ordinal, once assigned, never changes. That is what the cursor rests on
+    and it holds because both structures underneath are append-only: an engine
+    never drops a print from its tape, and this list only ever grows within a
+    generation.
+    """
+    global _TAPE_GENERATION
+    runner = _runner()
+    generation = int(getattr(runner, "generation", 0))
+    market = runner.market
+    venue = market.venue
+    with _TAPE_LOCK:
+        if generation != _TAPE_GENERATION:
+            # Ordinals mean nothing outside the market that minted them, and
+            # neither do the prints. A client is told the generation on every
+            # page so that it can see this happen rather than infer it from a
+            # cursor that suddenly addresses different trades.
+            _TAPE_GENERATION = generation
+            _TAPE.clear()
+            _TAPE_SEEN.clear()
+
+        fresh: list[tuple[int | None, str, Any]] = []
+        stamps: dict[tuple[str, int], int] | None = None
+        for symbol in venue.registry.symbols:
+            tape = venue.engine(symbol).tape
+            seen = _TAPE_SEEN.get(symbol, 0)
+            if len(tape) <= seen:
+                continue
+            if stamps is None:
+                # Built once per sweep and only when there is something to
+                # stamp, because a walk of five thousand log entries on every
+                # poll of a quiet market is work for nothing.
+                stamps = _print_times(market)
+            for trade in tape[seen:]:
+                fresh.append(
+                    (stamps.get((symbol, int(trade.sequence))), symbol, trade)
+                )
+            _TAPE_SEEN[symbol] = len(tape)
+
+        if fresh:
+            # Stamp first, then symbol, then the engine's sequence. The last of
+            # the three is what makes the sort total: two prints stamped in the
+            # same simulated nanosecond on one book still have a defined order,
+            # and it is the order the engine matched them in.
+            fresh.sort(
+                key=lambda row: (-1 if row[0] is None else row[0], row[1], int(row[2].sequence))
+            )
+            _TAPE.extend(fresh)
+        return _TAPE
+
+
+@router.get("/trades")
+async def tape(request: Request) -> dict[str, Any]:
+    """Every print on this venue, newest first, paged by cursor. No credential.
+
+    ``?cursor=&limit=``. The feed a recorder reads, and the one thing the
+    per-instrument tape at ``/v1/instruments/{symbol}/trades`` cannot be: that
+    endpoint answers about one book, so following the venue through it costs
+    one request per listed contract per poll, and it has no cursor, so the only
+    way to tell an unseen print from one already recorded is to re-read the
+    whole window and diff it.
+
+    **Newest first, and the cursor walks backwards.** This is Kalshi's contract
+    and it is the right way round for a feed that is still growing. A cursor
+    into history addresses rows that new prints cannot disturb, so a client
+    walking back through pages sees every row exactly once, and a client
+    catching up starts at the head every poll and stops at the first
+    ``trade_id`` it already holds. The opposite arrangement, a cursor that
+    persists across polls and pages forward, was measured on the venue this
+    shape is copied from: each poll walked further into the past and the
+    recorder never saw a new print at all.
+
+    **A print's identity is ``{symbol}:{sequence}``, not its price.** Prices
+    repeat constantly in a narrow market, so anything identifying a trade by
+    one will quietly match the wrong one. The sequence is the engine's own
+    match number and the symbol says which engine minted it, which makes the
+    pair unique for the life of a market and stable across every read of it.
+
+    **The cursor is a string.** It is an ordinal underneath and it is published
+    quoted, because a client that tests a cursor for truthiness before paging
+    with it (``data.get("cursor") or None`` is how the client this was written
+    for does it) would read the oldest page as the end of the feed if that
+    ordinal were ever zero. ``null`` means there is nothing older, and it is
+    the only thing that means it.
+
+    ``t`` is the simulated nanosecond the print was published at, on the clock
+    ``/v1/exchange`` calls ``clock``, or null for a print that was already
+    older than the venue's public log when this feed first merged it. See
+    :func:`_tape_index` for exactly what the ordering promises.
+    """
+    params = request.query_params
+    page = _limit(params.get("limit"), TAPE_DEFAULT, TAPE_CAP, "limit")
+    cursor = _cursor(params.get("cursor"), "cursor")
+
+    index = _tape_index()
+    venue = _venue()
+    # Exclusive, so the row the cursor names is the last row of the previous
+    # page and is never handed out twice.
+    end = len(index) if cursor is None else min(cursor, len(index))
+    start = max(0, end - page)
+    rows = []
+    for ordinal in range(end - 1, start - 1, -1):
+        stamp, symbol, trade = index[ordinal]
+        instrument = venue.registry.get(symbol)
+        if instrument is None:
+            # A contract that was listed when it printed and is not listed now.
+            # Skipped rather than priced against another instrument's grid,
+            # which is the one way this loop could publish a wrong number.
+            continue
+        rows.append(
+            {
+                "trade_id": f"{symbol}:{int(trade.sequence)}",
+                "ordinal": ordinal,
+                "symbol": symbol,
+                "sequence": int(trade.sequence),
+                "t": None if stamp is None else int(stamp),
+                "price": str(instrument.from_ticks(trade.price)),
+                "quantity": int(trade.quantity),
+                "aggressor_side": trade.aggressor_side.value,
+            }
+        )
+    return {
+        "trades": rows,
+        "cursor": None if start <= 0 else str(start),
+        "count": len(rows),
+        "total": len(index),
+        "limit": page,
+        "cap": TAPE_CAP,
+        "generation": int(getattr(_runner(), "generation", 0)),
+        "clock": int(_market().kernel.now),
+    }
 
 
 @router.get("/instruments/{symbol}/history")

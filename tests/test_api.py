@@ -351,13 +351,15 @@ def floats_in(node, path: str = "") -> list[str]:
     return []
 
 
-def resting_price(exchange: Exchange, symbol: str, side: str = "buy") -> Decimal:
+def resting_price(
+    exchange: Exchange, symbol: str, side: str = "buy", inside: int = 1
+) -> Decimal:
     """A price that will rest rather than trade, on the instrument's own grid.
 
-    One increment inside the far end of what the contract can settle at. A bid
-    there can only be filled by somebody selling a claim for the least it could
-    possibly be worth, and the venue's own price band refuses to match that far
-    from the reference in any case.
+    ``inside`` increments in from the far end of what the contract can settle
+    at. A bid there can only be filled by somebody selling a claim for close to
+    the least it could possibly be worth, and the venue's own price band
+    refuses to match that far from the reference in any case.
 
     It used to be halfway between the touch and that bound, which is a
     different rule that happens to agree on wide contracts and fails badly on
@@ -368,6 +370,21 @@ def resting_price(exchange: Exchange, symbol: str, side: str = "buy") -> Decimal
     filled inside a single pump, and a call option's bid went the same way.
     Both are ordinary price moves rather than anything wrong with the venue,
     which is what made the failures read as API defects.
+
+    ``inside=0`` is the bound itself, and it is the only price that rests on
+    *every* class rather than on almost all of them. Measured on
+    `EMBER_OBJECTIVE_P5000`, a put bounded by [0, 5,000] whose whole traded
+    range sits at the bottom of that: its book was 0.00 bid at 1.50 offered, so
+    one increment inside the floor is 0.25, which is inside the spread, and it
+    filled within one pump. There is no room at all on that contract, because
+    the floor is where the bid already is.
+
+    The default is one increment in anyway, because the floor is also where a
+    long stops costing anything: collateral is the worst case over the
+    settlement range, so a bid exactly at the floor reserves zero, and the
+    tests that measure what an account can fund would be dividing by it. A
+    caller that needs the price to rest on every class asks for ``inside=0``
+    and does not measure collateral against it.
 
     Derived per instrument rather than chosen, because a constant would be a
     price on one contract and off the grid of another. These are listed on
@@ -380,9 +397,9 @@ def resting_price(exchange: Exchange, symbol: str, side: str = "buy") -> Decimal
     instrument = exchange.venue.registry.require(symbol)
     low, high = instrument.value_bounds
     if side == "buy":
-        target = low + instrument.increment_at(low)
+        target = low + inside * instrument.increment_at(low)
     else:
-        target = high - instrument.increment_at(high)
+        target = high - inside * instrument.increment_at(high)
 
     # Rounded away from the market on both sides, so snapping never makes the
     # order more aggressive than the test intended.
@@ -941,6 +958,538 @@ def test_the_candles_endpoint_publishes_what_it_holds_and_what_it_applied(candle
     # request is about the present.
     wide = candles(candled, symbol, "period=1&limit=1000")
     assert payload["candles"] == wide["candles"][-3:]
+
+
+# --------------------------------------------------------------------------
+# What a client outside this repository actually needs
+#
+# Two of them exist and neither imports the exchange: a Kalshi-shaped research
+# engine that reads a universe, a tape, candles and settlements over HTTP with
+# no account at all, and an Alpaca-shaped portfolio manager that trades through
+# the nine methods of a broker interface. Everything in this section is a call
+# one of them makes and a shape it parses, so a change that breaks one of them
+# fails here rather than in somebody else's process.
+# --------------------------------------------------------------------------
+
+
+# How many prints the venue-wide tape tests want in front of them. Enough for
+# more than one page at a quarter of the cap, so that paging is exercised
+# rather than described.
+TRADES_WANTED = 400
+
+
+def tape_total(venue: Exchange) -> int:
+    """How many prints this venue has published, through the API."""
+    response = venue.client.get("/v1/trades?limit=1")
+    assert response.status_code == 200, response.text
+    return response.json()["total"]
+
+
+@pytest.fixture(scope="module")
+def taped():
+    """A market pumped until its venue-wide tape is long enough to page.
+
+    Pumped against the tape's own length rather than for a fixed number of
+    milliseconds, for the reason the candle fixture gives and then some. How
+    much market a fixed pump buys depends on the machine, and how much *tape*
+    it buys depends on the listing as well: measured on one roster, a market
+    pumped for 500 simulated milliseconds had printed nothing at all and the
+    same market at 600 had printed seventy-two. A paging test written against
+    a millisecond count passes over an empty feed the moment the contracts
+    change, which is a test that reports on the fixture rather than on the API.
+    """
+    venue = Exchange()
+    venue.pump(1_000, slices=20)
+    for _ in range(12):
+        if tape_total(venue) >= TRADES_WANTED:
+            break
+        venue.pump(2_000, slices=40)
+    assert tape_total(venue) >= TRADES_WANTED, "this market never traded enough to page"
+    yield venue
+    venue.close()
+
+
+def settle_now(venue: Exchange, symbol: str):
+    """Settle one contract exactly the way the market settles it itself.
+
+    ``LiveMarket.settle_due`` waits for the contract calendar to pass an
+    expiry, which on the default season is weeks of simulated time away. This
+    calls the same ``settlement_source`` with the same spec and applies the
+    result through the same ``Venue.settle``, so what the API is then asked
+    about is a genuine settlement and not a fixture pretending to be one.
+    """
+    instrument = venue.venue.registry.require(symbol)
+    result = venue.runner.market.settlement_source(instrument.spec)
+    venue.venue.settle(symbol, result)
+    return result
+
+
+def positions_of(trader: "Client") -> dict[str, dict]:
+    """This account's position rows, by symbol."""
+    payload = trader.get("/v1/account/positions").json()
+    return {row["symbol"]: row for row in payload["positions"]}
+
+
+def working_order(trader: "Client", client_order_id: str) -> dict:
+    """One of this account's resting orders, by the id it was placed under."""
+    working = trader.get("/v1/orders").json()
+    rows = [
+        row for row in working["orders"]
+        if row["client_order_id"] == client_order_id
+    ]
+    assert rows, working
+    return rows[0]
+
+
+def test_a_named_bulk_read_answers_a_watchlist_in_one_request(exchange):
+    """A client watching three hundred symbols must not make three hundred calls.
+
+    The touch is already on every listing row, which is what makes one request
+    enough; ``?symbols=`` is what lets a client ask for its own universe rather
+    than downloading the whole listing to throw most of it away. Over a link
+    with 20ms of latency the difference is one round trip against six seconds.
+    """
+    everything = exchange.client.get("/v1/instruments?limit=1000").json()
+    rows = everything["instruments"]
+    wanted = [rows[0]["symbol"], rows[3]["symbol"], rows[-1]["symbol"]]
+
+    payload = exchange.client.get(
+        "/v1/instruments?symbols=" + ",".join(wanted)
+    ).json()
+    assert {row["symbol"] for row in payload["instruments"]} == set(wanted)
+    assert payload["total"] == len(wanted)
+    assert payload["missing"] == []
+    assert payload["filters"]["symbols"] == sorted(wanted)
+
+    # The quote travels with the row, which is the reason one request is
+    # enough. Compared against the unfiltered listing so the filter cannot be
+    # serving a cheaper row than the dump does.
+    full = {row["symbol"]: row for row in rows}
+    for row in payload["instruments"]:
+        assert row == full[row["symbol"]], row["symbol"]
+        assert {"bid", "ask", "bid_size", "ask_size", "mark"} <= set(row)
+
+
+def test_a_named_read_comes_back_in_listing_order_however_it_was_asked(exchange):
+    """Rows are the venue's order, not the request's, or ``limit`` is unstable.
+
+    A client that pages a filtered listing has to see the same rows in the same
+    places every time. If the order came from the query string, a row would move
+    between pages because the request happened to spell its name somewhere else,
+    and the client would see it twice or not at all.
+    """
+    listed = list(exchange.symbols())
+    wanted = [listed[4], listed[0], listed[2]]
+    forwards = exchange.client.get(
+        "/v1/instruments?symbols=" + ",".join(wanted)
+    ).json()["instruments"]
+    backwards = exchange.client.get(
+        "/v1/instruments?symbols=" + ",".join(reversed(wanted))
+    ).json()["instruments"]
+
+    order = [row["symbol"] for row in forwards]
+    assert order == [row["symbol"] for row in backwards]
+    assert order == [symbol for symbol in listed if symbol in set(wanted)]
+
+
+def test_a_name_that_is_not_listed_is_reported_rather_than_refused(exchange):
+    """A universe outlives any one market here: contracts expire and a rebuild
+    replaces the whole roster. A client that asked for three hundred names and
+    got two hundred and ninety needs to know which ten it lost, which neither a
+    400 for the whole request nor a silently short list tells it."""
+    listed = exchange.symbols()[0]
+    payload = exchange.client.get(
+        f"/v1/instruments?symbols={listed},NOPE,GONE"
+    ).json()
+    assert [row["symbol"] for row in payload["instruments"]] == [listed]
+    assert payload["missing"] == ["GONE", "NOPE"]
+
+    # Case-insensitively, like the other two filters on this endpoint. A filter
+    # that means something different depending on how it is spelled is a filter
+    # that will be spelled wrong.
+    lowered = exchange.client.get(
+        f"/v1/instruments?symbols={listed.lower()}"
+    ).json()
+    assert [row["symbol"] for row in lowered["instruments"]] == [listed]
+
+
+def test_a_symbol_list_longer_than_the_listing_is_refused(exchange):
+    """``missing`` is built from what the client sent, so an unbounded list of
+    names is a response whose size the request chooses, which is a way to spend
+    the server's memory from outside it."""
+    names = ",".join(f"S{n}" for n in range(rest.INSTRUMENTS_CAP + 1))
+    response = exchange.client.get(f"/v1/instruments?symbols={names}")
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["detail"]["cap"] == rest.INSTRUMENTS_CAP
+
+
+def test_the_venue_wide_tape_needs_no_credential_and_names_every_print(taped):
+    """The feed a recorder reads in shadow mode, with no account anywhere.
+
+    Per symbol it would be one request per listed contract per poll, and a
+    print identified by its price would be the wrong print: prices repeat
+    constantly in a narrow market, so identity has to come from the engine's own
+    match number and the book that minted it.
+    """
+    payload = taped.client.get("/v1/trades?limit=250").json()
+    assert payload["count"] > 0
+    assert payload["cap"] == rest.TAPE_CAP
+    assert payload["generation"] == 0
+
+    for row in payload["trades"]:
+        assert row["trade_id"] == f"{row['symbol']}:{row['sequence']}"
+        assert isinstance(row["price"], str)
+        Decimal(row["price"])  # exact, or this raises
+        assert isinstance(row["quantity"], int)
+        assert row["aggressor_side"] in ("buy", "sell")
+        assert row["t"] is None or isinstance(row["t"], int)
+
+    # Venue-wide rather than one book's tape under a new name.
+    assert len({row["symbol"] for row in payload["trades"]}) > 1
+
+
+def test_the_tape_pages_by_cursor_without_repeating_or_skipping_a_print(taped):
+    """The property a cursor exists for, asserted over the whole feed.
+
+    Walked to the beginning and checked against the ordinals rather than
+    against a count, because a count cannot tell "I saw two pages of fifty" from
+    "I saw one page twice". Every ordinal from zero to the total has to turn up
+    exactly once, and the walk has to be monotonically backwards.
+    """
+    head = taped.client.get("/v1/trades?limit=250").json()
+    assert head["total"] > head["count"], "one page holds the whole tape"
+
+    seen: list[int] = []
+    cursor = head["cursor"]
+    assert isinstance(cursor, str), "a cursor tested for truthiness must not be 0"
+    seen.extend(row["ordinal"] for row in head["trades"])
+
+    for _ in range(2_000):
+        if cursor is None:
+            break
+        page = taped.client.get(f"/v1/trades?limit=250&cursor={cursor}").json()
+        assert page["count"] <= 250
+        seen.extend(row["ordinal"] for row in page["trades"])
+        cursor = page["cursor"]
+    else:
+        raise AssertionError("the tape never reached its beginning")
+
+    assert seen == sorted(seen, reverse=True), "a page went forwards"
+    assert len(seen) == len(set(seen)), "a print was handed out twice"
+    assert set(seen) == set(range(head["total"])), "a print was skipped"
+
+
+def test_a_cursor_that_is_not_a_cursor_is_refused_in_the_catalogue_terms(taped):
+    """A client that sends a cursor it built itself, or one from another market,
+    should be told so rather than handed the head of the tape. Answering a
+    nonsense cursor with the newest page is how a recorder resumes from the
+    wrong place and never finds out."""
+    for query in ("cursor=later", "cursor=-1", "limit=0"):
+        response = taped.client.get(f"/v1/trades?{query}")
+        assert response.status_code == 400, query
+        assert response.json()["error"]["code"] == "invalid_request", query
+
+    # Zero is a legitimate cursor and means "nothing older than the beginning",
+    # which is an empty page rather than a refusal.
+    empty = taped.client.get("/v1/trades?cursor=0").json()
+    assert empty["trades"] == [] and empty["cursor"] is None
+
+    # And one past the end is clamped rather than refused: a client whose
+    # cursor is older than this market is behind, not wrong.
+    head = taped.client.get("/v1/trades?limit=5").json()
+    beyond = taped.client.get(
+        f"/v1/trades?limit=5&cursor={head['total'] + 1_000}"
+    ).json()
+    assert beyond["trades"] == head["trades"]
+
+
+def test_a_tape_cursor_is_not_disturbed_by_prints_that_arrive_after_it(fresh):
+    """Newest first, with the cursor walking backwards, is the whole reason the
+    paging is stable: new prints land above a cursor and cannot move the rows
+    below it. The opposite arrangement was measured on the venue this shape is
+    copied from, where a cursor that persisted across polls walked further into
+    the past every time and the recorder never saw a new print at all."""
+    venue = fresh()
+    # Its own market, because this one has to keep trading after it has read a
+    # cursor, and pumped against the tape rather than the clock for the reason
+    # the ``taped`` fixture gives.
+    venue.pump(1_000, slices=20)
+    for _ in range(12):
+        if tape_total(venue) > 20:
+            break
+        venue.pump(2_000, slices=40)
+
+    head = venue.client.get("/v1/trades?limit=20").json()
+    cursor = head["cursor"]
+    assert cursor is not None, "one page holds the whole tape, so nothing is below it"
+    before = venue.client.get(f"/v1/trades?limit=20&cursor={cursor}").json()
+    assert before["trades"], "no rows below the cursor to be disturbed"
+
+    venue.pump(2_000, slices=40)
+
+    after = venue.client.get(f"/v1/trades?limit=20&cursor={cursor}").json()
+    assert after["trades"] == before["trades"]
+    assert venue.client.get("/v1/trades?limit=20").json()["total"] > head["total"]
+
+
+def test_the_exchange_publishes_the_widest_candle_window_it_can_answer_for(candled):
+    """A backfill chunks its window *before* it makes its first request.
+
+    The candle endpoint refuses a range wider than its ring retains rather than
+    truncating it, which is the right refusal and is worth nothing to a client
+    that has to provoke it to learn the number. Published on the venue's own
+    description, a client reads the cap once and chunks correctly; without it,
+    it either guesses low and makes ten times the calls or guesses high and
+    spends the backfill collecting refusals.
+    """
+    published = candled.client.get("/v1/exchange").json()["candles"]
+    assert published, "no candle periods published"
+    symbol = candled.symbols()[0]
+
+    for entry in published:
+        assert entry["max_window_ns"] == entry["period_ns"] * entry["depth"]
+        assert entry["max_window_s"] * 1_000_000_000 == entry["max_window_ns"]
+        # The same numbers the endpoint itself enforces against, or the cap a
+        # client reads here is not the cap it will be refused by.
+        page = candles(candled, symbol, f"period={entry['period']}&limit=1")
+        assert page["cap"] == entry["depth"]
+        assert page["retains_ns"] == entry["max_window_ns"]
+        assert page["period_ns"] == entry["period_ns"]
+
+    assert [entry["period"] for entry in published] == candles(
+        candled, symbol, "period=1&limit=1"
+    )["periods"]
+
+
+def test_a_settled_contract_publishes_its_result_without_a_credential(fresh):
+    """Settlement is market data, so it reads with no account.
+
+    The half of the settlement story that works in shadow mode: how the
+    contract resolved is a fact about the contract, and a research client
+    scoring a strategy against outcomes it never held a position in needs it
+    without holding an account at all.
+
+    On a market of its own rather than the shared one, because settling is the
+    one read-only-looking act in this file that is not: it pays out every
+    account in the venue and closes the book for good.
+    """
+    exchange = fresh()
+    exchange.pump(300, slices=12)
+    symbol = exchange.symbols()[0]
+    before = exchange.client.get(f"/v1/instruments/{symbol}").json()["settlement"]
+    assert before == {
+        "status": "open",
+        "settled": False,
+        "voided": False,
+        "value": None,
+        "ticks": None,
+        "reason": None,
+        "digest": None,
+    }
+
+    result = settle_now(exchange, symbol)
+    after = exchange.client.get(f"/v1/instruments/{symbol}").json()["settlement"]
+    assert after["settled"] is True
+    assert after["status"] == ("void" if result.void_reason else "settled")
+    assert after["voided"] is (result.settlement_value is None)
+    if result.settlement_value is not None:
+        assert after["value"] == str(result.settlement_value)
+        assert isinstance(after["value"], str), "a settlement value is not a double"
+        assert after["ticks"] == int(
+            exchange.venue.registry.require(symbol).to_ticks(result.settlement_value)
+        )
+    # The content address of the whole record, inputs and provenance included,
+    # so a client can check that two readings of this describe one settlement.
+    assert after["digest"] == result.result_digest
+
+    # And the same block on the bulk read, because a settlements recorder and a
+    # quote recorder ask about the same three hundred rows.
+    bulk = exchange.client.get(f"/v1/instruments?symbols={symbol}").json()
+    assert bulk["instruments"][0]["settlement"] == after
+
+
+def test_a_contract_that_is_still_live_is_never_given_a_settlement_value(exchange):
+    """The look-ahead guard, and the only rule in this area that matters.
+
+    The oracle will answer for a contract whose window has not closed:
+    ``build_market`` settles every listed instrument at construction to price
+    the agents' priors, so ``settlement_source`` returns a well formed number
+    for a market that is still trading. Publishing it would hand a client the
+    answer before the market has it, and a backtest scored against a price it
+    could read in advance is not a backtest. So the value comes from the set
+    the venue has actually paid out on and from nowhere else.
+    """
+    rows = exchange.client.get("/v1/instruments?limit=1000").json()["instruments"]
+    settled = set(exchange.venue.settled_symbols)
+    live = [row for row in rows if row["symbol"] not in settled]
+    assert live, "every contract has settled; this test proves nothing"
+
+    for row in live:
+        assert row["settlement"]["settled"] is False, row["symbol"]
+        assert row["settlement"]["value"] is None, row["symbol"]
+        assert row["settlement"]["ticks"] is None, row["symbol"]
+
+    # The guard is doing work rather than describing an oracle that could not
+    # have answered anyway.
+    spec = exchange.venue.registry.require(live[0]["symbol"]).spec
+    assert exchange.runner.market.settlement_source(spec).settlement_value is not None
+
+
+def test_a_settled_position_is_told_apart_from_one_that_was_traded_out(fresh):
+    """The account's own half of settlement, which is a different question.
+
+    Both leave a position flat with a realised result, and an algorithm can
+    only be scored on one of them: closing a trade is a decision it made, and a
+    settlement is the contract resolving. Without the flag on the row the two
+    are indistinguishable, and a symbol that settled while this account held
+    nothing is not this account's settlement at all.
+    """
+    venue = fresh()
+    venue.pump(400, slices=16)
+    trader = venue.trader("Holder")
+    held = venue.restable()
+    untouched = next(symbol for symbol in venue.symbols() if symbol != held)
+
+    placed = trader.post("/v1/orders", {"symbol": held, "side": "buy", "quantity": 2})
+    assert placed.status_code == 202, placed.text
+    venue.pump(300, slices=12)
+
+    rows = positions_of(trader)
+    assert held in rows, rows
+    assert rows[held]["settled"] is False
+    assert rows[held]["settlement"] is None
+
+    settle_now(venue, held)
+    settle_now(venue, untouched)
+
+    rows = positions_of(trader)
+    assert rows[held]["settled"] is True
+    assert rows[held]["settlement"]["settled"] is True
+    assert rows[held]["settlement"]["status"] in ("settled", "void")
+    # The contract took the position away and left the result behind.
+    assert rows[held]["quantity"] == 0
+    assert isinstance(rows[held]["realized_pnl"], str)
+
+    # Settled on the venue, and not this account's settlement: it never held it.
+    assert untouched not in rows
+
+
+def test_a_resting_order_reports_what_is_in_front_of_it_in_the_queue(fresh):
+    """Without this an outside backtest overstates every fill it models.
+
+    A shadow fill model that knows only "my order was at 4,700 and the book
+    traded at 4,700" has to assume it was filled, which is an upper bound on its
+    own performance rather than a measurement of it. The venue can answer
+    exactly, because the engine's priority is (price, arrival) and arrival is a
+    monotonic sequence rather than a clock.
+    """
+    venue = fresh()
+    venue.pump(400, slices=16)
+    symbol = venue.restable()
+    price = resting_price(venue, symbol, "buy")
+    front = venue.trader("Front")
+    back = venue.trader("Back")
+
+    for trader, size, handle in ((front, 4, "front"), (back, 6, "back")):
+        placed = trader.post(
+            "/v1/orders",
+            {
+                "symbol": symbol,
+                "side": "buy",
+                "quantity": size,
+                "price": str(price),
+                "type": "limit",
+                "time_in_force": "gtc",
+                "client_order_id": handle,
+            },
+        )
+        assert placed.status_code == 202, placed.text
+        # Between the two, so the arrival order the queue reports is the order
+        # this test asked for rather than whichever crossed the link first.
+        venue.pump(300, slices=12)
+
+    leading = working_order(front, "front")["queue"]
+    trailing = working_order(back, "back")["queue"]
+
+    assert leading["own"] == 4 and trailing["own"] == 6
+    assert leading["ahead"] == 0 and leading["orders_ahead"] == 0
+    assert trailing["ahead"] == leading["ahead"] + leading["own"]
+    assert trailing["orders_ahead"] == 1
+    assert leading["behind"] >= trailing["own"]
+
+    for queue in (leading, trailing):
+        # The identity that says the walk skipped what the book skips: a cancel
+        # is tombstoned in the queue rather than spliced out of it, and a naive
+        # sum counts lots nothing can trade against.
+        assert queue["ahead"] + queue["own"] + queue["behind"] == queue["level"]
+
+    ladder = venue.client.get(f"/v1/instruments/{symbol}/book?depth=100").json()
+    depth = {Decimal(level): size for level, size in ladder["bids"]}
+    assert depth[price] == leading["level"]
+
+
+def test_a_cancelled_order_stops_counting_against_the_queue_behind_it(fresh):
+    """The tombstone, which is the subtle half of the arithmetic.
+
+    ``OrderBook.remove`` marks a cancel terminal and leaves it in the deque,
+    because splicing it out would make cancelling O(queue) in a market where
+    cancelling is the common operation. A queue position that counted it would
+    tell the order behind it that four lots it can never be beaten by are still
+    in front of it, which is exactly the pessimism that makes a fill model wrong
+    in the other direction.
+    """
+    venue = fresh()
+    venue.pump(400, slices=16)
+    symbol = venue.restable()
+    price = resting_price(venue, symbol, "buy")
+    front = venue.trader("Leaver")
+    back = venue.trader("Stayer")
+
+    for trader, handle in ((front, "leaver"), (back, "stayer")):
+        placed = trader.post(
+            "/v1/orders",
+            {
+                "symbol": symbol,
+                "side": "buy",
+                "quantity": 4,
+                "price": str(price),
+                "type": "limit",
+                "time_in_force": "gtc",
+                "client_order_id": handle,
+            },
+        )
+        assert placed.status_code == 202, placed.text
+        venue.pump(300, slices=12)
+
+    leaving = working_order(front, "leaver")
+    before = working_order(back, "stayer")["queue"]
+    assert before["ahead"] >= 4
+
+    pulled = front.delete(f"/v1/orders/{symbol}/{leaving['order_id']}")
+    assert pulled.status_code == 200, pulled.text
+    venue.pump(300, slices=12)
+
+    after = working_order(back, "stayer")["queue"]
+    assert after["ahead"] == before["ahead"] - leaving["quantity"]
+    assert after["ahead"] + after["own"] + after["behind"] == after["level"]
+
+
+def test_no_json_number_carries_money_on_the_feeds_an_outside_client_reads(taped):
+    """The rule the whole ledger rests on, held at the two surfaces added for
+    clients that parse them without a schema. A double cannot hold a tick, and
+    a price that arrives as one has already lost the exactness that makes
+    ``conservation_check`` exactly zero rather than nearly zero."""
+    tape = json.loads(taped.client.get("/v1/trades?limit=100").text)
+    assert floats_in(tape) == []
+    assert tape["trades"], "no prints to check"
+
+    listing = json.loads(taped.client.get("/v1/instruments?limit=1000").text)
+    assert floats_in(listing) == []
+    for row in listing["instruments"]:
+        value = row["settlement"]["value"]
+        assert value is None or isinstance(value, str), row["symbol"]
 
 
 # --------------------------------------------------------------------------
@@ -1540,6 +2089,7 @@ def test_every_list_endpoint_publishes_the_cap_it_applied(exchange):
     symbol = exchange.symbols()[0]
     for path in (
         "/v1/instruments?limit=2",
+        "/v1/trades?limit=2",
         f"/v1/instruments/{symbol}/trades?limit=2",
         f"/v1/instruments/{symbol}/history?limit=2",
         f"/v1/instruments/{symbol}/candles?period=1&limit=2",
@@ -1847,6 +2397,10 @@ def _one_increment_below(venue: Exchange, symbol: str, price: Decimal) -> Decima
     subtraction, because one of these contracts carries a tick *table* whose
     increment changes with the level, so a single pass can step into a coarser
     band and land off its grid.
+
+    Its caller must not have asked ``resting_price`` for ``inside=0``: this
+    steps below the price it is given, and nothing can rest below the
+    settlement floor.
     """
     listing = venue.venue.registry.require(symbol)
     target = price - listing.increment_at(price)
@@ -1858,9 +2412,16 @@ def _one_increment_below(venue: Exchange, symbol: str, price: Decimal) -> Decima
     raise AssertionError(f"no on-grid price below {price} on {symbol}")
 
 
-def _rest_one(venue: Exchange, trader: "Client", symbol: str, quantity: int = 10, **extra):
+def _rest_one(
+    venue: Exchange,
+    trader: "Client",
+    symbol: str,
+    quantity: int = 10,
+    inside: int = 1,
+    **extra,
+):
     """One order resting where nothing else quotes, and its live row."""
-    price = resting_price(venue, symbol, "buy")
+    price = resting_price(venue, symbol, "buy", inside=inside)
     placed = trader.post(
         "/v1/orders",
         {
@@ -2754,7 +3315,14 @@ def test_value_is_conserved_exactly_through_the_api(fresh):
 
 def test_every_asset_class_takes_an_order_through_the_api(fresh):
     """The venue is uniform over its classes, so the API is too. Nine classes,
-    one code path, no branch anywhere on what kind of claim it is."""
+    one code path, no branch anywhere on what kind of claim it is.
+
+    The only test that asks ``resting_price`` for the bound itself, because it
+    is the only one that has to rest on *every* class at once. A deep put whose
+    whole traded range sits at the bottom of its declared one has its bid on
+    the floor already, so one increment in is inside its spread and fills;
+    ``resting_price`` says what that measurement was.
+    """
     venue = fresh()
     venue.pump(400, slices=16)
     trader = venue.trader("Everything")
@@ -2766,7 +3334,7 @@ def test_every_asset_class_takes_an_order_through_the_api(fresh):
             _order(
                 symbol,
                 quantity=1,
-                price=str(resting_price(venue, symbol, "buy")),
+                price=str(resting_price(venue, symbol, "buy", inside=0)),
                 time_in_force="gtc",
                 client_order_id=f"cid-{instrument_class}",
             ),

@@ -29,7 +29,11 @@ MAIN = ROOT / "dashboard" / "static" / "js" / "main.js"
 INDEX = ROOT / "dashboard" / "static" / "index.html"
 
 OPERATOR_ONLY = ("players", "research", "lab")
-EVERYONE = ("markets", "trade", "portfolio")
+# Standings is public on purpose. On a venue whose population is the
+# experiment, who is winning is the most interesting thing on it, and a trader
+# comparing themselves with the resident agents is asking the operator's own
+# question. What stays behind /desk is the controls, not the scoreboard.
+EVERYONE = ("markets", "trade", "portfolio", "standings")
 
 
 @pytest.fixture(scope="module")
@@ -104,8 +108,32 @@ def test_the_surface_is_decided_by_the_path(source):
 
 
 def test_the_directory_is_only_fetched_where_it_is_shown(source):
-    """A trader's browser should not poll for a screen it cannot open."""
+    """A trader's browser should not poll for a screen it cannot open.
+
+    Standings is the counter-example and is fetched on both, because both
+    offer the screen. The rule is that a fetch follows its view, not that the
+    public surface fetches less.
+    """
     assert "if (SURFACE === 'desk') wanted.push(json('/api/players'));" in source
+    assert "wanted.push(json('/api/standings'));" in source
+
+
+def test_the_speed_control_is_not_offered_to_a_trader(source):
+    """An exchange does not have a speed dial, and this one should not show one.
+
+    What it sets is how fast simulated time runs against the wall clock, which
+    is what the person running the experiment wants and what the person trading
+    on it must never have: a market whose clock speed can be changed by
+    somebody who is long is not a market. It sat in the header on both surfaces
+    until somebody asked why an exchange has a slider.
+
+    Removed rather than disabled, because a dead control still in the tab order
+    invites a person to try it and then refuses them with no explanation.
+    """
+    assert "stripOperatorControls" in source
+    assert "document.getElementById('speed-control')?.remove();" in source
+    markup = INDEX.read_text(encoding="utf-8")
+    assert 'id="speed-control"' in markup
 
 
 def test_the_players_endpoint_answers_for_this_market(client):

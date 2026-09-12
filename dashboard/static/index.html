@@ -52,7 +52,16 @@
         </button>
       </div>
 
-      <div class="speed">
+      <!-- An operator control, and it took somebody asking "why does an
+           exchange have a speed slider" to notice it was on a trader's screen.
+           It has no meaning on a real venue. What it actually does is set how
+           fast simulated time runs against the wall clock, which is a thing
+           the person running the experiment wants and a thing the person
+           trading on it should never touch: a market whose clock speed is
+           adjustable by whoever is long is not a market. `main.js` removes it
+           on the public surface, so / runs at exactly 1x and cannot be moved
+           off it. -->
+      <div class="speed" id="speed-control">
         <label for="speed">Speed</label>
         <input id="speed" type="range" min="0" max="20" step="0.5" value="1"
                aria-describedby="speed-label">

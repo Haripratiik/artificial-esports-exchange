@@ -16,6 +16,7 @@ import { clock, count, impliedProbability, money, move, percent, price, signed, 
          walkBook, worstCase } from './format.js';
 import { lab, markets, matches, portfolio, research, trade } from './views.js';
 import { players } from './players.js';
+import { standings } from './standings.js';
 import { countTo, press, revealAll } from './motion.js';
 
 const store = {
@@ -44,6 +45,8 @@ const store = {
   classFilter: null,
   // The participant directory, on the operator surface only.
   players: null,
+  // How every account is doing, on both surfaces.
+  standings: null,
 };
 
 /* -- which exchange you are looking at -------------------------------- */
@@ -69,7 +72,11 @@ const store = {
  */
 const SURFACE = /\/desk\/?$/.test(location.pathname) ? 'desk' : 'public';
 
-const PUBLIC_VIEWS = { markets, trade, portfolio };
+// Standings is on both surfaces on purpose. Who is winning is not an
+// operator's private business: it is the most interesting thing on a venue
+// whose population is the experiment, and a trader comparing themselves
+// against the agents is the same question the operator is asking.
+const PUBLIC_VIEWS = { markets, trade, portfolio, standings };
 const VIEWS = SURFACE === 'desk'
   ? { ...PUBLIC_VIEWS, players, research, lab }
   : PUBLIC_VIEWS;
@@ -78,9 +85,23 @@ const VIEWS = SURFACE === 'desk'
 // view that exists and is not offered is a dead end a keyboard still reaches.
 const NAV = SURFACE === 'desk'
   ? [['markets', 'Markets'], ['trade', 'Trade'], ['portfolio', 'Portfolio'],
+     ['standings', 'Standings'],
      ['operator', 'Operator'],
      ['players', 'Players'], ['research', 'Research'], ['lab', 'Lab']]
-  : [['markets', 'Markets'], ['trade', 'Trade'], ['portfolio', 'Portfolio']];
+  : [['markets', 'Markets'], ['trade', 'Trade'], ['portfolio', 'Portfolio'],
+     ['standings', 'Standings']];
+
+/**
+ * Take the operator's instruments off the trader's screen.
+ *
+ * Removed rather than hidden, because a disabled control that is still in the
+ * tab order is worse than an absent one: it invites a person to try, and then
+ * refuses them with no explanation.
+ */
+function stripOperatorControls() {
+  if (SURFACE === 'desk') return;
+  document.getElementById('speed-control')?.remove();
+}
 
 function paintNav() {
   document.getElementById('nav').replaceChildren(...NAV.map(([view, label]) => {
@@ -97,6 +118,10 @@ function paintNav() {
     return button;
   }));
 }
+
+// What the socket sent once and will not send again: per symbol, the fields
+// of a listing that are fixed for its whole life.
+let terms = {};
 
 const main = document.getElementById('main');
 const HISTORY_POINTS = 400;
@@ -125,6 +150,26 @@ function connect() {
       announced.clear();
       announcing = false;
       refreshSlow();
+    }
+
+    // A listing's terms cannot change while it is listed, so the socket sends
+    // them on the first frame and on a rebuild, and they are kept here for
+    // every frame in between. They were 72 per cent of a 234 KB frame going
+    // out twenty times a second, and the screens that read them (the question
+    // on a row, the payoff, the expiry) would be blank without them.
+    if (payload.statics) {
+      terms = {};
+      for (const [symbol, book] of Object.entries(payload.books)) {
+        terms[symbol] = {
+          class: book.class, tick: book.tick,
+          bounds: book.bounds, contract: book.contract,
+        };
+      }
+    } else {
+      for (const [symbol, book] of Object.entries(payload.books)) {
+        const kept = terms[symbol];
+        if (kept) Object.assign(book, kept);
+      }
     }
 
     store.snapshot = payload;
@@ -279,11 +324,14 @@ async function refreshSlow() {
       json('/api/session'),
       json('/api/agents'),
     ];
+    // Standings is fetched on both surfaces, because both offer the screen.
+    wanted.push(json('/api/standings'));
     if (SURFACE === 'desk') wanted.push(json('/api/players'));
-    const [instruments, session, agents, roster] = await Promise.all(wanted);
+    const [instruments, session, agents, table, roster] = await Promise.all(wanted);
     store.instruments = instruments.instruments;
     store.session = session;
     store.agents = agents.agents;
+    if (table) store.standings = table;
     if (roster) store.players = roster;
     render({ force: true });
   } catch (failure) {
@@ -990,6 +1038,7 @@ function toast(message, bad = false) {
 /* ── go ──────────────────────────────────────────────────────────────── */
 
 paintNav();
+stripOperatorControls();
 readUrl();
 syncNav();
 connect();

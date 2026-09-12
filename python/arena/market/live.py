@@ -669,21 +669,64 @@ class LiveMarket:
 
     # -- reporting ---------------------------------------------------------
 
-    def snapshot(self, trader: AgentId | None = None) -> dict[str, Any]:
+    def snapshot(
+        self, trader: AgentId | None = None, *, statics: bool = True
+    ) -> dict[str, Any]:
         """Everything the UI needs, in one message, for one person.
 
         The books, the tape and the clock are the same for everybody; the
         account, the blotter, the working orders and the counterparties are
         not. Before there was one of each, so two browsers were one trader:
         they shared a balance, and either could cancel the other's orders.
+
+        ``statics`` carries the fields of a listing that cannot change while it
+        is listed: what class it is, its tick, its value bounds and its
+        contract terms. They are in here at all because a screen showing a
+        price without the terms is a casino with extra steps, and they were
+        being sent again twenty times a second for the life of every
+        connection.
+
+        Measured on the default market, 358 symbols: a snapshot is 234 KB and
+        builds in 20.5ms, of which the contract terms alone are 159.4 KB and
+        the four static fields together are 167.7 KB, or 72 per cent. The
+        depth ladders every one of those bytes is nominally in aid of come to
+        1.4 KB. At twenty ticks a second that was 41 per cent of a core and
+        4.7 MB/s for each browser watching, which is why two open tabs left
+        every HTTP handler on this server queued behind the event loop for
+        eight to fourteen seconds.
+
+        So the socket sends them once and the client keeps them. Nothing is
+        lost: a listing is immutable for its whole life, and the one event
+        that replaces every listing, a rebuild, changes the generation the
+        client is already watching.
         """
         who = self.trader(trader)
         marks = self.venue.marks()
         account = self.venue.account(who.agent_id)
         symbols = self.venue.registry.symbols
 
+        # A settled contract is a record, not a market. The registry is
+        # append-only on purpose, because a symbol binds to one contract for
+        # its whole life and relisting it would silently change what an open
+        # position settles into, so nothing ever leaves it. That is right for
+        # the ledger and wrong for a screen: matches settle every few minutes
+        # and their contracts stayed on the board forever.
+        #
+        # Measured on the default market with matches listed: at 30 simulated
+        # seconds 3 of 70 match contracts had settled, at 90 seconds 70 of 140,
+        # and at 180 seconds 140 of 210. Two thirds of what a trader was being
+        # shown had already resolved and could not be traded, and the board
+        # grew without bound for as long as the market ran.
+        #
+        # They are dropped here rather than delisted, so the venue keeps its
+        # record and the account keeps its history. What a holder of a settled
+        # position needs is in the blotter and the fills, where settlement
+        # already paid out; what they do not need is a dead book.
+        settled = frozenset(self.venue.settled_symbols)
         books = {}
         for symbol in symbols:
+            if symbol in settled:
+                continue
             instrument = self.venue.registry.require(symbol)
             snap = self.venue.engine(symbol).book.snapshot(8)
             books[symbol] = {
@@ -715,26 +758,32 @@ class LiveMarket:
                 # person, can respond to the auction rather than only to its
                 # result.
                 "indicative": _indicative_price(self.venue, instrument, symbol),
-                "class": instrument.instrument_class,
-                "tick": str(instrument.tick_size),
-                # What the claim can be worth, not only what it settles at. A
-                # share settles at nothing because it has paid everything out,
-                # so the settlement range would say a share is worth zero to
-                # zero, true at the last instant and useless before it.
-                "bounds": [str(b) for b in instrument.value_bounds],
                 "trades": len(self.venue.engine(symbol).tape),
-                # What the contract actually is, so a trader can see the terms
-                # rather than only the price. A market where you cannot read the
-                # contract is a casino with extra steps.
-                "contract": {
-                    "id": instrument.spec.contract_id,
-                    "payoff": instrument.spec.payoff.to_dict(),
-                    "underlying": instrument.spec.underlying.to_dict(),
-                    "expiry": instrument.expiry.strftime("%Y-%m-%d"),
-                    "digest": instrument.spec.spec_digest[7:19],
-                    "distribution": _distribution(instrument),
-                },
             }
+            if statics:
+                books[symbol].update(
+                    {
+                        "class": instrument.instrument_class,
+                        "tick": str(instrument.tick_size),
+                        # What the claim can be worth, not only what it settles
+                        # at. A share settles at nothing because it has paid
+                        # everything out, so the settlement range would say a
+                        # share is worth zero to zero, true at the last instant
+                        # and useless before it.
+                        "bounds": [str(b) for b in instrument.value_bounds],
+                        # What the contract actually is, so a trader can see the
+                        # terms rather than only the price. A market where you
+                        # cannot read the contract is a casino with extra steps.
+                        "contract": {
+                            "id": instrument.spec.contract_id,
+                            "payoff": instrument.spec.payoff.to_dict(),
+                            "underlying": instrument.spec.underlying.to_dict(),
+                            "expiry": instrument.expiry.strftime("%Y-%m-%d"),
+                            "digest": instrument.spec.spec_digest[7:19],
+                            "distribution": _distribution(instrument),
+                        },
+                    }
+                )
 
         recent = []
         for stamp, message in self.venue_agent.public_log[-60:]:

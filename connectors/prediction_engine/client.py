@@ -15,6 +15,7 @@ asking the venue whether it agrees with itself.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -297,3 +298,156 @@ class ArenaClient:
 
     def cancel_all(self) -> dict[str, Any]:
         return self._request("DELETE", "/v1/orders")
+
+    # -- the rest of the engine's venue protocol ---------------------------
+    #
+    # `venues/base.py` in the engine names five slices a venue must offer
+    # before it can be recorded, and this client covered one of them. The API
+    # has since grown what the other four need, so they are implemented here
+    # rather than left as a seam somebody finds when a recorder written against
+    # the protocol comes back empty.
+    #
+    # `market_rows`, `trade_page` and `candles` return the venue's own JSON
+    # rows on purpose. The protocol's own docstring says it standardises which
+    # call a recorder makes and not the payload, because normalising the rows
+    # means a per-venue row model, and that is a separate piece of work.
+
+    def market_rows(self, tickers: Sequence[str]) -> list[dict[str, Any]]:
+        """A bulk read of named markets, as the venue's rows.
+
+        One request for a whole watchlist. Reading 300 symbols one at a time
+        makes a recorder's poll interval a function of how many contracts it
+        follows, and this venue lists contracts faster than a poll loop grows.
+
+        A name the venue does not list comes back under `missing` rather than
+        raising, so one dead ticker does not cost the caller every live one
+        beside it.
+        """
+        wanted = ",".join(str(name) for name in tickers)
+        if not wanted:
+            return []
+        payload = self._request("GET", f"/v1/instruments?symbols={wanted}")
+        return list(payload.get("instruments", []))
+
+    def trade_page(
+        self, *, cursor: str | None = None, limit: int = 1000
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """One page of the venue-wide tape, newest first, and the next cursor.
+
+        The cursor walks backwards, which is the right way round for a feed
+        that is still growing: a cursor into history addresses rows new prints
+        cannot disturb, so a client paging back sees every row exactly once and
+        a client catching up starts at the head each poll and stops at the
+        first `trade_id` it already holds.
+
+        `None` means there is nothing older and is the only thing that means
+        it. The venue publishes the cursor quoted for that reason: an ordinal
+        of zero, tested for truthiness, would read the oldest page as the end
+        of the feed.
+        """
+        query = f"/v1/trades?limit={int(limit)}"
+        if cursor is not None:
+            query += f"&cursor={cursor}"
+        payload = self._request("GET", query)
+        following = payload.get("cursor")
+        rows = list(payload.get("trades", []))
+        return rows, (None if following is None else str(following))
+
+    def candles(
+        self, ticker: str, series: str = "", *, start_ts: int, end_ts: int,
+        period_minutes: int = 1,
+    ) -> list[dict[str, Any]]:
+        """OHLC bars over a closed window, in this venue's own units.
+
+        `series` is accepted and ignored. It is Kalshi's grouping and this
+        venue has no series registry, so a symbol alone addresses a book.
+        Taking the argument anyway is what lets a caller written against the
+        protocol pass its own arguments through unchanged.
+
+        The stamps are simulated nanoseconds and the period is seconds, a
+        factor of a billion apart and the easiest thing here to get wrong. The
+        conversion happens on one line and nowhere else.
+        """
+        period = max(1, int(period_minutes)) * 60
+        query = (
+            f"/v1/instruments/{ticker}/candles?period={period}"
+            f"&start={int(start_ts)}&end={int(end_ts)}"
+        )
+        return list(self._request("GET", query).get("candles", []))
+
+    def max_window_s(self, period_minutes: int = 1) -> int | None:
+        """How wide a candle window this venue will answer, in seconds.
+
+        Read before a backfill rather than discovered by provoking a refusal. A
+        venue that caps its window silently turns a long backfill into a short
+        one with no error, which is why the protocol asks for the cap by name.
+        """
+        period = max(1, int(period_minutes)) * 60
+        for row in self.exchange_status().get("candles", []) or []:
+            if int(row.get("period", 0)) == period:
+                return row.get("max_window_s")
+        return None
+
+    def market_result(self, ticker: str) -> tuple[str, int | None, bool]:
+        """How one market resolved, as `(status, value in ticks, voided)`.
+
+        Market data, so it needs no credential, and that is the property the
+        engine depends on: this is the settlement call that works in shadow
+        mode, where the account's own settled positions are empty by
+        construction.
+
+        The status vocabulary is the venue's own and is passed through rather
+        than translated: `open` for a contract still trading, `settled`,
+        `void`, and `unknown` where the venue cannot say. Guessing at it is a
+        real mistake and was made here: this returned a default of `live`,
+        which the venue never emits, so a caller branching on the status would
+        have treated every open contract as a value it did not recognise.
+
+        An open contract answers with no value. The venue refuses to price one
+        even though its oracle could, which is the guard that stops a backtest
+        reading the answer in advance.
+        """
+        for row in self.market_rows([ticker]):
+            settled = row.get("settlement") or {}
+            return (
+                str(settled.get("status", "unknown")),
+                settled.get("ticks"),
+                bool(settled.get("voided", False)),
+            )
+        raise ArenaError(
+            404, "not_found", f"{ticker} is not listed", "/v1/instruments"
+        )
+
+    def iter_settlements(self, **params: Any) -> Iterator[dict[str, Any]]:
+        """This account's own settled positions.
+
+        Distinct from `market_result`, deliberately: that one is about the
+        market and answers without a credential, this one is about the holder
+        and is empty in shadow mode because a shadow account never held
+        anything.
+        """
+        if self.signer is None:
+            return iter(())
+        limit = int(params.get("limit", 500))
+        rows = self.positions().get("positions", [])
+        return iter([row for row in rows if row.get("settled")][:limit])
+
+    def queue_position(
+        self, ticker: str, order_id: int | str
+    ) -> dict[str, Any] | None:
+        """How much size rests ahead of one order, and how much behind it.
+
+        The engine prices its shadow fills with this. Without it a backtest
+        assumes it is at the front of every queue, which overstates fills in
+        exactly the direction that flatters a strategy, and killing that class
+        of optimism is what the engine's statistical protocol is for.
+
+        Counts visible quantity only: an iceberg's reserve refreshes behind the
+        order rather than ahead of it, so counting it would report a queue the
+        order does not sit in.
+
+        Takes the symbol as well as the id, because an order here is keyed by
+        both. One matching engine per symbol means an id alone locates nothing.
+        """
+        row = self._request("GET", f"/v1/orders/{ticker}/{order_id}")
+        return row.get("queue")

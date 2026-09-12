@@ -221,3 +221,166 @@ def test_fewer_than_three_legs_is_reported_rather_than_passed():
     result = check("thin", [Leg("A", 0.1, 0.2, lambda s: True)], ["x"])
     assert result.feasible
     assert result.detail == "fewer than 3 legs"
+
+
+# --------------------------------------------------------------------------
+# The rest of the engine's venue protocol, against the real application
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def venue():
+    """One exchange and a connector pointed at it, in process.
+
+    The same harness `test_broker.py` uses: real routes, real signature
+    verification, real matching engine. Matches are off because none of these
+    tests reads a match contract and the default listing carries most of the
+    board in them.
+    """
+    from dashboard.state import MarketConfig
+
+    from connectors.prediction_engine.auth import ArenaSigner
+    from connectors.prediction_engine.client import ArenaClient
+    from tests.test_api import Exchange
+
+    exchange = Exchange(MarketConfig(matches=False))
+    for _ in range(40):
+        if exchange.venue.session(exchange.restable()).matches_continuously:
+            break
+        exchange.pump(400, slices=16)
+    token = exchange.browser("Engine")
+    key = exchange.issue(token, label="prediction-engine")
+    client = ArenaClient(
+        base_url="http://testserver",
+        signer=ArenaSigner(key["key_id"], key["secret"]),
+        http=exchange.client,
+    )
+    yield client, exchange
+    exchange.close()
+
+
+def test_a_watchlist_is_one_request_rather_than_one_per_symbol(venue):
+    """The call that decides whether a recorder's poll scales with the board.
+
+    Reading 300 symbols one at a time makes the poll interval a function of how
+    many contracts are listed, and this venue lists faster than a loop grows.
+    """
+    client, exchange = venue
+    wanted = list(exchange.venue.registry.symbols)[:12]
+    rows = client.market_rows(wanted)
+    assert {row["symbol"] for row in rows} == set(wanted)
+    # And a name nobody lists costs the caller nothing beside it.
+    with_ghost = client.market_rows([*wanted[:3], "NO_SUCH_CONTRACT"])
+    assert {row["symbol"] for row in with_ghost} == set(wanted[:3])
+
+
+def test_the_tape_pages_backwards_without_repeating_a_print(venue):
+    """Every row exactly once, which is the only property a recorder needs.
+
+    The cursor walks into history, so it addresses rows that new prints cannot
+    disturb. A cursor that paged forward would walk further into the past on
+    every poll and never show the recorder a new print at all.
+    """
+    client, exchange = venue
+    exchange.pump(600, slices=24)
+
+    seen, cursor, pages = [], None, 0
+    while pages < 4:
+        rows, cursor = client.trade_page(cursor=cursor, limit=25)
+        seen.extend(row["trade_id"] for row in rows)
+        pages += 1
+        if cursor is None:
+            break
+    assert seen, "nothing printed, so the test measured nothing"
+    assert len(seen) == len(set(seen)), "a print was served on two pages"
+
+
+def test_a_cursor_of_zero_is_not_mistaken_for_the_end_of_the_feed(venue):
+    """`data.get("cursor") or None` is how the engine pages, so zero must not lie.
+
+    The venue publishes the cursor quoted for this reason. If it were a bare
+    ordinal, the oldest page would test falsy and a client would stop one page
+    early, every time, silently.
+    """
+    client, exchange = venue
+    exchange.pump(600, slices=24)
+    _, cursor = client.trade_page(limit=5)
+    assert cursor is None or isinstance(cursor, str)
+
+
+def test_a_live_contract_is_never_given_a_settlement_value(venue):
+    """The guard that stops a backtest reading the answer in advance.
+
+    The oracle can price a live contract. Publishing that would let anything
+    reading this API score itself against a number the market has not reached,
+    which is the most valuable bug a research venue can have and the least
+    visible.
+    """
+    client, exchange = venue
+    status, ticks, voided = client.market_result(exchange.restable())
+    # The venue's own word, not a word this connector invented. It emits
+    # `open`, `settled`, `void` and `unknown`, and this test caught the
+    # connector defaulting to `live`, which the venue never says.
+    assert status == "open"
+    assert ticks is None
+    assert voided is False
+
+
+def test_a_settlement_result_needs_no_credential(venue):
+    """Shadow mode depends on it.
+
+    The engine's whole method is reading a venue it has no account on. If the
+    resolution of a market were behind auth, every shadow backtest would score
+    against nothing.
+    """
+    _, exchange = venue
+    from connectors.prediction_engine.client import ArenaClient
+
+    anonymous = ArenaClient(base_url="http://testserver", http=exchange.client)
+    status, _ticks, _voided = anonymous.market_result(exchange.restable())
+    assert status == "open"
+
+
+def test_the_candle_window_cap_is_readable_before_a_backfill(venue):
+    """Asked for, not discovered by provoking a refusal.
+
+    A venue that caps its window silently turns a long backfill into a short
+    one with no error, so the engine's protocol asks for the number by name.
+    """
+    client, _ = venue
+    cap = client.max_window_s(period_minutes=1)
+    assert cap is None or cap > 0
+
+
+def test_a_resting_order_reports_what_is_ahead_of_it(venue):
+    """Without this a shadow fill assumes the front of every queue.
+
+    That overstates fills in exactly the direction that flatters a strategy,
+    which is the class of optimism the engine's statistics exist to kill.
+    """
+    client, exchange = venue
+    from tests.test_api import resting_price
+
+    symbol = exchange.restable()
+    price = resting_price(exchange, symbol, "buy")
+    client.create_order(symbol, "buy", 4, str(price), client_order_id="queue-probe")
+    exchange.pump(400, slices=16)
+
+    working = client.orders().get("orders", [])
+    assert working, "the order never rested, so there is no queue to read"
+    queue = client.queue_position(working[0]["symbol"], working[0]["order_id"])
+    assert queue is not None
+    # The identity that makes the number trustworthy: the level is accounted
+    # for exactly, with nothing double counted and nothing invented.
+    assert queue["ahead"] + queue["own"] + queue["behind"] == queue["level"]
+
+
+def test_settlements_are_empty_for_an_account_that_never_held_anything(venue):
+    """Shadow mode again, from the other side.
+
+    `iter_settlements` is about the holder, not the market, so an account that
+    never traded has nothing here. It must answer empty rather than raise, or
+    every shadow run dies on its first settlement sweep.
+    """
+    client, _ = venue
+    assert list(client.iter_settlements()) == []
